@@ -15,11 +15,12 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| 5 | Code transfer mechanics (preserve git history vs. clean copy) and the revised phase ordering | — |
-| 6 | Extraction scope: what travels, what is dropped (calin-api-v1's future, dead files, whether the cancel API ships in v1) | — |
-| 7 | Tooling: build tool, test framework, linter, Node version, package manager | ADR-001 |
-| 8 | Public contract: endpoints including token generation, field renames, webhook payload and signing, auth | 5, 6 |
+| 7 | Tooling: build tool, test framework, linter, Node version, package manager | — (ADR-001 settled) |
+| 8 | Public contract: endpoints including token generation, webhook payload and signing, auth. **The consequential one** — `nxt-backend` ADR-010 calls the outbound webhook "the single most consequential interface decision" | — |
 | 9 | Deployment and OSS hygiene: Dockerfile, docker-compose, CI, metrics, CONTRIBUTING | 7 |
+
+Decisions 5 (transfer mechanics + phase order) and 6 (scope) are **settled** — see the log below and
+`docs/plans/001-extraction.md`.
 
 Two further items are owned by `nxt-backend`, not this repo:
 
@@ -36,7 +37,8 @@ Each needs to land somewhere before it can be dropped from this list.
 
 | Finding | Lands in |
 |---|---|
-| `nxt-backend` plan 001's Phase 1 cannot execute — it edits files in the frozen `legacy/` tree. Decoupling moves *after* the copy, into this repo. A phase inversion, not a tweak | Plan re-cut (decision 5) |
+| **Vendor clients are shared with `meter-installs`.** `lib/chirpstack-repository/index.ts` (`registerDevice`, `setApplicationKeyForDevice`) and `adapters/calin-api-v2/lib/repo.ts` (`sendCalinApiV2Request`, `CalinApiV2Error`) are imported by `meter-installs/adapters/{calin-lorawan,calin-api-v2}/_install.service.ts`, which stays in `nxt-backend`. Extracting them leaves nxt-backend's hardware provisioning without its vendor clients. **Out of scope here, undecided** — three eventual options: re-implement thin provisioning clients in Metering, expose provisioning endpoints from this service, or share a package | `nxt-backend` Metering import (002f) |
+| ~~`nxt-backend` plan 001's Phase 1 cannot execute — it edits files in the frozen `legacy/` tree~~ | ✅ ADR-010 amendment §B, plan 001 stop-banner, `docs/plans/001-extraction.md` |
 | `nxt-backend` ADR-010 decision 2's endpoint list has **no token endpoint**, and neither does plan 001's Phase 2 — despite `deviceTokenService.generate()` being one of five live consumer call sites, and a *synchronous* one (it returns a token inline; it is not a queued message) | ADR-010 amendment ✅, then decision 8 |
 | `cancelOneByMeterInteractionId` and `cancelManyByMeterInteractionIds` have **zero callers** anywhere in `legacy/`. ADR-010 commits to `DELETE /messages/:correlationId` for an unused capability; the batch variant is in no plan at all | Decision 6 |
 | Plan 001's external-import table understates the coupling: `@core/types/device-messaging` appears in **8** files (not 3), `@core/types/supabase-types` in **5** (not 1), `@helpers/number-helpers` in **4** (not 1) | Plan re-cut (decision 5) |
@@ -100,4 +102,46 @@ session went to re-deciding the foundations rather than executing the plan.
   `deviceTokenService.generate`.
 
 **Written:** `README.md` (positioning plus honest under-construction status), the GitHub
-description, `AGENTS.md`, ADR-001, ADR-002, and this log.
+description, `AGENTS.md`, ADR-001, ADR-002, and this log. In `nxt-backend`: ADR-010's
+"Amendment (2026-07-27)" (eight lettered parts, plus inline markers on decisions 1, 2, 4) and a
+stop-banner on plan 001 marking it stale and non-executable.
+
+### 2026-07-27 — session 1 (continued): transfer mechanics, phase order, scope
+
+**Decided — transfer is an incremental port, not a copy.** Code is ported **unit by unit** directly
+from `nxt-backend`'s frozen `legacy/` tree into `src/`, tracked by an **import ledger** (the same
+device the `nxt-backend` 002 roadmap uses). No staging `legacy/` folder in this repo — that would be
+a second frozen copy of code already frozen one repo away. Git history is **not** preserved:
+incremental hand-porting rules out `filter-repo` grafting regardless, the history stays permanently
+in `nxt-backend` one link away, and these files are substantially rewritten within two phases anyway.
+Provenance is recorded instead (`AGENTS.md`, baseline `db5c2ac`).
+
+**Decided — five phases, ten units.** Full detail in `docs/plans/001-extraction.md`. Two departures
+from `nxt-backend` plan 001:
+
+- **Scaffold becomes its own phase (0).** Plan 001 buried it in task 2.1, which worked when there was
+  a NestJS module to lift; with no framework inherited, the scaffold must exist before code lands.
+- **Plugins come before HTTP** (phases 2 and 3 swapped relative to plan 001). Plan 001 already
+  contradicted itself here — its task 2.3 declares a dependency on task 3.1 — and endpoint DTOs
+  depend on the field renames and plugin ids, while ADR-002's config needs plugin-contributed
+  schemas. Plugins-first removes a circular dependency.
+
+**Deviation recorded:** adapters are ported **directly into plugin shape**, one pass rather than
+port-then-convert. Plan 001 task 3.4 describes the plugin object as "a thin wrapper," so porting each
+adapter twice is waste. This merges move-and-modify more than `nxt-backend` ADR-008 prefers; the
+per-unit review plus the ledger is the accepted control.
+
+**Decided — scope.** `_UNUSED_EXAMPLE_correlate-request-response.redis.ts` dropped (dead code).
+`device-messages.module.ts` dropped (superseded by the composition root). `nxt-sts` travels. The
+**cancel endpoint is deferred** — `cancelOneByCorrelationId` and `cancelManyByCorrelationIds` have
+zero callers in `legacy/`; the Redis methods port, the route does not, and `nxt-backend` ADR-010's
+commitment to `DELETE /messages/:correlationId` is speculative.
+
+**Corrected — CALIN V1 stays, actively supported.** V1 meters are in the field. An earlier suggestion
+that V1 might be retired was a **misreading** of `nxt-backend` ADR-006 decision 6, which deprecates
+the **`talos` app** (whose job was CALIN-v1 hardware provisioning), not the CALIN V1 protocol. V1 is
+also the second real adapter, so it is what validates the plugin SPI per `nxt-backend` ADR-001.
+
+**Clarified — hardware provisioning is out of scope.** `meter-installs` has its own adapters and is
+not part of this service. No decision has been made about ever absorbing it, and none is needed here.
+The one real consequence is the shared-vendor-client finding above.

@@ -98,7 +98,16 @@ if the ADR does not apply. Cap at 2–3 before proposing an approach.
 When you make a new architectural decision, add a numbered ADR here **and** add a row to the
 index table above.
 
-`docs/decisions-log.md` is the chronological record — append to it every session.
+### Where to look for state
+
+| File | What it holds |
+|---|---|
+| `docs/decisions-log.md` | **Read first.** What is settled, what is open, and carried findings. Append every session |
+| `docs/plans/001-extraction.md` | The executable plan: five phases, ten port units, and the import ledger |
+
+`nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md` is **stale and marked
+non-executable**. It remains useful only as a source of task detail (retry semantics, queue stages,
+the plugin interface sketch) — never as instructions.
 
 ## Code conventions
 
