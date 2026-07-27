@@ -1,0 +1,114 @@
+# AGENTS.md — nxt-device-messaging
+
+You are a senior TypeScript programmer with a preference for clean programming, explicit
+seams, and small dependency footprints.
+
+## What this repo is
+
+A standalone, self-hostable service for reliable, prioritized, retrying delivery of commands
+to addressable field devices. It accepts a command over HTTP, queues it, dispatches it through
+whichever network server the target device speaks to, tracks it through each delivery stage,
+retries with exponential backoff, and reports the outcome back over a signed webhook.
+
+Hardware integrations are **plugins**. Two delivery patterns are supported:
+
+- **PUSH** — the network server accepts the command and calls back with results (LoRaWAN via
+  ChirpStack). The bottleneck is the radio network.
+- **PULL** — the service creates a task on a vendor HTTP API and polls it for status (CALIN
+  API V1/V2). The bottleneck is the vendor API itself.
+
+Redis (or Valkey) is the only infrastructure dependency. There is no relational database.
+
+## Origin and baseline
+
+This service is being **extracted** from the `device-messages` module of
+[`nxt-backend`](https://github.com/nxtgrid/nxt-backend). Facts a cold session needs:
+
+| Fact | Value |
+|---|---|
+| Source path | `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend` |
+| Baseline commit | **`db5c2ac`** — the copy source is pinned here |
+| Source status | **Frozen.** `legacy/` is at parity with the code NXT Grid runs in production, and neither will be updated again |
+| Lua scripts | `legacy/apps/tiamat/src/queries/lua/device-messages/` (4 files — they travel with the service) |
+| Governing decision | `nxt-backend` **ADR-010** (why the extraction happens) |
+
+Because the source is frozen, no drift-checking is needed. But **read the source, not a plan's
+description of it** — documents written before `db5c2ac` describe an older shape, and at least
+two known task descriptions are stale because of it (see `nxt-backend` ADR-010's amendment).
+
+## Current status
+
+**Nothing is scaffolded yet.** The repo holds `README.md`, `LICENSE` (MPL-2.0), and `docs/`.
+There is no `package.json`, no source, and no build. Do not run build, test, or lint commands —
+they do not exist. Update this section as the scaffold lands.
+
+## Workflow
+
+- Always create a plan before acting, and list actions in to-dos if more than one.
+- Address the to-dos one by one, stopping between points to await review and acceptance.
+- Never jump to the next point of the to-dos until prompted to do so.
+- **The maintainer creates git commits.** Do not commit, amend, or undo commits unless the
+  maintainer explicitly asks you to do so for that specific action.
+- **No unsanctioned exploration.** When a command fails, do not launch open-ended debugging
+  (long shell chains, repeated Docker runs, simulated environments, scratch scripts, or
+  "let me investigate" loops). Stay on repo files and short, task-specific commands. Propose a
+  minimal fix or ask the maintainer; only investigate deeper if they explicitly ask.
+- **Design decisions belong to the maintainer.** When one surfaces, put it to them with a
+  recommended answer and wait for confirmation before acting. Resolve dependencies between
+  decisions one at a time.
+- **Look facts up; never ask what the environment can answer.** Filesystem, git history, and
+  the source module are all readable.
+
+## Communication
+
+- **Ask questions inline in the chat.** Write them as normal prose, one question at a time.
+  Asking several at once is bewildering.
+- **Never use structured question-picker / multiple-choice UI** (e.g. Cursor's AskQuestion
+  tool). Plain text lets the maintainer add nuance, extra context, or instructions.
+- Keep answers concise and direct.
+
+## Decision records
+
+ADRs live in `docs/architecture/` as numbered files. This repo owns **how the service is
+built**; `nxt-backend` owns **why it was extracted** and what changes on its side.
+
+**Citation convention:** a bare `ADR-00N` means *this repo's* ADR. Always write
+`nxt-backend ADR-00N` when citing the other repo, because the numbers collide — most
+confusingly, both repos have an ADR-001 and both are relevant here.
+
+### This repo's ADRs
+
+| # | Decision |
+|---|---|
+| 001 | Fastify + Zod runtime; no DI container; plugins are plain objects |
+| 002 | Configuration mechanism — JSON artifact + env secrets, per-plugin schemas |
+
+### `nxt-backend` ADRs that constrain this repo
+
+Read these **only** when the task touches their domain. Read Context and Status first and stop
+if the ADR does not apply. Cap at 2–3 before proposing an approach.
+
+| `nxt-backend` ADR | Read it when |
+|---|---|
+| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here |
+| **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning |
+| **007** — configuration & wiring | Touching config. This repo's ADR-002 adapts it rather than replacing it |
+| **005** — inter-host communication | How consumers integrate; §11 classifies this service as an integrable extracted service |
+
+When you make a new architectural decision, add a numbered ADR here **and** add a row to the
+index table above.
+
+`docs/decisions-log.md` is the chronological record — append to it every session.
+
+## Code conventions
+
+- English for all code and documentation. Declare types for parameters and return values;
+  avoid `any`. JSDoc on public functions and types.
+- **PascalCase** for types and classes, **camelCase** for values and functions,
+  **kebab-case** for files and directories, **UPPERCASE** for environment variables,
+  **SCREAMING_SNAKE_CASE** for constants. Avoid magic numbers.
+- Verb prefixes for booleans: `isLoading`, `hasError`, `canRetry`.
+- Prefer short single-purpose functions, early returns over nesting, and a functional style.
+- Prefer immutability: `readonly` for data that does not change, `as const` for literals.
+- **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
+  decorators. A plugin author should not need to know which HTTP framework the service uses.
