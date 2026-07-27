@@ -1,0 +1,238 @@
+# ADR-003: Public HTTP Contract
+
+**Date:** 2026-07-27
+**Status:** Accepted
+
+> Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
+> `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
+> on *this* side of the wire. `nxt-backend` still owns why the extraction happened and how
+> `meter-interactions` rewires onto this API.
+
+---
+
+## Context
+
+The inherited module has no HTTP surface of its own. Five in-process call sites in
+`meter-interactions` / ChirpStack wiring become the public contract:
+
+| Today (in-process) | Becomes |
+|---|---|
+| `enqueue()` | Command API — enqueue |
+| `getMessageByMeterInteractionId()` | Command API — inspect |
+| `cancelOne` / `cancelMany` (zero callers, logic present) | Command API — cancel |
+| `deviceTokenService.generate()` | Command API — sync token (missing from ADR-010) |
+| `incoming.handle()` via `POST /chirpstack/calin` | Ingress |
+| `subscribe()` / `publish()` | Outbound result webhook |
+
+`nxt-backend` ADR-010 calls the outbound webhook "the single most consequential interface
+decision." The only production consumer will be imported `meter-interactions` in `apps/api`,
+but the contract must also be adoptable by third parties. Configuration already anticipates
+this: ADR-002 puts `resultWebhook.url` in the JSON artifact and the signing secret in env.
+
+Source baseline: `db5c2ac`. Cancel was deferred in planning because it had zero callers, not
+because the logic was missing — both single and batch cancel already exist in Redis.
+
+---
+
+## Decisions
+
+### 1. Action-oriented paths; singular vs plural encodes cardinality
+
+| Method + path | Role |
+|---|---|
+| `POST /message/enqueue` | Enqueue one command |
+| `GET /message/:correlationId` | Inspect delivery state for one correlation id |
+| `POST /message/cancel` | Cancel one (`{ correlationId }`) |
+| `POST /messages/cancel` | Cancel many (`{ correlationIds: string[] }`) |
+| `POST /token/generate` | Mint one token synchronously |
+| `POST /ingress/:pluginId` | Vendor → service webhook (raw body) |
+
+Cancel uses POST (not DELETE) so single and batch share one verb family and carry ids in the
+body. Soft-document an upper bound on batch size (on the order of hundreds); the port may
+MGET-optimise lookups for large batches. Message-bus delivery remains **deferred**.
+
+### 2. Full-pipeline field renames
+
+These names are used everywhere — HTTP, Redis hash fields, indexes, logs — not only at the
+boundary:
+
+| Inherited | Here |
+|---|---|
+| `meter_interaction_id` | `correlation_id` (opaque string, caller-supplied) |
+| `grid_id` | `network_id` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
+| `message_type` | `command_type` (opaque string to the core; see decision 4) |
+
+Aligns with `nxt-backend` ADR-010 decision 4 and with estate vocabulary in ADR-011
+(`command_type` on `meter_command_batches`).
+
+### 3. Caller selects the plugin via `pluginId`
+
+`device.manufacturer` + `device.protocol` are dropped from the public contract. The caller
+passes a required `pluginId`. The service routes enqueue, token generation, and ingress by
+that id. `device` on the wire is identity only (`type`, `external_reference`, optional
+`gateway`).
+
+Bundled plugin ids (kebab-case, manufacturer + network server where both matter):
+
+| `pluginId` | Role |
+|---|---|
+| `calin-chirpstack` | CALIN meter framing over ChirpStack (replaces the misnomer `calin-lorawan`) |
+| `calin-api-v1` | CALIN HTTP API V1 |
+| `calin-api-v2` | CALIN HTTP API V2 |
+| `nxt-sts` | STS token generator (token-capable only) |
+
+A message or token request for a plugin that is not enabled fails that request clearly
+(ADR-002 decision 6); the process does not crash.
+
+### 4. `command_type` is a string to the core; plugins close the set
+
+The engine treats `command_type` as opaque. Each plugin declares the commands it accepts and
+validates on enqueue / token generate (400 on unknown type or invalid payload for that type).
+Bundled plugins keep concrete TypeScript unions locally. This preserves the single-file-plugin
+goal: a third-party plugin is not forced into the CALIN/NXT command vocabulary, and adding a
+command does not require a core change.
+
+### 5. Inbound auth on the command API: static API key
+
+`POST /message/*`, `GET /message/*`, `POST /messages/*`, and `POST /token/*` require
+`Authorization: Bearer <key>` validated against `DEVICE_MESSAGING_API_KEY`.
+
+`POST /ingress/:pluginId` does **not** use that key. Each plugin may declare
+`verifySignature`; opt-out is allowed (ChirpStack HTTP integrations typically have no HMAC).
+The inherited Nest `AuthenticationGuard` on `/chirpstack/calin` is not a vendor signature
+scheme and is not carried over as the ingress model.
+
+### 6. Outbound result webhook replaces `subscribe()`
+
+Config: URL in the artifact (`resultWebhook.url`, ADR-002); signing secret in env
+(`DEVICE_MESSAGING_WEBHOOK_SECRET`).
+
+#### Events
+
+Same set as today's `publish()` — with room to add transitions later without breaking
+consumers that ignore unknown statuses:
+
+1. First handoff to the network server (`SENT_TO_NS`, only when `retry_count` is 0)
+2. Terminal success (`DELIVERY_SUCCESSFUL`)
+3. Terminal failure (`DELIVERY_FAILED`, including max-retries and PULL age timeout)
+4. Unsolicited uplinks (no `correlation_id`)
+
+Mid-pipeline GW ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events today and
+do not in v1.
+
+#### Payload envelope
+
+```ts
+{
+  eventId: string;       // ULID — idempotency key
+  occurredAt: string;    // ISO-8601
+  pluginId: string;
+  message: {
+    id?: string;         // device-message ULID; may be absent for pure unsolicited
+    correlationId?: string; // absent ⇒ unsolicited
+    commandType: string;
+    deliveryStatus: DeviceMessageDeliveryStatus;
+    phase?: 'A' | 'B' | 'C';
+    device: {
+      type: string;
+      externalReference: string;
+      gateway?: { id?: number; externalReference?: string; snr?: number; rssi?: number };
+    };
+    response?: {
+      status: 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE';
+      data?: unknown;
+    };
+    failureHistory?: FailureReason[];
+    unsolicited?: boolean;
+  };
+}
+```
+
+Wire JSON is **camelCase**. Queue internals (`delivery_queue_id`, `retry_count`, priority,
+`request_data`) are omitted from the webhook; `GET /message/:correlationId` may expose more
+for inspection.
+
+#### Signing (opt-in)
+
+- **Secret set:** HMAC-SHA256 over the raw body; headers
+  `X-Device-Messaging-Signature: sha256=<hex>` and
+  `X-Device-Messaging-Event-Id: <eventId>`.
+- **Secret unset:** POST unsigned (local / quick-start). Boot **warns** if a webhook URL is
+  configured without a secret; does not fail boot.
+- No timestamp/skew window in v1; `eventId` covers idempotent retries. Private network +
+  shared secret is the v1 threat model.
+
+This is **not** the inbound API key: that authenticates callers *to* this service; the
+webhook secret authenticates callbacks *from* this service to the consumer. Both ends of a
+signed deployment hold the same secret in env.
+
+#### Delivery, retry, failure
+
+1. Emitting an event never blocks the device-message engine; the callback is enqueued.
+2. **2xx** = success. Retry on network errors, **5xx**, **429**, **408**. Do not retry other
+   **4xx**.
+3. Bounded exponential backoff (defaults under `resultWebhook` tuning; e.g. 5 attempts).
+   Retries reuse the same `eventId`.
+4. After exhaustion: log with `correlationId` + `eventId`, and retain the payload in a Redis
+   **dead-letter** with TTL (e.g. 7 days) for ops replay. Pending retries and dead letters
+   use the **same Redis DB** as message queues, under `webhook:*` key prefixes — not a
+   separate `REDIS_DB`.
+5. Device-message success/failure is independent of webhook delivery success.
+
+### 7. OpenAPI is generated from Zod (ADR-001)
+
+The same Zod schemas validate requests/responses and produce the OpenAPI document. The
+integration guide (Phase 4) narrates webhook verification and the event set for consumers.
+
+---
+
+## Consequences
+
+### Positive
+
+- One explicit, adoptable contract: action paths, plugin selection, sync tokens, cancel,
+  signed-opt-in callbacks.
+- Webhook durability is stronger than the stale plan's "single retry then drop," without a
+  second queue product.
+- Plugin-scoped command validation keeps core hardware-agnostic.
+- `calin-chirpstack` names the actual network server rather than over-claiming "LoRaWAN."
+
+### Negative / Risks
+
+- Full-pipeline renames touch Redis field names and indexes during the port (accepted;
+  behaviour-preserving intent, new key schema in a greenfield Redis).
+- Opt-in webhook signing means a misconfigured production deploy can run unsigned if
+  operators ignore the boot warning — mitigate in the integration guide and cutover
+  checklist.
+- Dead-letter replay is ops/manual in v1 (no admin HTTP yet).
+- Path style diverges from classic plural REST; documented deliberately.
+
+## Rejected
+
+- **Terminal-only webhooks** — would change `meter-interactions` PROCESSING behaviour;
+  rejected in favour of parity with `publish()`.
+- **Core `command_type` enum** — couples core to CALIN/NXT vocabulary; breaks third-party
+  plugins.
+- **Manufacturer + protocol on the wire** — split/rejoin dance; replaced by `pluginId`.
+- **Separate Redis DB for webhook state** — needless second client; many hosts only expose
+  DB 0; key prefixes suffice.
+- **Required webhook signing always** — blocks the promised `docker-compose` quick start.
+- **Message bus in v1** — deferred; HTTP webhook is enough.
+- **Flatter RPC paths** (`/enqueue-message`, …) — rejected in favour of resource/action paths.
+
+## Triggers (revisit when)
+
+- A consumer needs intermediate statuses beyond today's `publish()` set.
+- Replay/admin HTTP for dead letters is needed operationally.
+- Replay attacks on callbacks justify timestamp + skew.
+- A second webhook URL or per-tenant callback routing appears.
+- Batch enqueue or batch token generation becomes a real caller need.
+
+## Related
+
+- **ADR-001** — Fastify + Zod; OpenAPI from the same schemas.
+- **ADR-002** — `resultWebhook.url` in artifact; secrets in env; plugin enablement.
+- **`nxt-backend` ADR-010** — extraction rationale; decision 2 inventory superseded here.
+- **`nxt-backend` ADR-005 §11** — integrable extracted service (HTTP in, callbacks out).
+- **`nxt-backend` ADR-011** — estate `command_type` vocabulary.
+- **`docs/plans/001-extraction.md`** — Phase 3 implements this contract.

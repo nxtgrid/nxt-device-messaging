@@ -1,6 +1,7 @@
 # Extraction Plan — device-messages → nxt-device-messaging
 
-**Decisions:** ADR-001 (runtime), ADR-002 (config), `nxt-backend` ADR-010 + its 2026-07-27 amendment
+**Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), `nxt-backend` ADR-010 + its
+2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 not started
@@ -8,7 +9,8 @@
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
 plugin interface sketch) — but its phase order, framework assumptions, and several task descriptions
-are wrong. Read `nxt-backend` ADR-010's amendment before using it.
+are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 implements **ADR-003**,
+not the stale plan's Nest controllers.
 
 ---
 
@@ -32,12 +34,12 @@ are wrong. Read `nxt-backend` ADR-010's amendment before using it.
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | Not started |
 | **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | Not started |
-| **2** | Adapters as plugins: units 7–10 | Not started |
-| **3** | HTTP contract: messages, ingress, tokens, outbound webhook, auth, OpenAPI | Not started |
+| **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
+| **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 3 is blocked on **Decision 8** (public contract) — still open. Phases 0 and 4 partly depend on
-**Decision 7** (tooling) and **Decision 9** (deployment), also open. See the decisions log.
+Phase 3 is unblocked (**Decision 8 → ADR-003**). Phases 0 and 4 partly depend on **Decision 7**
+(tooling) and **Decision 9** (deployment), still open. See the decisions log.
 
 ## Port units
 
@@ -47,16 +49,19 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
 ### Phase 1
 
 - [ ] **Unit 1 — Types and utilities.** `lib/types.ts`, new `lib/utils.ts`.
-      Vendor `PhaseEnum` (`'A' | 'B' | 'C'`), a local `Json`, `DeviceMessageType = string`, the token
-      and phase-read predicates, and the two helper functions. Verify predicate string values against
-      `legacy/.../meter-interactions/lib/meter-interaction-type-helpers` before copying.
+      Vendor `PhaseEnum` (`'A' | 'B' | 'C'`), a local `Json`, `command_type: string` (opaque to core;
+      plugins close the set — ADR-003 §4), the token and phase-read predicates, and the two helper
+      functions. Verify predicate string values against
+      `legacy/.../meter-interactions/lib/meter-interaction-type-helpers` before copying. Drop
+      public `DeviceManufacturerEnum` / `DeviceProtocolEnum` in favour of `pluginId` (ADR-003 §3).
 - [ ] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
       `redis-repository/{index,keys,helpers}.ts` + the four files from
       `legacy/apps/tiamat/src/queries/lua/device-messages/`. Load the `.lua` files locally rather than
-      via `@tiamat/queries`. `HERMES_*` → `REDIS_*` (ADR-002 §8). Field renames land here:
-      `meter_interaction_id` → `correlation_id` (opaque **string**), `grid_id` → `network_id`
-      (**`number | null`** — the `unassigned` LoRaWAN bucket must survive), and the index key prefix
-      `idx:meter_interaction_id:` → `idx:correlation_id:`.
+      via `@tiamat/queries`. `HERMES_*` → `REDIS_*` (ADR-002 §8). Full-pipeline field renames
+      (ADR-003 §2) land here: `meter_interaction_id` → `correlation_id` (opaque **string**),
+      `grid_id` → `network_id` (**`number | null`** — the `unassigned` LoRaWAN bucket must survive),
+      `message_type` → `command_type`, and the index key prefix `idx:meter_interaction_id:` →
+      `idx:correlation_id:`.
 - [ ] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
       The hardcoded timeout/retry constants become config-backed with in-code defaults (ADR-002 §5).
 - [ ] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
@@ -65,20 +70,23 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       `@Injectable`/`@Module` removed; the two `@Cron` jobs become interval timers gated on
       `engine.enabled` (ADR-002 §7 — **not** `NXT_ENV`); DI constructors dissolve into the
       composition root. `subscribe()`/`static subscribers` stay in place for now and are replaced by
-      the outbound webhook in Phase 3.
+      the outbound webhook in Phase 3 (**ADR-003** §6).
       **Behaviour note:** `@Cron` does not guard re-entry; a plain `setInterval` reproduces that.
       Adding an in-flight guard is an improvement — record it if taken.
 - [ ] **Unit 6 — Plugin interface and registry.** `lib/plugin.interface.ts`,
       `lib/plugin-registry.ts`. Interface sketch is in `nxt-backend` plan 001 task 3.1; correct
-      `network_id` to `number | null` and add the token capability. Only plugins present in config are
-      constructed (ADR-002 §6).
+      `network_id` to `number | null`, key plugins by `pluginId`, add token capability and
+      per-plugin command-type validation (ADR-003 §§3–4), optional `verifySignature` for ingress.
+      Only plugins present in config are constructed (ADR-002 §6).
 
 ### Phase 2 — adapters as plugins
 
-- [ ] **Unit 7 — calin-lorawan** (~1,200 lines). `_incoming`, `_outgoing`, `lib/{types,
-      encode-request-data, decode-response-data, correlate-request-response, connectivity-helpers}`,
-      plus `lib/chirpstack-repository/` moved in as plugin-internal.
-      `bottleneckKey` must handle the `unassigned` bucket.
+- [ ] **Unit 7 — `calin-chirpstack`** (~1,200 lines). Source folder is still
+      `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
+      (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
+      decode-response-data, correlate-request-response, connectivity-helpers}`, plus
+      `lib/chirpstack-repository/` moved in as plugin-internal. `bottleneckKey` must handle the
+      `unassigned` bucket.
 - [ ] **Unit 8 — calin-api-v1** (~726 lines). Actively supported; V1 meters are in the field.
       Second real adapter, so this is what validates the plugin SPI (`nxt-backend` ADR-001).
 - [ ] **Unit 9 — calin-api-v2** (~500 lines).
@@ -113,14 +121,14 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `dto/create-device-message.dto.ts` | 25 | 5 | pending |
 | `dto/generate-token.dto.ts` | 17 | 5 | pending |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
-| `adapters/calin-lorawan/_outgoing.service.ts` | 77 | 7 | pending |
-| `adapters/calin-lorawan/_incoming.service.ts` | 135 | 7 | pending |
-| `adapters/calin-lorawan/lib/types.ts` | 86 | 7 | pending |
-| `adapters/calin-lorawan/lib/encode-request-data.ts` | 360 | 7 | pending |
-| `adapters/calin-lorawan/lib/decode-response-data.ts` | 422 | 7 | pending |
-| `adapters/calin-lorawan/lib/correlate-request-response.ts` | 113 | 7 | pending |
-| `adapters/calin-lorawan/lib/connectivity-helpers.ts` | 20 | 7 | pending |
-| `lib/chirpstack-repository/index.ts` | 109 | 7 | pending — **see coupling note below** |
+| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 7 | pending |
+| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 7 | pending |
+| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 7 | pending |
+| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 7 | pending |
+| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 7 | pending |
+| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 7 | pending |
+| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 7 | pending |
+| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 7 | pending — **see coupling note below** |
 | `adapters/calin-lorawan/lib/_UNUSED_EXAMPLE_correlate-request-response.redis.ts` | 138 | — | **dropped** — dead code |
 | `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 8 | pending |
 | `adapters/calin-api-v1/_incoming.service.ts` | 274 | 8 | pending |
@@ -154,9 +162,12 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 
 | Item | Why | Revisit when |
 |---|---|---|
-| Cancel endpoint (`DELETE /messages/:correlationId`) | `cancelOneByCorrelationId` / `cancelManyByCorrelationIds` have zero callers in `legacy/`. The Redis methods port; the route does not | A consumer needs it |
+| Message-bus adapter for results | ADR-003: HTTP webhook is v1; bus stays optional | A consumer needs broker delivery |
+| Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
 | Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
 | HA / multi-instance (leader election, Redis-backed correlator) | `nxt-backend` ADR-010 §6 defers it | Evidence of multi-instance demand |
+
+Cancel is **not** deferred — ADR-003 ships `POST /message/cancel` and `POST /messages/cancel`.
 
 ## Notes & decisions log
 

@@ -16,11 +16,10 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 | # | Decision | Blocked on |
 |---|---|---|
 | 7 | Tooling: build tool, test framework, linter, Node version, package manager | — (ADR-001 settled) |
-| 8 | Public contract: endpoints including token generation, webhook payload and signing, auth. **The consequential one** — `nxt-backend` ADR-010 calls the outbound webhook "the single most consequential interface decision" | — |
 | 9 | Deployment and OSS hygiene: Dockerfile, docker-compose, CI, metrics, CONTRIBUTING | 7 |
 
-Decisions 5 (transfer mechanics + phase order) and 6 (scope) are **settled** — see the log below and
-`docs/plans/001-extraction.md`.
+Decisions 5 (transfer mechanics + phase order), 6 (scope), and **8 (public HTTP contract → ADR-003)**
+are **settled** — see the log below and `docs/plans/001-extraction.md`.
 
 Two further items are owned by `nxt-backend`, not this repo:
 
@@ -39,8 +38,8 @@ Each needs to land somewhere before it can be dropped from this list.
 |---|---|
 | **Vendor clients are shared with `meter-installs`.** `lib/chirpstack-repository/index.ts` (`registerDevice`, `setApplicationKeyForDevice`) and `adapters/calin-api-v2/lib/repo.ts` (`sendCalinApiV2Request`, `CalinApiV2Error`) are imported by `meter-installs/adapters/{calin-lorawan,calin-api-v2}/_install.service.ts`, which stays in `nxt-backend`. Extracting them leaves nxt-backend's hardware provisioning without its vendor clients. **Out of scope here, undecided** — three eventual options: re-implement thin provisioning clients in Metering, expose provisioning endpoints from this service, or share a package | `nxt-backend` Metering import (002f) |
 | ~~`nxt-backend` plan 001's Phase 1 cannot execute — it edits files in the frozen `legacy/` tree~~ | ✅ ADR-010 amendment §B, plan 001 stop-banner, `docs/plans/001-extraction.md` |
-| `nxt-backend` ADR-010 decision 2's endpoint list has **no token endpoint**, and neither does plan 001's Phase 2 — despite `deviceTokenService.generate()` being one of five live consumer call sites, and a *synchronous* one (it returns a token inline; it is not a queued message) | ADR-010 amendment ✅, then decision 8 |
-| `cancelOneByMeterInteractionId` and `cancelManyByMeterInteractionIds` have **zero callers** anywhere in `legacy/`. ADR-010 commits to `DELETE /messages/:correlationId` for an unused capability; the batch variant is in no plan at all | Decision 6 |
+| ~~`nxt-backend` ADR-010 decision 2's endpoint list has **no token endpoint**~~ | ✅ ADR-010 amendment §C, then **ADR-003** (`POST /token/generate`) |
+| ~~Cancel had zero callers; Decision 6 deferred the route~~ | ✅ **ADR-003** ships single + batch cancel anyway (logic already existed; useful for adopters) |
 | Plan 001's external-import table understates the coupling: `@core/types/device-messaging` appears in **8** files (not 3), `@core/types/supabase-types` in **5** (not 1), `@helpers/number-helpers` in **4** (not 1) | Plan re-cut (decision 5) |
 | `adapters/calin-lorawan/lib/_UNUSED_EXAMPLE_correlate-request-response.redis.ts` is dead code and should not travel | Decision 6 |
 | Baseline commit `db5c2ac` made `grid_id` nullable and added `LORAWAN_UNASSIGNED_BUCKET` (`queue:lorawan_network:unassigned`). This invalidates plan 001 task 1.6's target type (`network_id: number`) and task 3.3's example `bottleneckKey`, which would route orphan meters to `queue:lorawan_network:null` and lose them | Plan re-cut (decision 5) |
@@ -145,3 +144,40 @@ also the second real adapter, so it is what validates the plugin SPI per `nxt-ba
 **Clarified — hardware provisioning is out of scope.** `meter-installs` has its own adapters and is
 not part of this service. No decision has been made about ever absorbing it, and none is needed here.
 The one real consequence is the shared-vendor-client finding above.
+
+### 2026-07-27 — session 2: Decision 8 — public HTTP contract
+
+**Decided → ADR-003.** Normative consumer contract for this service; supersedes the incomplete
+endpoint inventory in `nxt-backend` ADR-010 decision 2 for everything on this side of the wire.
+
+**Command API** — action paths, singular/plural for cardinality:
+
+- `POST /message/enqueue`, `GET /message/:correlationId`
+- `POST /message/cancel`, `POST /messages/cancel` (single + batch; Decision 6's deferral of the
+  *route* is reversed — Redis logic was always there)
+- `POST /token/generate` (sync; closes the ADR-010 §C gap)
+- `POST /ingress/:pluginId` (plugin `verifySignature`, opt-out allowed)
+
+**Auth:** Bearer static API key (`DEVICE_MESSAGING_API_KEY`) on command routes only — not on ingress.
+
+**Renames throughout the pipeline** (HTTP, Redis, indexes, logs — no boundary-only translation):
+`correlation_id`, `network_id`, `command_type`. Aligns with ADR-010 and estate `command_type`
+vocabulary (`nxt-backend` ADR-011).
+
+**Plugin selection:** required `pluginId` on enqueue/token; drop `manufacturer` + `protocol` from
+the public contract. Bundled ids: `calin-chirpstack` (renamed from `calin-lorawan` — manufacturer +
+network server, not protocol), `calin-api-v1`, `calin-api-v2`, `nxt-sts`. `command_type` is a
+string to the core; each plugin closes and validates its own set.
+
+**Outbound webhook** (replaces `subscribe()`):
+
+- Same event set as today's `publish()` (first `SENT_TO_NS`, terminal success/failure, unsolicited);
+  expandable later
+- Envelope: `eventId`, `occurredAt`, `pluginId`, `message { … }` (camelCase JSON)
+- HMAC-SHA256 signing **opt-in** (secret unset → unsigned + boot warn); not the inbound API key
+- Async delivery, bounded retries, Redis dead-letter under `webhook:*` on the **same** Redis DB;
+  engine never blocks; device outcome independent of callback success
+- Message bus deferred
+
+**Written:** ADR-003. `AGENTS.md` ADR index, `docs/plans/001-extraction.md`, and ADR-002's example
+plugin id (`calin-chirpstack`) updated in the same session.

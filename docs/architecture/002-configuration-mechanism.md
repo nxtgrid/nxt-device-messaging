@@ -85,7 +85,7 @@ therefore safe to inline in an environment variable, serve from object storage, 
   },
   "resultWebhook": { "url": "https://consumer.example/hooks/device-messages" },
   "plugins": [
-    { "id": "calin-lorawan",
+    { "id": "calin-chirpstack",
       "settings": { "chirpstackUrl": "…", "applicationId": "…", "profileId": "…" },
       "tuning":   { "nsTimeoutMs": 10000, "floodPreventionWindowMs": 2000 } },
     { "id": "calin-api-v2",
@@ -223,6 +223,7 @@ instance name and has no meaning to an adopter.
 ## Related
 
 - **ADR-001** — Fastify + Zod, no DI container; why a frozen global is the right primitive.
+- **ADR-003** — public HTTP contract; plugin ids (`calin-chirpstack`, …) and `resultWebhook` usage.
 - **`nxt-backend` ADR-007** — the mechanism this adapts; decision 6 anticipated this extraction.
 - **`nxt-backend` ADR-001** — PUSH/PULL divergence; the per-adapter tuning this implements.
 - **`nxt-backend` ADR-010** — the extraction decision; its plugin contract carries the tuning.
