@@ -22,10 +22,87 @@ power limit.
 
 ## Status
 
-**Under construction.** This service is being extracted from the `device-messages` module
-of [nxt-backend](https://github.com/nxtgrid/nxt-backend) (see its ADR-010). The extraction
-is in progress and nothing here is deployable yet. Architecture decisions and the build
-plan will live in `docs/`.
+**Phase 0 complete** (tooling, config loader, Fastify shell, Docker/CI stubs). Domain logic
+is still being ported from the frozen `device-messages` module in
+[nxt-backend](https://github.com/nxtgrid/nxt-backend) (see its ADR-010). The HTTP command
+API, plugins, and Redis engine are not runnable yet — local boot today serves
+`GET /healthz` only.
+
+Plan and decisions: [`docs/plans/001-extraction.md`](docs/plans/001-extraction.md),
+[`docs/decisions-log.md`](docs/decisions-log.md), [`docs/architecture/`](docs/architecture/).
+
+## Prerequisites
+
+- **Node.js 24.x**
+- **pnpm 11** (via [Corepack](https://nodejs.org/api/corepack.html): `corepack enable`)
+- **Docker** (optional — for compose / image builds)
+
+## Quick start (local)
+
+```bash
+corepack enable
+pnpm install
+pnpm dev
+```
+
+The process listens on **`PORT`** (default **3100**). Check liveness:
+
+```bash
+curl -sS http://127.0.0.1:3100/healthz
+# {"ok":true}
+```
+
+Config loads from the ADR-002 precedence chain
+(`DEVICE_MESSAGING_CONFIG_JSON` → `_URL` → `_PATH` → bundled `config.default.json`).
+See `config.example.json` for a fuller artifact shape and `.env.example` for env vars.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `pnpm dev` | Run with `tsx watch` (reload on change) |
+| `pnpm build` | Production bundle to `dist/` via tsup |
+| `pnpm start` | Run the built `dist/main.js` |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm test` | Vitest (unit tests under `test/`) |
+| `pnpm test:watch` | Vitest watch mode |
+
+Pre-commit runs lint-staged on staged `.ts` files, then `pnpm typecheck`.
+
+## Docker
+
+### Compose (app + Valkey)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Compose sets `REDIS_HOST=valkey` for the app service. Valkey is included so the stack
+matches the intended runtime; the service does not connect to Redis until Phase 1.
+
+### Image only
+
+```bash
+docker build -t nxt-device-messaging .
+docker run --rm -p 3100:3100 nxt-device-messaging
+```
+
+The image `HEALTHCHECK` probes `GET /healthz` on `PORT` (default 3100). On PaaS hosts that
+deploy from GitHub and ignore image healthchecks, configure the platform probe to the same
+path (or TCP on 3100).
+
+## Configuration (summary)
+
+| Surface | Examples |
+|---|---|
+| JSON artifact | `engine`, `delivery`, `resultWebhook`, `plugins` — see `config.example.json` |
+| Env (secrets / connection) | `REDIS_*`, `DEVICE_MESSAGING_API_KEY`, `DEVICE_MESSAGING_WEBHOOK_SECRET` |
+| Env (ops) | `PORT` (default `3100`) |
+| Env (config source) | `DEVICE_MESSAGING_CONFIG_JSON` / `_URL` / `_PATH` |
+
+Full rules: [ADR-002](docs/architecture/002-configuration-mechanism.md).
 
 ## License
 

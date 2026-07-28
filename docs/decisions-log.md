@@ -21,7 +21,7 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **8 (public HTTP contract → ADR-003)**, and **9 (deployment / OSS hygiene → ADR-005)** are
 **settled** — see the log below and `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is unblocked (ADR-001–005). Remaining work is execution of the plan, plus
+Phase 0 scaffold is **done** (ADR-001–005 executed). Next work is Phase 1 port units, plus
 items owned by `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -230,4 +230,37 @@ CONTRIBUTING polish, README deploy/health section.
 
 **Written:** ADR-005. `AGENTS.md` ADR index, open-decisions table, and `docs/plans/001-extraction.md`
 updated.
+
+### 2026-07-28 — session 4: Phase 0 scaffold execution
+
+Executed Phase 0 end-to-end (prior sessions had locked ADR-001–005; this session ran the
+scaffold).
+
+**Landed:**
+
+- **Tooling / hooks** (Steps 1–1b, earlier in Phase 0): pnpm@11.17.0, Node 24, ESM, tsup, tsx,
+  Vitest, ESLint (house teamRules adapted), husky + lint-staged; pre-commit = lint-staged then
+  `pnpm typecheck`.
+- **Config loader** (Step 2): async `loadConfig` (JSON → URL → PATH → `config.default.json`),
+  `getConfig` / `setConfig`, Zod schema, `config.default.json` + `config.example.json`, unit
+  tests under `test/unit/`.
+- **Fastify shell** (Step 3): `buildApp()` + `GET /healthz` → `{ ok: true }`; listen on
+  `0.0.0.0`, port from **`PORT`** (default **3100**). Liveness stub landed early so the image
+  `HEALTHCHECK` has a target; Redis-aware readiness stays Phase 4 / a later `/readyz` if needed.
+- **Deployment stubs** (Step 4): multi-stage `Dockerfile` (`node:24-slim`, non-root,
+  `HEALTHCHECK` → `/healthz`), `docker-compose.yml` + Valkey 8 alpine, `.env.example`,
+  `.dockerignore`, `build.yml` + `release.yml` (tag → GHCR).
+
+**Deviations / notes:**
+
+- Dockerfile: `pnpm prune --prod` must use `--ignore-scripts` — after prune, `prepare` would
+  invoke `husky` which is already gone. Verified: image build + container `/healthz` → 200.
+- **Ramda:** used lightly in the frozen source (`isNil` / `isNotNil` / `isEmpty`, plus
+  `fromPairs` / `splitEvery` in redis helpers). **Keep on port** (Phase 1 unit 2+); do not add
+  for Phase 0 shell code. Formal dep lands with the first port unit that needs it.
+- `/healthz` path kept (k8s/`*z` convention); not Spring `/actuator/health` (`nxt-sts`). Port
+  env is `PORT`, not `SERVER_PORT`.
+
+**Phase 0 closed.** Next: Phase 1 unit 1 (types and utilities). Docs updated this session:
+`AGENTS.md` status, plan 001 Phase 0 → Done, this log entry.
 

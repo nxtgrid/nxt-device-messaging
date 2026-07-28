@@ -38,9 +38,13 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Nothing is scaffolded yet.** The repo holds `README.md`, `LICENSE` (MPL-2.0), and `docs/`.
-There is no `package.json`, no source, and no build. Do not run build, test, or lint commands —
-they do not exist. Update this section as the scaffold lands.
+**Phase 0 complete.** Tooling (ADR-004), config loader (ADR-002), Fastify shell with
+`GET /healthz` on port **3100**, and deployment stubs (ADR-005: Dockerfile, compose + Valkey,
+CI/GHCR) are in place. No domain/port units yet — that is Phase 1.
+
+- **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
+- **Check:** `pnpm lint` / `typecheck` / `test` / `build`
+- **Compose:** copy `.env.example` → `.env`, then `docker compose up --build`
 
 ## Workflow
 
