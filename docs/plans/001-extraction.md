@@ -1,7 +1,7 @@
 # Extraction Plan — device-messages → nxt-device-messaging
 
-**Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), `nxt-backend` ADR-010 + its
-2026-07-27 amendment
+**Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), ADR-004 (tooling),
+ADR-005 (deployment / OSS hygiene), `nxt-backend` ADR-010 + its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 not started
@@ -38,8 +38,9 @@ not the stale plan's Nest controllers.
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 3 is unblocked (**Decision 8 → ADR-003**). Phases 0 and 4 partly depend on **Decision 7**
-(tooling) and **Decision 9** (deployment), still open. See the decisions log.
+Phase 3 is unblocked (**Decision 8 → ADR-003**). Phase 0 tooling and deployment shapes are
+settled (**Decision 7 → ADR-004**, **Decision 9 → ADR-005**). Phase 0 can start; Phase 4
+implements the observability and hygiene pieces ADR-005 scopes to that phase.
 
 ## Port units
 

@@ -15,15 +15,17 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| 7 | Tooling: build tool, test framework, linter, Node version, package manager | — (ADR-001 settled) |
-| 9 | Deployment and OSS hygiene: Dockerfile, docker-compose, CI, metrics, CONTRIBUTING | 7 |
+| — | *(none in this repo)* | — |
 
-Decisions 5 (transfer mechanics + phase order), 6 (scope), and **8 (public HTTP contract → ADR-003)**
-are **settled** — see the log below and `docs/plans/001-extraction.md`.
+Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
+**8 (public HTTP contract → ADR-003)**, and **9 (deployment / OSS hygiene → ADR-005)** are
+**settled** — see the log below and `docs/plans/001-extraction.md`.
 
-Two further items are owned by `nxt-backend`, not this repo:
+Phase 0 scaffold is unblocked (ADR-001–005). Remaining work is execution of the plan, plus
+items owned by `nxt-backend`:
 
-- Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5).
+- Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
+  settled; the re-cut itself may still be outstanding on that side).
 - The device-messaging **cutover addendum** for the company, reconciled with `nxt-backend`
   ADR-012 (see "Carried findings" below).
 
@@ -181,3 +183,51 @@ string to the core; each plugin closes and validates its own set.
 
 **Written:** ADR-003. `AGENTS.md` ADR index, `docs/plans/001-extraction.md`, and ADR-002's example
 plugin id (`calin-chirpstack`) updated in the same session.
+
+### 2026-07-28 — session 3: Decision 7 — tooling stack
+
+**Decided → ADR-004.**
+
+| Concern | Choice |
+|---|---|
+| Package manager | pnpm (Corepack `packageManager` pin; exact patch at scaffold) |
+| Node | 24.x (current LTS major; `engines`) |
+| Module system | ESM (`"type": "module"`) |
+| Build | tsup (esbuild); Lua scripts copied beside output |
+| Dev / scripts | tsx |
+| Tests | Vitest |
+| Lint | ESLint 9 flat + typescript-eslint; house `teamRules` adapted (no Nx, no estate-only restricted imports) |
+
+**Explicitly rejected:** Prettier, Biome, `@stylistic/eslint-plugin`, Jest, webpack/`tsc`-only as
+primary build. Style stays in ESLint core rules as in `nxt-backend/eslint.config.mjs`.
+
+**Unblocks** Decision 9 (Docker/CI/hygiene). Phase 0 can use this stack; compose/CI half of Phase 0
+and Phase 4 still wait on Decision 9.
+
+**Written:** ADR-004. `AGENTS.md` ADR index, open-decisions table, and `docs/plans/001-extraction.md`
+header/status notes updated.
+
+### 2026-07-28 — session 3 (continued): Decision 9 — deployment and OSS hygiene
+
+**Decided → ADR-005.** Patterns aligned with sibling OSS service `nxt-sts` (tag → GHCR, image
+HEALTHCHECK, PaaS-from-GitHub health note), adapted for Valkey.
+
+| Concern | Choice |
+|---|---|
+| Dockerfile | Multi-stage `node:24-slim`; non-root; `HEALTHCHECK` → `/healthz` |
+| Compose | App + Valkey 8 alpine; `.env.example`; `.dockerignore` |
+| Port | **3100** (misses estate api 3000 and `nxt-sts` 8080) |
+| CI | `build.yml` (PR + default branch: lint/test/build); `release.yml` (tags `v*.*.*` → GHCR `:tag` + `:latest`) |
+| Metrics | `GET /metrics` Prometheus via `prom-client` (min: queue depth, terminal status counters, retry histogram) |
+| Health | `GET /healthz`; README documents image HEALTHCHECK vs PaaS probe (nxt-sts dual-path note) |
+| Logging | Fastify pino, JSON in production |
+| Hygiene | `CONTRIBUTING.md`, issue-template stubs; LICENSE already MPL-2.0 |
+
+**Phase split:** Phase 0 lands Docker/compose/CI stubs; Phase 4 lands metrics, pino sweep,
+CONTRIBUTING polish, README deploy/health section.
+
+**Open decisions in this repo:** none. Next work is Phase 0 scaffold execution.
+
+**Written:** ADR-005. `AGENTS.md` ADR index, open-decisions table, and `docs/plans/001-extraction.md`
+updated.
+

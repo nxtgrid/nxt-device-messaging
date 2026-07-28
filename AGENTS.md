@@ -83,6 +83,8 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 001 | Fastify + Zod runtime; no DI container; plugins are plain objects |
 | 002 | Configuration mechanism — JSON artifact + env secrets, per-plugin schemas |
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
+| 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
+| 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 
 ### `nxt-backend` ADRs that constrain this repo
 
