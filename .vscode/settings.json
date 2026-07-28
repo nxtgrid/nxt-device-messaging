@@ -1,0 +1,15 @@
+{
+  "editor.tabSize": 2,
+  "search.exclude": {
+    "package-lock.json": true,
+    "pnpm-lock.yaml": true
+  },
+  "eslint.format.enable": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "jest.runMode": "on-demand"
+}
