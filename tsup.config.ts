@@ -1,8 +1,9 @@
+import { copyFileSync } from 'node:fs';
 import { defineConfig } from 'tsup';
 
 /**
  * Production build (ADR-004). Lua scripts are copied beside `dist/` when
- * unit 2 lands; until then the entry is the scaffold composition root.
+ * unit 2 lands; `config.default.json` ships with the bundle for ADR-002 fallback.
  */
 export default defineConfig({
   entry: [ 'src/main.ts' ],
@@ -14,4 +15,7 @@ export default defineConfig({
   sourcemap: true,
   dts: false,
   splitting: false,
+  async onSuccess() {
+    copyFileSync('config.default.json', 'dist/config.default.json');
+  },
 });

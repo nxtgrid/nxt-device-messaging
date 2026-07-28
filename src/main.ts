@@ -1,5 +1,10 @@
+import { loadConfig, getConfig } from './config/index.js';
+
 /**
- * Composition root — Phase 0 scaffold placeholder.
- * Step 3 replaces this with config load + Fastify listen.
+ * Composition root — Phase 0 Step 2 loads config; Step 3 adds Fastify listen.
  */
-console.info('nxt-device-messaging: scaffold (no HTTP yet)');
+await loadConfig();
+const config = getConfig();
+console.info(
+  `nxt-device-messaging: config loaded (engine.enabled=${ config.engine.enabled }, plugins=${ config.plugins.length })`,
+);

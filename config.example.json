@@ -1,0 +1,42 @@
+{
+  "$schemaVersion": "1",
+  "engine": {
+    "enabled": true
+  },
+  "delivery": {
+    "maxRetries": 11,
+    "retryBaseDelayMs": 2000,
+    "retryBackoffMultiplier": 2,
+    "retryMaxDelayMs": 3600000,
+    "messageTtlSeconds": 604800
+  },
+  "resultWebhook": {
+    "url": "https://consumer.example/hooks/device-messages"
+  },
+  "plugins": [
+    {
+      "id": "calin-chirpstack",
+      "settings": {
+        "chirpstackUrl": "https://chirpstack.example",
+        "applicationId": "…",
+        "profileId": "…"
+      },
+      "tuning": {
+        "nsTimeoutMs": 10000,
+        "floodPreventionWindowMs": 2000
+      }
+    },
+    {
+      "id": "calin-api-v2",
+      "settings": {
+        "baseUrl": "https://calin-api.example",
+        "companyName": "…",
+        "customerId": "…"
+      },
+      "tuning": {
+        "nsTimeoutMs": 30000,
+        "maxConcurrentPerGateway": 5
+      }
+    }
+  ]
+}

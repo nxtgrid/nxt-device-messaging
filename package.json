@@ -25,6 +25,9 @@
     "test:watch": "vitest"
   },
   "private": true,
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^24.10.1",
