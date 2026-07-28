@@ -21,8 +21,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **8 (public HTTP contract → ADR-003)**, and **9 (deployment / OSS hygiene → ADR-005)** are
 **settled** — see the log below and `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Next work is Phase 1 port units, plus
-items owned by `nxt-backend`:
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Unit 1 (core types) is **done**.
+Next work is Phase 1 Units 2–6, plus items owned by `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -263,4 +263,35 @@ scaffold).
 
 **Phase 0 closed.** Next: Phase 1 unit 1 (types and utilities). Docs updated this session:
 `AGENTS.md` status, plan 001 Phase 0 → Done, this log entry.
+
+### 2026-07-28 — session 5: Phase 1 Unit 1 (core types)
+
+**Landed:** `src/lib/types.ts` — core domain types from frozen `lib/types.ts` (baseline
+`db5c2ac`) with ADR-003 renames (`correlation_id`, `network_id: number | null`,
+`command_type`), required `pluginId: string`, identity-only `device`, local `PhaseEnum`.
+`CreateDeviceMessage` replaces the Nest DTO shape in-domain (HTTP Zod stays Phase 3).
+`response.data` is `Record<string, unknown>` (an object; plugins own the shape) — not a
+recursive `Json` union and not the estate’s `Record<string, any>`.
+
+**Deviations from the Unit 1 sketch in plan 001 (pre-session wording):**
+
+1. **No core `lib/utils.ts`.** `generateRandomNumber` and `toSafeNumberOrNull` are only used
+   by adapters → deferred to plugin units 7–10.
+2. **No token / phase-read predicates in core.** Those encode CALIN command vocabulary;
+   ADR-003 §4 says plugins close `command_type`. Predicates land with the plugins that need
+   them (verify strings against `meter-interaction-type-helpers` at that time — including
+   `DELIVER_PREEXISTING_TOKEN`, not the stale plan’s `DELIVER_TOKEN`).
+3. **No `NetworkServerImplementation` / `PULL_PATTERN_IMPLEMENTATIONS`.** Core must not
+   hardcode which plugin ids are PULL. Each plugin will declare PUSH vs PULL on the plugin
+   interface; the registry (Unit 6) exposes that to the engine. Queue key suffixes use
+   `pluginId` when Redis lands (Unit 2).
+4. **No `BUNDLED_PLUGIN_IDS` in core.** Bundled ids live in ADR-003 and on each plugin
+   object; core only carries opaque `pluginId: string`.
+
+**Phase stays in core** — Redis correlation indexes append `_ph{phase}` when phase is set,
+because multi-phase reads enqueue one message per phase.
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build` green.
+
+**Next:** Phase 1 Unit 2 (Redis repository + Lua) after review.
 

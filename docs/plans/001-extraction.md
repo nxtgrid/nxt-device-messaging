@@ -4,7 +4,7 @@
 ADR-005 (deployment / OSS hygiene), `nxt-backend` ADR-010 + its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 not started
+**Status:** Phase 0 complete; Phase 1 in progress (Unit 1 done)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -33,7 +33,7 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | Not started |
+| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Unit 1 done) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -50,12 +50,14 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
 
 ### Phase 1
 
-- [ ] **Unit 1 — Types and utilities.** `lib/types.ts`, new `lib/utils.ts`.
-      Vendor `PhaseEnum` (`'A' | 'B' | 'C'`), a local `Json`, `command_type: string` (opaque to core;
-      plugins close the set — ADR-003 §4), the token and phase-read predicates, and the two helper
-      functions. Verify predicate string values against
-      `legacy/.../meter-interactions/lib/meter-interaction-type-helpers` before copying. Drop
-      public `DeviceManufacturerEnum` / `DeviceProtocolEnum` in favour of `pluginId` (ADR-003 §3).
+- [x] **Unit 1 — Core types.** `src/lib/types.ts` only.
+      Vendor `PhaseEnum` (`'A' | 'B' | 'C'` — core-essential: Redis correlation indexes append
+      `_ph{phase}` for per-phase messages), `response.data` as `Record<string, unknown>`,
+      `command_type: string` (opaque to core;
+      plugins close the set — ADR-003 §4), ADR-003 field renames, `pluginId` on the create/message
+      shape, `device` identity-only (no manufacturer/protocol). **Not** in core: CALIN command
+      predicates, `generateRandomNumber` / `toSafeNumberOrNull` (plugin units), or
+      `PULL_PATTERN_IMPLEMENTATIONS` (plugins declare PUSH/PULL at registration — Unit 6).
 - [ ] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
       `redis-repository/{index,keys,helpers}.ts` + the four files from
       `legacy/apps/tiamat/src/queries/lua/device-messages/`. Load the `.lua` files locally rather than
@@ -101,8 +103,8 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 
 | Source file | Lines | Unit | Status |
 |---|---|---|---|
-| `lib/types.ts` | 175 | 1 | pending |
-| *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 1 | pending |
+| `lib/types.ts` | 175 | 1 | **ported** → `src/lib/types.ts` (core-only; see session 5) |
+| *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 7–10 | **deferred** — adapter-only; lands with the plugin that needs each helper |
 | `lib/redis-repository/index.ts` | 472 | 2 | pending |
 | `lib/redis-repository/keys.ts` | 94 | 2 | pending |
 | `lib/redis-repository/helpers.ts` | 100 | 2 | pending |
