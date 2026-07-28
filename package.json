@@ -1,0 +1,37 @@
+{
+  "name": "nxt-device-messaging",
+  "version": "0.0.0",
+  "description": "Reliable, prioritized, retrying command delivery to addressable field devices",
+  "license": "MPL-2.0",
+  "authors": [
+    {
+      "name": "Bobby Bol",
+      "email": "studio.innua@gmail.com"
+    }
+  ],
+  "type": "module",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup",
+    "start": "node dist/main.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "private": true,
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^4.0.15"
+  }
+}
