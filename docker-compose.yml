@@ -1,0 +1,31 @@
+# Local compose stack: app + Valkey 8 (ADR-005 §2).
+# Copy `.env.example` → `.env`, then: docker compose up --build
+
+services:
+  app:
+    build: .
+    ports:
+      - '${PORT:-3100}:3100'
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3100}
+      REDIS_HOST: valkey
+      REDIS_PORT: '6379'
+    depends_on:
+      - valkey
+    # Optional: mount a config artifact (ADR-002). Without this, bundled config.default.json is used.
+    # volumes:
+    #   - ./config.example.json:/app/config.json:ro
+    # environment:
+    #   DEVICE_MESSAGING_CONFIG_PATH: /app/config.json
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - '${REDIS_PUBLISH_PORT:-6379}:6379'
+    volumes:
+      - valkey-data:/data
+
+volumes:
+  valkey-data:
