@@ -44,8 +44,9 @@ deployment stubs (ADR-005: Dockerfile, compose + Valkey, CI/GHCR) are in place. 
 types live in `src/lib/types.ts`; Redis repository + Lua in `src/lib/redis-repository/`;
 queue primitives in `src/lib/queue-moving*.ts` and `src/lib/retry-helpers.ts`; lifecycle in
 `src/lib/lifecycle.{push,pull}.ts`; plugin SPI + registry in `src/lib/plugin.interface.ts`
-and `src/lib/plugin-registry.ts`. **Unit 5 (engine)** is next; Unit 6 is SPI polish +
-config-driven construction.
+and `src/lib/plugin-registry.ts`. Engine base in `src/engine/base.ts` (Unit 5.1).
+**Unit 5.2+** (outgoing / distribute / …) next; Unit 6 is SPI polish + config-driven
+construction.
 
 - **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`

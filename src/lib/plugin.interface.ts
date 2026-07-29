@@ -10,8 +10,8 @@
  */
 
 import type {
-  CreateDeviceMessage,
   DeviceMessage,
+  DeviceMessageDevice,
   FailureContext,
   ParsedIncomingEvent,
   PluginId,
@@ -19,6 +19,15 @@ import type {
 
 /** How confirmation works after send — not inferred from bottleneck kind (ADR-006 §3). */
 export type DeliveryPattern = 'PUSH' | 'PULL';
+
+/**
+ * Topology inputs for {@link DeviceMessagingPlugin.bottleneckKey}.
+ * Not the full create DTO — only network + device (incl. DCU/gateway).
+ */
+export type BottleneckKeyInput = {
+  network_id: number | null;
+  device: DeviceMessageDevice;
+};
 
 /**
  * Context passed to custom admission hooks.
@@ -83,7 +92,7 @@ export type DeviceMessagingPlugin = {
    * Full Redis initial-queue key for a message (ADR-006 §1).
    * Core does not build or parse bottleneck topology.
    */
-  bottleneckKey(message: CreateDeviceMessage): string;
+  bottleneckKey(input: BottleneckKeyInput): string;
 
   /** How hard the distributor may hit this plugin's bottleneck queues. */
   readonly admission: Admission;

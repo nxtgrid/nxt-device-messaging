@@ -35,10 +35,9 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 are **done**;
-**pre–Unit 5** (minimal plugin SPI + registry) is **done**. Next work is Phase 1 Unit 5
-(engine) — discuss D1/D2/D3/D5 step by step as they come up — plus items owned by
-`nxt-backend`:
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 and **pre–Unit 5**
+(SPI + registry) are **done**; **Unit 5.1** (engine base) is **done**. Next is Unit 5.2+
+(engine slices; discuss D1/D2/D3/D5 as they come up), plus items owned by `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -460,4 +459,28 @@ construction, real plugins, command-type validation (Unit 6 polish).
 
 **Next:** Phase 1 Unit 5 (engine) — first deferred item when distribute/enqueue needs it is
 **D1**.
+
+### 2026-07-29 — session 11: Unit 5.1 (engine base)
+
+**Landed:** `src/engine/base.ts` — `retryOrFail`, `requeueMessage`, `emitDeliveryEvent`.
+
+**Deviations:**
+
+1. **No in-process `subscribe` / `publish`.** Replaced by `emitDeliveryEvent` stub.
+   Adopter touchpoint is `resultWebhook.url` (ADR-003 §6); full webhook lands Phase 3.
+2. **`requeueMessage` uses `plugin.bottleneckKey`** via `plugin_id` from Redis — not
+   legacy `queueInitial`. Missing plugin → warn + drop from retry.
+3. **`retryOrFail` optional `concurrencyRateLimitKey`** (D2 interim seam; unused until
+   admission is wired).
+
+**Review follow-up (same session):**
+- `bottleneckKey` input narrowed to `BottleneckKeyInput` (`network_id` + `device` only).
+- `requeueMessage` restored to `getMessageRawPropsById` (priority, device, network_id,
+  plugin_id) — no full-hash deserialize / `createShape` rebuild.
+
+**No deferred decisions in this slice** (D1 not needed — message already carries `pluginId`).
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build`.
+
+**Next:** Unit 5.2 (enqueue / cancel / get-by-correlation) after review.
 

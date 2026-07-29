@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import type { DeviceMessagingPlugin } from '../../../src/lib/plugin.interface.js';
 import { createPluginRegistry } from '../../../src/lib/plugin-registry.js';
-import type { CreateDeviceMessage, DeviceMessage, FailureContext } from '../../../src/lib/types.js';
+import type { BottleneckKeyInput } from '../../../src/lib/plugin.interface.js';
+import type { DeviceMessage, FailureContext } from '../../../src/lib/types.js';
 
 function stubPlugin(
   id: string,
@@ -10,7 +11,7 @@ function stubPlugin(
   return {
     id,
     deliveryPattern,
-    bottleneckKey: (_message: CreateDeviceMessage) => `queue:test:${ id }`,
+    bottleneckKey: (_input: BottleneckKeyInput) => `queue:test:${ id }`,
     admission: { strategy: 'spacing', minIntervalMs: 2000 },
     outgoing: {
       sendOne: async (_message: DeviceMessage) => 'ext-1',

@@ -43,10 +43,12 @@ migrating live queues.
 
 ## Decisions (locked)
 
-### 1. Plugins own `bottleneckKey(message) → string`
+### 1. Plugins own `bottleneckKey({ network_id, device }) → string`
 
-Each plugin returns the full Redis initial-queue key for a message. Core **does not** port
-`queueInitial` and **does not** branch on manufacturer/protocol/`pluginId` to build that key.
+Each plugin returns the full Redis initial-queue key from **topology inputs only**
+(`network_id` + `device`, incl. DCU/gateway) — not the full create DTO. Core **does not**
+port `queueInitial` and **does not** branch on manufacturer/protocol/`pluginId` to build
+that key.
 
 **Naming convention** (documentation only — not a core parse protocol):
 
@@ -66,7 +68,7 @@ Examples:
 `lorawan_network` vs `gateway`. Renaming `gateway` → `dcu` is a plugin concern only.
 
 `enqueueDeviceMessage(dto, queueKey)` already takes the key from the caller; the caller becomes
-`plugin.bottleneckKey(dto)` once the registry exists (Unit 5/6).
+`plugin.bottleneckKey({ network_id, device })` once the registry exists (Unit 5/6).
 
 ### 2. Admission is declared with named strategies (+ custom escape hatch)
 

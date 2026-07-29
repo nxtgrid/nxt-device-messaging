@@ -89,18 +89,18 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       optional `token`; `Admission` declaration (ADR-006); in-memory registry
       (`register` / `get` / `getAll` / `getByDeliveryPattern`). **Not** here: D1 owner map,
       D3 admission execution, D5 timeout move, config-driven construction, real plugins.
-- [ ] **Unit 5 — Core engine, framework-stripped.** `device-messages.service.ts`,
-      `outgoing.service.ts`, `incoming.service.ts`, `token.service.ts`.
-      `@Injectable`/`@Module` removed; the two `@Cron` jobs become interval timers gated on
-      `engine.enabled` (ADR-002 §7 — **not** `NXT_ENV`); DI constructors dissolve into the
-      composition root. `subscribe()`/`static subscribers` stay in place for now and are replaced by
-      the outbound webhook in Phase 3 (**ADR-003** §6).
-      **Behaviour note:** `@Cron` does not guard re-entry; a plain `setInterval` reproduces that.
-      Adding an in-flight guard is an improvement — record it if taken.
-      **ADR-006:** replace `distributeToNetworkServers` string-split with plugin admission
-      (named strategies); resolve D1 (`queueKey → pluginId`) here with Unit 6; wire cleanup
-      callers per D2. **D5:** start resolving stage timeouts from plugin tuning once the
-      registry can answer `queueKey → plugin`.
+- [ ] **Unit 5 — Core engine, framework-stripped.** Sliced for review:
+      - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
+        `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
+        Requeue via `plugin.bottleneckKey` (not `queueInitial`).
+      - [ ] **5.2** Outgoing: enqueue, cancel, get-by-correlation
+      - [ ] **5.3** D1 then distribute + D3 admission
+      - [ ] **5.4** sendOne + resolution cycle
+      - [ ] **5.5** Incoming
+      - [ ] **5.6** Token + interval timers (`engine.enabled`)
+      `@Injectable`/`@Module` removed; timers gated on `engine.enabled` (ADR-002 §7).
+      **ADR-006 / deferred:** D1–D3 in 5.3+; D2 on cleanup paths as wired; D5 when touching
+      stage-timeout reads.
 - [ ] **Unit 6 — Plugin SPI polish + config wiring.** Formalize anything still open on
       `DeviceMessagingPlugin` (command-type validation ADR-003 §4; optional tightening of
       PUSH/PULL incoming requirements). Construct only plugins present in config (ADR-002 §6).
@@ -146,7 +146,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `lib/lifecycle.pull.ts` | 138 | 4 | **ported** → `src/lib/lifecycle.pull.ts` |
 | *(new)* `lib/plugin.interface.ts` | — | pre–5 | **ported** → `src/lib/plugin.interface.ts` |
 | *(new)* `lib/plugin-registry.ts` | — | pre–5 | **ported** → `src/lib/plugin-registry.ts` |
-| `device-messages.service.ts` | 140 | 5 | pending |
+| `device-messages.service.ts` | 140 | 5.1 | **ported** → `src/engine/base.ts` (no pub/sub; `emitDeliveryEvent` stub) |
 | `outgoing.service.ts` | 354 | 5 | pending |
 | `incoming.service.ts` | 163 | 5 | pending |
 | `token.service.ts` | 36 | 5 | pending |
