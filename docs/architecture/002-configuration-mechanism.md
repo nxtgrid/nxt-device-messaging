@@ -7,6 +7,11 @@
 > `nxt-backend` ADR-007"). `nxt-backend` ADR-007 decision 6 explicitly anticipated this:
 > *"When a capability (e.g. `device-messages`) is later extracted into its own service, that
 > config section travels with it."*
+>
+> **Amendment (2026-07-29):** Stage timeouts on shared `delivery.*` are an **interim** from
+> Phase 1 Unit 3 — see decision **D5** in `docs/decisions-log.md` and §5 below. End state:
+> only cross-plugin knobs stay on `delivery`; NS / GW / device / poll delays live in plugin
+> `tuning` (defaults in code). Do not treat Unit 3’s `nsInFlightTimeoutMs` etc. as permanent.
 
 ---
 
@@ -144,6 +149,19 @@ optional, and an operator who does not care writes nothing.
 
 This keeps the vendor knowledge (that CALIN needs ~30s and LoRaWAN ~10s) in the plugin that knows
 it, while leaving an operator free to tune for their own network.
+
+**Shared `delivery.*` vs plugin `tuning` (D5, locked 2026-07-29):**
+
+| Stays on `delivery` (cross-plugin) | Moves to plugin `tuning` (Units 5–6 / plugin units) |
+|---|---|
+| `maxRetries`, retry backoff knobs, `messageTtlSeconds` | NS in-flight timeout (`nsTimeoutMs` / equivalent) |
+| | PUSH GW / device stage timeouts (ChirpStack-shaped; not universal) |
+| | PULL `initialPollDelayMs`, max message age, concurrency caps already sketched as tuning |
+
+Unit 3 temporarily put stage timeouts on `delivery` so queue primitives could read
+`getConfig()` before a registry existed. When `queueKey → pluginId` and the plugin SPI land,
+callers resolve timeouts from the owning plugin’s merged tuning — then remove those keys from
+the core `delivery` schema.
 
 ### 6. Honesty rules — fail fast, but degrade gracefully at runtime
 

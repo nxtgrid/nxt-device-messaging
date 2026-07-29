@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Units 1–2 done)
+**Status:** Phase 0 complete; Phase 1 in progress (Units 1–3 done)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -34,7 +34,7 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–2 done) |
+| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–3 done) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -69,8 +69,12 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `bottleneckKey`);
       `queueAwaitingTask(pluginId)`; `messageFullCleanup` takes `inFlightQueueKeys` (interim —
       see ADR-006 D2). No admission engine and no `queueKey → pluginId` map yet (D1/D3).
-- [ ] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
-      The hardcoded timeout/retry constants become config-backed with in-code defaults (ADR-002 §5).
+- [x] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
+      Hardcoded timeout/retry constants → `delivery.*` via `getConfig()` (ADR-002 §5).
+      **Interim:** stage timeouts on `delivery` — end state is plugin `tuning` (**D5**).
+      PULL `fromNsToAwaitingTask` takes `pluginId` (not `NetworkServerImplementation`).
+      `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
+      No distribute admission / `bottleneckKey` here.
 - [ ] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
 - [ ] **Unit 5 — Core engine, framework-stripped.** `device-messages.service.ts`,
       `outgoing.service.ts`, `incoming.service.ts`, `token.service.ts`.
@@ -82,13 +86,16 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       Adding an in-flight guard is an improvement — record it if taken.
       **ADR-006:** replace `distributeToNetworkServers` string-split with plugin admission
       (named strategies); resolve D1 (`queueKey → pluginId`) here with Unit 6; wire cleanup
-      callers per D2.
+      callers per D2. **D5:** start resolving stage timeouts from plugin tuning once the
+      registry can answer `queueKey → plugin`.
 - [ ] **Unit 6 — Plugin interface and registry.** `lib/plugin.interface.ts`,
       `lib/plugin-registry.ts`. Normative SPI additions in **ADR-006**: `bottleneckKey`,
       `admission` (`spacing` | `concurrency` | `custom`), `deliveryPattern` (`PUSH` | `PULL`).
       Also: key plugins by `pluginId`, token capability, per-plugin command-type validation
       (ADR-003 §§3–4), optional `verifySignature` for ingress. Only plugins present in config
-      are constructed (ADR-002 §6). Stale sketch in `nxt-backend` plan 001 task 3.1 is detail
+      are constructed (ADR-002 §6). **D5 (ADR-002):** plugin `tuning` owns NS / GW / device /
+      poll delays (defaults in code); drop those keys from core `delivery` when callers can
+      resolve via the registry. Stale sketch in `nxt-backend` plan 001 task 3.1 is detail
       only — correct `network_id` to `number | null`.
 
 ### Phase 2 — adapters as plugins
@@ -120,10 +127,10 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `../../queries/lua/device-messages/fetch-next-message-in-queue.types.ts` | 38 | 2 | **ported** → `src/lib/redis-repository/lua/fetch-next-message-in-queue.types.ts` |
 | `../../queries/lua/device-messages/move-message-between-queues.lua` | 75 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.lua` |
 | `../../queries/lua/device-messages/move-message-between-queues.types.ts` | 33 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.types.ts` |
-| `lib/queue-moving.ts` | 185 | 3 | pending |
-| `lib/queue-moving.push.ts` | 106 | 3 | pending |
-| `lib/queue-moving.pull.ts` | 59 | 3 | pending |
-| `lib/retry-helpers.ts` | 45 | 3 | pending |
+| `lib/queue-moving.ts` | 185 | 3 | **ported** → `src/lib/queue-moving.ts` |
+| `lib/queue-moving.push.ts` | 106 | 3 | **ported** → `src/lib/queue-moving.push.ts` |
+| `lib/queue-moving.pull.ts` | 59 | 3 | **ported** → `src/lib/queue-moving.pull.ts` |
+| `lib/retry-helpers.ts` | 45 | 3 | **ported** → `src/lib/retry-helpers.ts` |
 | `lib/lifecycle.push.ts` | 82 | 4 | pending |
 | `lib/lifecycle.pull.ts` | 138 | 4 | pending |
 | `device-messages.service.ts` | 140 | 5 | pending |

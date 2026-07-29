@@ -107,6 +107,10 @@ describe('loadConfig', () => {
 
     expect(config.delivery.maxRetries).toBe(11);
     expect(config.delivery.retryBaseDelayMs).toBe(2000);
+    expect(config.delivery.nsInFlightTimeoutMs).toBe(20_000);
+    expect(config.delivery.gwInFlightTimeoutMs).toBe(900_000);
+    expect(config.delivery.deviceInFlightTimeoutMs).toBe(12_000);
+    expect(config.delivery.initialPollDelayMs).toBe(10_000);
   });
 });
 
@@ -121,6 +125,10 @@ describe('getConfig / setConfig', () => {
         retryBackoffMultiplier: 2,
         retryMaxDelayMs: 1000,
         messageTtlSeconds: 60,
+        nsInFlightTimeoutMs: 20_000,
+        gwInFlightTimeoutMs: 900_000,
+        deviceInFlightTimeoutMs: 12_000,
+        initialPollDelayMs: 10_000,
       },
       plugins: [],
     };

@@ -7,6 +7,14 @@ const deliverySchema = z.object({
   retryBackoffMultiplier: z.number().positive().default(2),
   retryMaxDelayMs: z.number().int().positive().default(3600000),
   messageTtlSeconds: z.number().int().positive().default(604800),
+  /** Score timeout while awaiting NS acceptance (`queue_in_flight_to_ns`). */
+  nsInFlightTimeoutMs: z.number().int().positive().default(20_000),
+  /** Score timeout while awaiting gateway ACK (`queue_in_flight_to_gw`) — PUSH. */
+  gwInFlightTimeoutMs: z.number().int().positive().default(900_000),
+  /** Score timeout while awaiting device response (`queue_in_flight_to_device`) — PUSH. */
+  deviceInFlightTimeoutMs: z.number().int().positive().default(12_000),
+  /** Delay before first PULL status poll (`queue_awaiting_task:{pluginId}`). */
+  initialPollDelayMs: z.number().int().positive().default(10_000),
 }).strict();
 
 const engineSchema = z.object({
@@ -15,7 +23,7 @@ const engineSchema = z.object({
 }).strict();
 
 const resultWebhookSchema = z.object({
-  url: z.string().url(),
+  url: z.url(),
 }).strict();
 
 /**
@@ -38,6 +46,10 @@ export const deviceMessagingConfigSchema = z.object({
     retryBackoffMultiplier: 2,
     retryMaxDelayMs: 3600000,
     messageTtlSeconds: 604800,
+    nsInFlightTimeoutMs: 20_000,
+    gwInFlightTimeoutMs: 900_000,
+    deviceInFlightTimeoutMs: 12_000,
+    initialPollDelayMs: 10_000,
   }),
   resultWebhook: resultWebhookSchema.optional(),
   plugins: z.array(pluginEntrySchema).default([]),

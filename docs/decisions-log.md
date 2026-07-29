@@ -15,28 +15,29 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Phase 1 Unit 3)* | — |
+| — | *(none blocking Phase 1 Unit 4)* | — |
 
-### Deferred with locked criteria (see ADR-006)
+### Deferred with locked criteria
 
-These are **not** free-for-all open questions. Criteria and interim seams are in
-`docs/architecture/006-bottleneck-and-admission.md`. Revisit only in the named unit; record the
-choice in this log and amend ADR-006 if the chosen option needs a lasting note.
+These are **not** free-for-all open questions. Criteria and interim seams live in the cited ADR.
+Revisit only in the named unit; record the choice in this log and amend the ADR if needed.
 
-| # | Topic | Revisit at | Interim until then |
-|---|---|---|---|
-| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Units 5–6 | None (no distributor yet) |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Units 5–6 | Parameterized options on the Redis repo (Unit 2); no gateway key invention |
-| D3 | Wire named admission strategies into `distribute` | Units 5–6 | None |
-| D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant |
+| # | Topic | Revisit at | Interim until then | ADR |
+|---|---|---|---|---|
+| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Units 5–6 | None (no distributor yet) | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Units 5–6 | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
+| D3 | Wire named admission strategies into `distribute` | Units 5–6 | None | 006 |
+| D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
+| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Units 5–6 (+ plugin units) | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
 **8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–2 (core types + Redis/Lua)
-are **done**. Next work is Phase 1 Unit 3 (queue primitives), plus items owned by `nxt-backend`:
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–3 (core types, Redis/Lua,
+queue primitives) are **done**. Next work is Phase 1 Unit 4 (lifecycle), plus items owned by
+`nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -367,4 +368,42 @@ stage keys + `queue_awaiting_task:{pluginId}`) and optional `concurrencyRateLimi
 - Added opt-in smoke: `test/integration/redis.smoke.spec.ts` —
   `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/redis.smoke.spec.ts`
   (Valkey up). Default `pnpm test` skips it.
+
+### 2026-07-29 — session 8: Phase 1 Unit 3 (queue primitives)
+
+**Landed:** `src/lib/queue-moving.ts`, `queue-moving.push.ts`, `queue-moving.pull.ts`,
+`retry-helpers.ts`.
+
+**Deviations / ADR alignment:**
+
+1. **Config-backed stage + retry knobs.** Extended `delivery` schema with
+   `nsInFlightTimeoutMs` (20s), `gwInFlightTimeoutMs` (15m), `deviceInFlightTimeoutMs` (12s),
+   `initialPollDelayMs` (10s) — same legacy values as in-code defaults. Retry helpers and
+   `_moveQueue` TTL read `getConfig().delivery.*` (`MAX_RETRIES` → `getMaxRetries()`).
+2. **PULL uses `pluginId`.** `fromNsToAwaitingTask({ pluginId })` →
+   `queueAwaitingTask(pluginId)`; dropped `NetworkServerImplementation`.
+3. **`fromAnyToRetry` concurrency seam.** Optional `concurrencyRateLimitKey` (SREM), mirroring
+   Unit 2 `messageFullCleanup` — no `device.gateway` parse / gateway key invention.
+4. **PUSH/PULL stay separate modules** (no registry yet). Callers choose; Unit 6 wires
+   `deliveryPattern`. No admission / `bottleneckKey` / distribute here (D1/D3).
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build`.
+
+**Next:** Phase 1 Unit 4 (lifecycle) after review.
+
+### 2026-07-29 — session 8b: lock D5 (stage timeouts → plugin tuning)
+
+**Locked — D5.** Unit 3’s placement of `nsInFlightTimeoutMs`, `gwInFlightTimeoutMs`,
+`deviceInFlightTimeoutMs`, and `initialPollDelayMs` on shared `delivery.*` is **interim only**.
+End state (ADR-002 §5 + nxt-backend ADR-001): those knobs live in **plugin `tuning`**
+(defaults in code, config overrides). Shared `delivery` keeps only cross-plugin knobs
+(retry / TTL).
+
+**Revisit at:** Units 5–6 (when `queueKey → pluginId` / registry can supply the owning
+plugin’s merged tuning to queue moves) and plugin units 7–9 (declare defaults). Then remove
+the stage-timeout keys from the core `delivery` schema.
+
+**Do not:** move them in Unit 4, or invent a half-SPI before the registry exists.
+
+**Written:** deferred table D5; ADR-002 status amendment + §5 table; plan Units 3/5/6 notes.
 
