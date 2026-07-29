@@ -3,8 +3,9 @@
  *
  * Ported from nxt-backend `legacy/.../device-messages/lib/types.ts` (baseline db5c2ac)
  * with ADR-003 renames and plugin selection. Plugin-specific command predicates and
- * helpers stay with plugins (Phase 2). Delivery pattern (PUSH/PULL) is declared by
- * each plugin at registration (Unit 6) — core does not hardcode which ids are PULL.
+ * helpers stay with plugins (Phase 2). Delivery pattern (PUSH/PULL) is declared on each
+ * plugin; the registry exposes that to the engine. PULL awaiting-task keys use `pluginId`
+ * (ADR-006); initial queues use plugin `bottleneckKey`, not a core switch.
  */
 
 /**

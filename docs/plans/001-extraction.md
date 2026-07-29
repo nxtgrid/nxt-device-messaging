@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Units 1–4 done)
+**Status:** Phase 0 complete; Phase 1 in progress (Units 1–4 done; pre–Unit 5 SPI landed)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -34,15 +34,17 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–4 done) |
+| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–4 done; pre–Unit 5 SPI landed) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 Units 1–4 are **done**; Units 5–6 (engine, plugin registry)
-are next. Phase 3 is unblocked (**Decision 8 → ADR-003**). Phase 4 still owns the
-observability and hygiene pieces ADR-005 scopes there (metrics, pino sweep,
-CONTRIBUTING/README deploy notes) — CI/Docker stubs already landed in Phase 0.
+Phase 0 is **done**. Phase 1 Units 1–4 are **done**; **pre–Unit 5** (minimal plugin SPI +
+registry) is **done**. Unit 5 (engine) is next — discuss D1/D2/D3/D5 step by step as they
+come up. Unit 6 owns SPI polish (command-type validation, config-driven construction).
+Phase 3 is unblocked (**Decision 8 → ADR-003**). Phase 4 still owns the observability and
+hygiene pieces ADR-005 scopes there (metrics, pino sweep, CONTRIBUTING/README deploy notes)
+— CI/Docker stubs already landed in Phase 0.
 
 ## Port units
 
@@ -82,6 +84,11 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       `PullIncoming`; param `plugin`) — deleted at Unit 6 for `DeviceMessagingPlugin`.
       Max age + poll ladder = module defaults (D5). No concurrency export (ADR-006).
       Cleanup options pass-through only (D2).
+- [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** `plugin.interface.ts`,
+      `plugin-registry.ts`. `DeviceMessagingPlugin` with nested `outgoing` / `incoming` /
+      optional `token`; `Admission` declaration (ADR-006); in-memory registry
+      (`register` / `get` / `getAll` / `getByDeliveryPattern`). **Not** here: D1 owner map,
+      D3 admission execution, D5 timeout move, config-driven construction, real plugins.
 - [ ] **Unit 5 — Core engine, framework-stripped.** `device-messages.service.ts`,
       `outgoing.service.ts`, `incoming.service.ts`, `token.service.ts`.
       `@Injectable`/`@Module` removed; the two `@Cron` jobs become interval timers gated on
@@ -94,15 +101,13 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       (named strategies); resolve D1 (`queueKey → pluginId`) here with Unit 6; wire cleanup
       callers per D2. **D5:** start resolving stage timeouts from plugin tuning once the
       registry can answer `queueKey → plugin`.
-- [ ] **Unit 6 — Plugin interface and registry.** `lib/plugin.interface.ts`,
-      `lib/plugin-registry.ts`. Normative SPI additions in **ADR-006**: `bottleneckKey`,
-      `admission` (`spacing` | `concurrency` | `custom`), `deliveryPattern` (`PUSH` | `PULL`).
-      Also: key plugins by `pluginId`, token capability, per-plugin command-type validation
-      (ADR-003 §§3–4), optional `verifySignature` for ingress. Only plugins present in config
-      are constructed (ADR-002 §6). **D5 (ADR-002):** plugin `tuning` owns NS / GW / device /
-      poll delays (defaults in code); drop those keys from core `delivery` when callers can
-      resolve via the registry. Stale sketch in `nxt-backend` plan 001 task 3.1 is detail
-      only — correct `network_id` to `number | null`.
+- [ ] **Unit 6 — Plugin SPI polish + config wiring.** Formalize anything still open on
+      `DeviceMessagingPlugin` (command-type validation ADR-003 §4; optional tightening of
+      PUSH/PULL incoming requirements). Construct only plugins present in config (ADR-002 §6).
+      **D5 (ADR-002):** plugin `tuning` owns NS / GW / device / poll delays once Unit 5 can
+      resolve via the registry — then drop those keys from core `delivery`. Stale sketch in
+      `nxt-backend` plan 001 task 3.1 is detail only — correct `network_id` to `number | null`.
+      *(Minimal SPI + registry already landed as pre–Unit 5.)*
 
 ### Phase 2 — adapters as plugins
 
@@ -139,6 +144,8 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `lib/retry-helpers.ts` | 45 | 3 | **ported** → `src/lib/retry-helpers.ts` |
 | `lib/lifecycle.push.ts` | 82 | 4 | **ported** → `src/lib/lifecycle.push.ts` |
 | `lib/lifecycle.pull.ts` | 138 | 4 | **ported** → `src/lib/lifecycle.pull.ts` |
+| *(new)* `lib/plugin.interface.ts` | — | pre–5 | **ported** → `src/lib/plugin.interface.ts` |
+| *(new)* `lib/plugin-registry.ts` | — | pre–5 | **ported** → `src/lib/plugin-registry.ts` |
 | `device-messages.service.ts` | 140 | 5 | pending |
 | `outgoing.service.ts` | 354 | 5 | pending |
 | `incoming.service.ts` | 163 | 5 | pending |

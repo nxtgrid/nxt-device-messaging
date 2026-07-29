@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Phase 1 Unit 5)* | — |
+| — | *(none blocking Phase 1 Unit 5; discuss D1/D2/D3/D5 as they come up)* | — |
 
 ### Deferred with locked criteria
 
@@ -35,8 +35,9 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 (core types, Redis/Lua,
-queue primitives, lifecycle) are **done**. Next work is Phase 1 Unit 5 (engine), plus items owned by
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 are **done**;
+**pre–Unit 5** (minimal plugin SPI + registry) is **done**. Next work is Phase 1 Unit 5
+(engine) — discuss D1/D2/D3/D5 step by step as they come up — plus items owned by
 `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -432,6 +433,31 @@ the stage-timeout keys from the core `delivery` schema.
 
 **Checks:** `pnpm typecheck` / `lint` / `test` / `build` green.
 
-**Unit 4 closed.** Next: Phase 1 Unit 5 (engine) — propose briefly, then wait for
-“you drive”. D1/D2/D3/D5 remain deferred with locked criteria (Units 5–6).
+**Unit 4 closed.** Next was Phase 1 Unit 5 (engine); a **pre–Unit 5** SPI+registry slice
+landed first (session 10). D1/D2/D3/D5 remain deferred — discuss step by step in Unit 5.
+
+### 2026-07-29 — session 10: pre–Unit 5 (minimal plugin SPI + registry)
+
+**Landed:** `src/lib/plugin.interface.ts`, `src/lib/plugin-registry.ts`, plus
+`test/unit/lib/plugin-registry.spec.ts`.
+
+**Scope (thin by design):**
+
+- `DeviceMessagingPlugin`: `id`, `deliveryPattern`, `bottleneckKey`, `admission`, nested
+  `outgoing` / `incoming`, optional `token`
+- `Admission` union per ADR-006 (`spacing` | `concurrency` | `custom`) — **declaration
+  only**; no distribute execution (D3)
+- In-memory registry: `createPluginRegistry` + process-wide `pluginRegistry`
+  (`register` / `get` / `getAll` / `getByDeliveryPattern` / `clear`)
+- `GenerateTokenInput` domain stub (HTTP Zod stays Phase 3)
+
+**Explicitly not here:** D1 owner map, D3 admission wiring, D5 timeout move, config-driven
+construction, real plugins, command-type validation (Unit 6 polish).
+
+**Unit 6** in the plan is narrowed to SPI polish + config wiring; minimal SPI is done.
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build`.
+
+**Next:** Phase 1 Unit 5 (engine) — first deferred item when distribute/enqueue needs it is
+**D1**.
 
