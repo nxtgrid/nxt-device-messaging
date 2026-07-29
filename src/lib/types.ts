@@ -2,7 +2,7 @@
  * @fileoverview Core domain types for device command delivery.
  *
  * Ported from nxt-backend `legacy/.../device-messages/lib/types.ts` (baseline db5c2ac)
- * with ADR-003 renames and plugin selection. Adapter-specific command predicates and
+ * with ADR-003 renames and plugin selection. Plugin-specific command predicates and
  * helpers stay with plugins (Phase 2). Delivery pattern (PUSH/PULL) is declared by
  * each plugin at registration (Unit 6) — core does not hardcode which ids are PULL.
  */
@@ -178,7 +178,7 @@ export type DeviceMessage = CreateDeviceMessage & {
 
 /**
  * Parsed event from network server webhook (almost a partial DeviceMessage).
- * Used by incoming adapters to normalize different webhook formats.
+ * Used by PUSH/PULL plugins to normalize vendor payloads into a common shape.
  */
 export type ParsedIncomingEvent = {
   /** Opaque command type (optional for ACK events). */

@@ -18,7 +18,7 @@ import { redisKeys } from './redis-repository/keys.js';
 import type { DeviceMessageDeliveryStatus } from './types.js';
 import { _moveQueue, QUEUE_NS_KEY } from './queue-moving.js';
 
-/** Awaiting task queue config for PULL pattern adapters. */
+/** Awaiting task queue config for PULL pattern plugins. */
 const CONFIG_QUEUE_AWAITING_TASK = {
   /** Message status when in this queue */
   MESSAGE_STATUS: 'DELIVERED_TO_NS' as DeviceMessageDeliveryStatus,

@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Phase 1 Unit 4)* | — |
+| — | *(none blocking Phase 1 Unit 5)* | — |
 
 ### Deferred with locked criteria
 
@@ -35,8 +35,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–3 (core types, Redis/Lua,
-queue primitives) are **done**. Next work is Phase 1 Unit 4 (lifecycle), plus items owned by
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 (core types, Redis/Lua,
+queue primitives, lifecycle) are **done**. Next work is Phase 1 Unit 5 (engine), plus items owned by
 `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -406,4 +406,32 @@ the stage-timeout keys from the core `delivery` schema.
 **Do not:** move them in Unit 4, or invent a half-SPI before the registry exists.
 
 **Written:** deferred table D5; ADR-002 status amendment + §5 table; plan Units 3/5/6 notes.
+
+### 2026-07-29 — session 9: Phase 1 Unit 4 (lifecycle)
+
+**Landed:** `src/lib/lifecycle.push.ts`, `src/lib/lifecycle.pull.ts`.
+
+**Deviations / ADR alignment:**
+
+1. **Interim structural minima, not `*Adapter` / `*Handlers`.**
+   `PushIncoming` / `PushOutgoing` / `PullIncoming`; param named `plugin`. Deleted at
+   Unit 6 in favour of `DeviceMessagingPlugin` (not grown into a parallel SPI).
+2. **PULL takes `pluginId`(s).** `pollAwaitingTasksFor(pluginId, plugin)`;
+   `getPullTimeouts(now, pluginIds, cleanupOptions?)` — no `PULL_PATTERN_IMPLEMENTATIONS`,
+   no registry.
+3. **Max age + poll-delay ladder = module defaults.** 48h / age ladder stay in
+   `lifecycle.pull.ts` with D5 note; do not grow interim `delivery.*`.
+4. **No `PULL_MAX_CONCURRENT_*` export.** Legacy constant belonged to distribute
+   (ADR-006 concurrency admission) — Units 5–6 / plugin tuning.
+5. **Cleanup pass-through only (D2).** Optional `MessageFullCleanupOptions` on
+   `getPullTimeouts`; no gateway/concurrency key invention.
+6. Log prefix `[DEVICE MESSAGING]` (was `[DEVICE MESSAGES OUTGOING]`).
+
+**Naming follow-up (same session):** `pollPlugin` → `pollAwaitingTasksFor`;
+`*Handlers` → singular facet types; `handlers` → `plugin`.
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build` green.
+
+**Unit 4 closed.** Next: Phase 1 Unit 5 (engine) — propose briefly, then wait for
+“you drive”. D1/D2/D3/D5 remain deferred with locked criteria (Units 5–6).
 

@@ -42,8 +42,8 @@ The module as inherited is neither.
 | `CONFIG_QUEUE_GW.PROCESSING_TIMEOUT_MS` | 15min | `lib/queue-moving.push.ts` | push |
 | `CONFIG_QUEUE_DEVICE.PROCESSING_TIMEOUT_MS` | 12s | `lib/queue-moving.push.ts` | push |
 | `CONFIG_QUEUE_AWAITING_TASK.INITIAL_POLL_DELAY_MS` | 10s | `lib/queue-moving.pull.ts` | pull |
-| `PULL_MAX_CONCURRENT_PER_GATEWAY` | 5 | `lib/lifecycle.pull.ts` | pull |
-| `PULL_PATTERN_MAX_MESSAGE_AGE_MS` | 48h | `lib/lifecycle.pull.ts` | pull |
+| `PULL_MAX_CONCURRENT_PER_GATEWAY` | 5 | `lib/lifecycle.pull.ts` (legacy export; **not** ported to Unit 4 — ADR-006 admission) | pull |
+| `PULL_PATTERN_MAX_MESSAGE_AGE_MS` | 48h | `lib/lifecycle.pull.ts` (ported as Unit 4 module default; D5 → plugin `tuning`) | pull |
 | `LORAWAN_FLOOD_PREVENTION_WINDOW_MS` | 2s | `outgoing.service.ts` | plugin-specific, in a shared file |
 | `MAX_RETRIES` / base / multiplier / cap | 11 / 2s / ×2 / 1h | `lib/retry-helpers.ts` | shared |
 | `MESSAGE_TTL_SECONDS` | 7 days | `lib/redis-repository/index.ts` | shared |

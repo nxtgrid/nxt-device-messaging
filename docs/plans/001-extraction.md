@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Units 1–3 done)
+**Status:** Phase 0 complete; Phase 1 in progress (Units 1–4 done)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -34,15 +34,15 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–3 done) |
+| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–4 done) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 (units 1–6) is next. Phase 3 is unblocked (**Decision 8 →
-ADR-003**). Phase 4 still owns the observability and hygiene pieces ADR-005 scopes there
-(metrics, pino sweep, CONTRIBUTING/README deploy notes) — CI/Docker stubs already landed in
-Phase 0.
+Phase 0 is **done**. Phase 1 Units 1–4 are **done**; Units 5–6 (engine, plugin registry)
+are next. Phase 3 is unblocked (**Decision 8 → ADR-003**). Phase 4 still owns the
+observability and hygiene pieces ADR-005 scopes there (metrics, pino sweep,
+CONTRIBUTING/README deploy notes) — CI/Docker stubs already landed in Phase 0.
 
 ## Port units
 
@@ -75,7 +75,13 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       PULL `fromNsToAwaitingTask` takes `pluginId` (not `NetworkServerImplementation`).
       `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
       No distribute admission / `bottleneckKey` here.
-- [ ] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
+- [x] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
+      PUSH: `getPushTimeouts` / `maybeExtendMessageInGwQueue`. PULL:
+      `pollAwaitingTasksFor(pluginId, plugin)` / `getPullTimeouts(now, pluginIds)` — no
+      hardcoded PULL ids. Interim structural minima (`PushIncoming` / `PushOutgoing` /
+      `PullIncoming`; param `plugin`) — deleted at Unit 6 for `DeviceMessagingPlugin`.
+      Max age + poll ladder = module defaults (D5). No concurrency export (ADR-006).
+      Cleanup options pass-through only (D2).
 - [ ] **Unit 5 — Core engine, framework-stripped.** `device-messages.service.ts`,
       `outgoing.service.ts`, `incoming.service.ts`, `token.service.ts`.
       `@Injectable`/`@Module` removed; the two `@Cron` jobs become interval timers gated on
@@ -131,8 +137,8 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `lib/queue-moving.push.ts` | 106 | 3 | **ported** → `src/lib/queue-moving.push.ts` |
 | `lib/queue-moving.pull.ts` | 59 | 3 | **ported** → `src/lib/queue-moving.pull.ts` |
 | `lib/retry-helpers.ts` | 45 | 3 | **ported** → `src/lib/retry-helpers.ts` |
-| `lib/lifecycle.push.ts` | 82 | 4 | pending |
-| `lib/lifecycle.pull.ts` | 138 | 4 | pending |
+| `lib/lifecycle.push.ts` | 82 | 4 | **ported** → `src/lib/lifecycle.push.ts` |
+| `lib/lifecycle.pull.ts` | 138 | 4 | **ported** → `src/lib/lifecycle.pull.ts` |
 | `device-messages.service.ts` | 140 | 5 | pending |
 | `outgoing.service.ts` | 354 | 5 | pending |
 | `incoming.service.ts` | 163 | 5 | pending |
