@@ -90,6 +90,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
 | 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
+| 006 | Queue bottleneck keys + named admission strategies (`spacing` / `concurrency` / `custom`) |
 
 ### `nxt-backend` ADRs that constrain this repo
 
@@ -99,7 +100,7 @@ if the ADR does not apply. Cap at 2–3 before proposing an approach.
 | `nxt-backend` ADR | Read it when |
 |---|---|
 | **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here |
-| **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning |
+| **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning; this repo’s **ADR-006** is the actionable admission SPI |
 | **007** — configuration & wiring | Touching config. This repo's ADR-002 adapts it rather than replacing it |
 | **005** — inter-host communication | How consumers integrate; §11 classifies this service as an integrable extracted service |
 

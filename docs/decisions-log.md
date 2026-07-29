@@ -15,14 +15,29 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none in this repo)* | — |
+| — | *(none blocking Phase 1 Unit 2)* | — |
+
+### Deferred with locked criteria (see ADR-006)
+
+These are **not** free-for-all open questions. Criteria and interim seams are in
+`docs/architecture/006-bottleneck-and-admission.md`. Revisit only in the named unit; record the
+choice in this log and amend ADR-006 if the chosen option needs a lasting note.
+
+| # | Topic | Revisit at | Interim until then |
+|---|---|---|---|
+| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Units 5–6 | None (no distributor yet) |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` | Units 5–6 | Parameterized `inFlightQueueKeys` on the Redis repo (Unit 2) |
+| D3 | Wire named admission strategies into `distribute` | Units 5–6 | None |
+| D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
-**8 (public HTTP contract → ADR-003)**, and **9 (deployment / OSS hygiene → ADR-005)** are
-**settled** — see the log below and `docs/plans/001-extraction.md`.
+**8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
+**10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
+`docs/plans/001-extraction.md`.
 
 Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Unit 1 (core types) is **done**.
-Next work is Phase 1 Units 2–6, plus items owned by `nxt-backend`:
+ADR-006 locked before Unit 2. Next work is Phase 1 Unit 2 (Redis + Lua) when driven, plus
+items owned by `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -283,8 +298,8 @@ recursive `Json` union and not the estate’s `Record<string, any>`.
    `DELIVER_PREEXISTING_TOKEN`, not the stale plan’s `DELIVER_TOKEN`).
 3. **No `NetworkServerImplementation` / `PULL_PATTERN_IMPLEMENTATIONS`.** Core must not
    hardcode which plugin ids are PULL. Each plugin will declare PUSH vs PULL on the plugin
-   interface; the registry (Unit 6) exposes that to the engine. Queue key suffixes use
-   `pluginId` when Redis lands (Unit 2).
+   interface; the registry (Unit 6) exposes that to the engine. PULL awaiting-task keys use
+   `pluginId` (ADR-006); initial queues use plugin `bottleneckKey`, not a core switch.
 4. **No `BUNDLED_PLUGIN_IDS` in core.** Bundled ids live in ADR-003 and on each plugin
    object; core only carries opaque `pluginId: string`.
 
@@ -294,4 +309,29 @@ because multi-phase reads enqueue one message per phase.
 **Checks:** `pnpm typecheck` / `lint` / `test` / `build` green.
 
 **Next:** Phase 1 Unit 2 (Redis repository + Lua) after review.
+
+### 2026-07-29 — session 6: ADR-006 bottleneck + admission
+
+**Decided → ADR-006** (named strategies; plugins do not re-copy canDistribute/onClaim).
+
+**Locked:**
+
+- Plugins own `bottleneckKey(message) → string`; core omits `queueInitial`.
+- Queue key shape `queue:{kind}:{id}` is a naming convention; `{kind}` vocabulary is
+  plugin-owned (e.g. keep `gateway` or rename to `dcu` in the CALIN plugins only).
+- Admission declared as `spacing` | `concurrency` | `custom`; core implements the first two
+  primitives; knobs via plugin tuning / ADR-002 config.
+- `deliveryPattern` remains separate from admission.
+- Distributor must not branch on topology strings for policy.
+
+**Deferred with criteria in ADR-006 (D1–D4):** `queueKey → pluginId` mapping (Redis vs
+boot-time kind registry — **safe to decide at Units 5–6**; no Unit 2 dependency);
+`messageFullCleanup` shape beyond interim `inFlightQueueKeys[]`; wiring distribute;
+cosmetic key names. Decisions-log “Deferred with locked criteria” table points cold
+sessions at the ADR so another model cannot treat these as blank-slate open questions.
+
+**Unit 2 interim seams (when driven):** omit `queueInitial`; parameterized cleanup queue
+list; no admission engine / owner map yet.
+
+**Written:** ADR-006; `AGENTS.md` index; plan Units 2/5/6 updated; this log.
 

@@ -1,10 +1,11 @@
 # Extraction Plan — device-messages → nxt-device-messaging
 
 **Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), ADR-004 (tooling),
-ADR-005 (deployment / OSS hygiene), `nxt-backend` ADR-010 + its 2026-07-27 amendment
+ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backend` ADR-010 +
+its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Unit 1 done)
+**Status:** Phase 0 complete; Phase 1 in progress (Unit 1 done; ADR-006 locked before Unit 2)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -65,7 +66,9 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       (ADR-003 §2) land here: `meter_interaction_id` → `correlation_id` (opaque **string**),
       `grid_id` → `network_id` (**`number | null`** — the `unassigned` LoRaWAN bucket must survive),
       `message_type` → `command_type`, and the index key prefix `idx:meter_interaction_id:` →
-      `idx:correlation_id:`.
+      `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `bottleneckKey`);
+      `queueAwaitingTask(pluginId)`; `messageFullCleanup` takes `inFlightQueueKeys` (interim —
+      see ADR-006 D2). No admission engine and no `queueKey → pluginId` map yet (D1/D3).
 - [ ] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
       The hardcoded timeout/retry constants become config-backed with in-code defaults (ADR-002 §5).
 - [ ] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
@@ -77,11 +80,16 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       the outbound webhook in Phase 3 (**ADR-003** §6).
       **Behaviour note:** `@Cron` does not guard re-entry; a plain `setInterval` reproduces that.
       Adding an in-flight guard is an improvement — record it if taken.
+      **ADR-006:** replace `distributeToNetworkServers` string-split with plugin admission
+      (named strategies); resolve D1 (`queueKey → pluginId`) here with Unit 6; wire cleanup
+      callers per D2.
 - [ ] **Unit 6 — Plugin interface and registry.** `lib/plugin.interface.ts`,
-      `lib/plugin-registry.ts`. Interface sketch is in `nxt-backend` plan 001 task 3.1; correct
-      `network_id` to `number | null`, key plugins by `pluginId`, add token capability and
-      per-plugin command-type validation (ADR-003 §§3–4), optional `verifySignature` for ingress.
-      Only plugins present in config are constructed (ADR-002 §6).
+      `lib/plugin-registry.ts`. Normative SPI additions in **ADR-006**: `bottleneckKey`,
+      `admission` (`spacing` | `concurrency` | `custom`), `deliveryPattern` (`PUSH` | `PULL`).
+      Also: key plugins by `pluginId`, token capability, per-plugin command-type validation
+      (ADR-003 §§3–4), optional `verifySignature` for ingress. Only plugins present in config
+      are constructed (ADR-002 §6). Stale sketch in `nxt-backend` plan 001 task 3.1 is detail
+      only — correct `network_id` to `number | null`.
 
 ### Phase 2 — adapters as plugins
 
