@@ -38,10 +38,11 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete; Phase 1 in progress (Unit 1 done).** Tooling (ADR-004), config loader
+**Phase 0 complete; Phase 1 in progress (Units 1–2 done).** Tooling (ADR-004), config loader
 (ADR-002), Fastify shell with `GET /healthz` on port **3100**, and deployment stubs
 (ADR-005: Dockerfile, compose + Valkey, CI/GHCR) are in place. Core domain types live in
-`src/lib/types.ts`; Units 2–6 (Redis, queues, lifecycle, engine, plugin registry) are next.
+`src/lib/types.ts`; Redis repository + Lua in `src/lib/redis-repository/`. Units 3–6
+(queues, lifecycle, engine, plugin registry) are next.
 
 - **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`

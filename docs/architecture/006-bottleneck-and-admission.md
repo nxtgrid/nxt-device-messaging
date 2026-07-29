@@ -159,8 +159,11 @@ runs.
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys: string[] })` (name may
-vary). Callers in Unit 5+ supply the list; registry may build it later.
+**Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys?, concurrencyRateLimitKey? })`.
+Defaults cover known stage keys + `queue_awaiting_task:{pluginId}`; concurrency set is **only**
+cleared when the caller passes `concurrencyRateLimitKey` (plugin `trackKey` — core does not
+invent gateway keys). Callers in Unit 5+ must pass the full scrub set; registry may build it
+later. Full exit-path audit (retry queue, initial bottleneck queues, cancel) is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 

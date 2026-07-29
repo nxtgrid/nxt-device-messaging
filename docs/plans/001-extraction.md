@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Unit 1 done; ADR-006 locked before Unit 2)
+**Status:** Phase 0 complete; Phase 1 in progress (Units 1–2 done)
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -34,7 +34,7 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Unit 1 done) |
+| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Units 1–2 done) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -59,7 +59,7 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       shape, `device` identity-only (no manufacturer/protocol). **Not** in core: CALIN command
       predicates, `generateRandomNumber` / `toSafeNumberOrNull` (plugin units), or
       `PULL_PATTERN_IMPLEMENTATIONS` (plugins declare PUSH/PULL at registration — Unit 6).
-- [ ] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
+- [x] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
       `redis-repository/{index,keys,helpers}.ts` + the four files from
       `legacy/apps/tiamat/src/queries/lua/device-messages/`. Load the `.lua` files locally rather than
       via `@tiamat/queries`. `HERMES_*` → `REDIS_*` (ADR-002 §8). Full-pipeline field renames
@@ -113,13 +113,13 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 |---|---|---|---|
 | `lib/types.ts` | 175 | 1 | **ported** → `src/lib/types.ts` (core-only; see session 5) |
 | *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 7–10 | **deferred** — adapter-only; lands with the plugin that needs each helper |
-| `lib/redis-repository/index.ts` | 472 | 2 | pending |
-| `lib/redis-repository/keys.ts` | 94 | 2 | pending |
-| `lib/redis-repository/helpers.ts` | 100 | 2 | pending |
-| `../../queries/lua/device-messages/fetch-next-message-in-queue.lua` | 84 | 2 | pending |
-| `../../queries/lua/device-messages/fetch-next-message-in-queue.types.ts` | 38 | 2 | pending |
-| `../../queries/lua/device-messages/move-message-between-queues.lua` | 75 | 2 | pending |
-| `../../queries/lua/device-messages/move-message-between-queues.types.ts` | 33 | 2 | pending |
+| `lib/redis-repository/index.ts` | 472 | 2 | **ported** → `src/lib/redis-repository/index.ts` |
+| `lib/redis-repository/keys.ts` | 94 | 2 | **ported** → `src/lib/redis-repository/keys.ts` |
+| `lib/redis-repository/helpers.ts` | 100 | 2 | **ported** → `src/lib/redis-repository/helpers.ts` |
+| `../../queries/lua/device-messages/fetch-next-message-in-queue.lua` | 84 | 2 | **ported** → `src/lib/redis-repository/lua/fetch-next-message-in-queue.lua` |
+| `../../queries/lua/device-messages/fetch-next-message-in-queue.types.ts` | 38 | 2 | **ported** → `src/lib/redis-repository/lua/fetch-next-message-in-queue.types.ts` |
+| `../../queries/lua/device-messages/move-message-between-queues.lua` | 75 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.lua` |
+| `../../queries/lua/device-messages/move-message-between-queues.types.ts` | 33 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.types.ts` |
 | `lib/queue-moving.ts` | 185 | 3 | pending |
 | `lib/queue-moving.push.ts` | 106 | 3 | pending |
 | `lib/queue-moving.pull.ts` | 59 | 3 | pending |

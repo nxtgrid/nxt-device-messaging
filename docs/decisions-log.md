@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Phase 1 Unit 2)* | — |
+| — | *(none blocking Phase 1 Unit 3)* | — |
 
 ### Deferred with locked criteria (see ADR-006)
 
@@ -26,7 +26,7 @@ choice in this log and amend ADR-006 if the chosen option needs a lasting note.
 | # | Topic | Revisit at | Interim until then |
 |---|---|---|---|
 | D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Units 5–6 | None (no distributor yet) |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` | Units 5–6 | Parameterized `inFlightQueueKeys` on the Redis repo (Unit 2) |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Units 5–6 | Parameterized options on the Redis repo (Unit 2); no gateway key invention |
 | D3 | Wire named admission strategies into `distribute` | Units 5–6 | None |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant |
 
@@ -35,9 +35,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Unit 1 (core types) is **done**.
-ADR-006 locked before Unit 2. Next work is Phase 1 Unit 2 (Redis + Lua) when driven, plus
-items owned by `nxt-backend`:
+Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–2 (core types + Redis/Lua)
+are **done**. Next work is Phase 1 Unit 3 (queue primitives), plus items owned by `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -334,4 +333,38 @@ sessions at the ADR so another model cannot treat these as blank-slate open ques
 list; no admission engine / owner map yet.
 
 **Written:** ADR-006; `AGENTS.md` index; plan Units 2/5/6 updated; this log.
+
+### 2026-07-29 — session 7: Phase 1 Unit 2 (Redis repo + Lua)
+
+**Landed:** `src/lib/redis-repository/{index,keys,helpers}.ts` and `src/lib/redis-repository/lua/{fetch-next-message-in-queue,move-message-between-queues}.*` plus their TS type companions.
+
+Ported field renames: `correlation_id` (string), `network_id` (`number | null`, omitted when null), `command_type`.
+Index prefix: `idx:correlation_id:`.
+
+Per ADR-006: `queueInitial` omitted; `queueAwaitingTask(pluginId)` added.
+Lua scripts are loaded from local `.lua` files and copied into `dist/` at build time.
+
+**Deviation:** `messageFullCleanup` supports optional `inFlightQueueKeys` (defaults to known
+stage keys + `queue_awaiting_task:{pluginId}`) and optional `concurrencyRateLimitKey`
+(no gateway default — refined in session 7b).
+
+**Checks:** `pnpm typecheck` / `lint` / `test` / `build` green.
+
+### 2026-07-29 — session 7b: Unit 2 review cleanups
+
+- `createRedisClientOptions()` returns the final iovalkey options object (incl. optional `tls`).
+- Dropped core `LORAWAN_UNASSIGNED_BUCKET` and `gatewayRateLimit` key builder (plugin vocabulary).
+- Gateway-named rate-limit methods → ADR-006 concurrency primitives on the repo:
+  `addToConcurrencyRateLimit` / `getConcurrencyRateLimitCount` /
+  `validateAndCleanConcurrencyRateLimit` (opaque `trackKey`).
+- `messageFullCleanup` no longer invents a gateway rate-limit key; caller may pass
+  `concurrencyRateLimitKey`.
+
+### 2026-07-29 — session 7c: Unit 2 docs sync + Redis smoke test
+
+- Synced `AGENTS.md` / plan Phase 1 status to Units 1–2 done; ADR-006 D2 interim names
+  `concurrencyRateLimitKey` and notes remaining exit-path audit.
+- Added opt-in smoke: `test/integration/redis.smoke.spec.ts` —
+  `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/redis.smoke.spec.ts`
+  (Valkey up). Default `pnpm test` skips it.
 
