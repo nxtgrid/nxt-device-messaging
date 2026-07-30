@@ -1,8 +1,8 @@
 /**
- * @fileoverview Zod schemas for the thin command API (ADR-003).
+ * @fileoverview Zod schemas for the device-message aggregate (no TypeScript types).
  *
- * Wire JSON is camelCase. Plugin enablement is a single registry lookup in the
- * route handler — do not encode known plugin ids here.
+ * Inferred / lifecycle types live in `./types.ts`. Redis hash fields are camelCase;
+ * key paths stay snake_case (ADR-003 / decisions-log 15b).
  */
 
 import { z } from 'zod';
@@ -20,13 +20,13 @@ const deviceSchema = z.object({
   gateway: gatewaySchema.optional(),
 }).strict();
 
-const setDatePayloadSchema = z.object({
+export const setDatePayloadSchema = z.object({
   year: z.number().int(),
   month: z.number().int(),
   day: z.number().int(),
 }).strict();
 
-const setTimePayloadSchema = z.object({
+export const setTimePayloadSchema = z.object({
   hour: z.number().int(),
   minute: z.number().int(),
   second: z.number().int().optional(),
@@ -37,25 +37,20 @@ const requestDataSchema = z.object({
   payload: z.union([ setDatePayloadSchema, setTimePayloadSchema ]).optional(),
 }).strict();
 
+/** Electrical phase when the command is phase-specific. */
+export const phaseSchema = z.enum([ 'A', 'B', 'C' ]);
+
 /**
- * `POST /message/enqueue` body — camelCase wire (ADR-003).
+ * Fields supplied when creating / enqueuing a command (ADR-003 §2–§3).
+ * Opaque `commandType` / `pluginId` — plugins close the sets (ADR-003 §3–§4).
  */
-export const enqueueBodySchema = z.object({
+export const createDeviceMessageSchema = z.object({
   commandType: z.string().min(1),
   priority: z.number(),
   pluginId: z.string().min(1),
   requestData: requestDataSchema.optional(),
-  phase: z.enum([ 'A', 'B', 'C' ]).optional(),
+  phase: phaseSchema.optional(),
   networkId: z.number().nullable(),
   correlationId: z.string().min(1).optional(),
   device: deviceSchema,
 }).strict();
-
-export type EnqueueBody = z.infer<typeof enqueueBodySchema>;
-
-/** `GET /message/:correlationId` path params. */
-export const correlationIdParamsSchema = z.object({
-  correlationId: z.string().min(1),
-}).strict();
-
-export type CorrelationIdParams = z.infer<typeof correlationIdParamsSchema>;

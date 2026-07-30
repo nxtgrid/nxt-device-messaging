@@ -7,8 +7,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { UnknownPluginError, type Outgoing } from '../engine/outgoing.js';
+import { createDeviceMessageSchema } from '../lib/device-message/schemas.js';
 import { createApiKeyHook } from './auth.js';
-import { correlationIdParamsSchema, enqueueBodySchema } from './schemas.js';
+import { correlationIdParamsSchema } from './message-params.js';
 
 export type MessageRoutesOpts = {
   readonly outgoing: Outgoing;
@@ -23,7 +24,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
   app.addHook('onRequest', createApiKeyHook(opts.apiKey));
 
   app.post('/message/enqueue', async (request, reply) => {
-    const parsed = enqueueBodySchema.safeParse(request.body);
+    const parsed = createDeviceMessageSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'Invalid request body' });
     }

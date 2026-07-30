@@ -12,7 +12,7 @@ import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from './redis-repository/index.js';
 import { deserializeMessage, rawHashToObject } from './redis-repository/helpers.js';
 import { redisKeys } from './redis-repository/keys.js';
-import type { DeviceMessageDeliveryStatus, FailureReason } from './types.js';
+import type { DeviceMessageDeliveryStatus, FailureReason } from './device-message/types.js';
 
 
 /**

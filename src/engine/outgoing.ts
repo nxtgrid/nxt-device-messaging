@@ -5,7 +5,7 @@
  */
 
 import { redisRepo } from '../lib/redis-repository/index.js';
-import type { CreateDeviceMessage, DeviceMessage, PluginId } from '../lib/types.js';
+import type { CreateDeviceMessage, DeviceMessage, PluginId } from '../lib/device-message/types.js';
 import { pluginRegistry } from '../runtime.js';
 
 /**

@@ -12,7 +12,7 @@ import type {
   DeviceMessagingPlugin,
 } from '../plugin.interface.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
-import type { DeviceMessage, FailureContext, PluginId } from '../../lib/types.js';
+import type { DeviceMessage, FailureContext, PluginId } from '../../lib/device-message/types.js';
 
 /** Config / registry id for the PUSH stub. */
 export const STUB_PUSH_ID = 'stub-push' as const;

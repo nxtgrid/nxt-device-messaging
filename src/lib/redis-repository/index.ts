@@ -12,7 +12,7 @@ import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
   PhaseEnum,
-} from '../types.js';
+} from '../device-message/types.js';
 
 import type {
   FetchNextMessageResult,

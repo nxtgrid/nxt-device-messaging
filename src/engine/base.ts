@@ -17,7 +17,7 @@ import type {
   DeviceMessageDevice,
   FailureContext,
   FailureReason,
-} from '../lib/types.js';
+} from '../lib/device-message/types.js';
 import { config, pluginRegistry } from '../runtime.js';
 
 

@@ -38,25 +38,28 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo in
-progress (I0–I3 done; I4 optional / Intermezzo close next).**
+**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo:
+I0–I3 done (HTTP↔Redis exit criterion met). Next: I4 optional or close Intermezzo,
+then resume Unit 5.2+.**
 
-Course correction (decisions-log session 12): **Unit 5.2+ is paused.** Do **not** continue
-bottom-up engine until the walking skeleton lands. Next chunk is **I4** (optional cancel /
-stub tick) or close Intermezzo and resume 5.2+.
+Course correction (decisions-log session 12): **Unit 5.2+ stays paused** until Intermezzo
+closes. Do **not** continue bottom-up distribute/engine until then.
 
 Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
 (`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
-deploy stubs (ADR-005), `src/lib/types.ts` (camelCase domain), Redis/Lua (camelCase hash
-fields; snake_case key paths e.g. `idx:correlation_id:`), queue primitives, lifecycle, `src/plugins/` (SPI, catalog,
-one-shot registry, `stub/`), `src/http/` (enqueue/get → Redis via `engine/outgoing`;
-`smoke/` httpYac `.httpyac.cjs`), `src/engine/base.ts` (5.1) + thin `outgoing.ts` (I3).
-Stub plugins `stub-push` / `stub-pull` from config at boot (I1). Distribute still no-op.
+deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
+camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
+lifecycle, `src/plugins/` (SPI, catalog, one-shot registry, `stub/`), `src/http/` (lean
+enqueue/get; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts` (5.1) +
+`outgoing.ts` (I3 — Redis enqueue/get, `UnknownPluginError` → HTTP 400). Stub plugins
+`stub-push` / `stub-pull` from config at boot. **Distribute still no-op.**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
 - **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
+- **Smoke:** `src/http/smoke/message.http` (httpYac); opt-in
+  `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/redis.smoke.spec.ts`
 
 ## Workflow
 

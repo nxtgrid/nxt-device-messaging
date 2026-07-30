@@ -35,9 +35,9 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-**Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Next work is the
-**walking-skeleton Intermezzo** (I0–I3 done; I4 optional or close) — so contracts are
-exerciseable before more engine. See session 12–15 and plan **Phase 1b**.
+**Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Phase 1b Intermezzo
+**I0–I3 done** (HTTP↔Redis exit met). Next: **I4** optional or close Intermezzo, then
+resume 5.2+. See session 12–15c and plan **Phase 1b**.
 
 Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
 **done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
@@ -668,4 +668,28 @@ Intermezzo** and resume Unit 5.2+ (cancel remainder, then 5.3 distribute + D1/D3
 
 Index prefixes reverted to snake_case: `idx:correlation_id:`, `idx:external_delivery_id:`.
 Documented on `redisKeys`, ADR-003 §2, AGENTS, plan I3.
+
+### 2026-07-30 — session 15c: I3 polish + close chunk
+
+**Landed (follow-ups on I3):**
+
+- Composition: `buildApp` requires `outgoing` (no Redis factory in `app.ts`); `main` calls
+  `createOutgoing()` which reads `pluginRegistry` from `runtime` (same as `engine/base`).
+- Lean HTTP: plugin enablement in outgoing → `UnknownPluginError` → route maps 400; no
+  `pluginRegistry` on route opts. Optional `correlationId` only (no server ULID — legacy
+  parity). No enqueue body remap.
+- Create DTO: Zod `createDeviceMessageSchema` is source of truth → `CreateDeviceMessage`;
+  dropped `EnqueueBody`. Layout: `lib/device-message/schemas.ts` (Zod only) +
+  `types.ts` (infer + lifecycle); HTTP path params in `http/message-params.ts`.
+- Redis casing locked (15b). Smoke test SREMs `queues_to_distribute_from` after cleanup
+  (distributor Lua GC's that in production; no distribute yet).
+- README + AGENTS: Valkey-only compose then `pnpm dev`; status reflects walking skeleton.
+
+**Checks:** lint / typecheck / test / build green; `RUN_REDIS_SMOKE=1` smoke passed.
+
+**I3 closed.** Intermezzo HTTP↔Redis exit criterion met.
+
+**Next:** Maintainer chooses **I4** (optional cancel and/or stub distribute/send tick) **or
+close Intermezzo** and resume Unit 5.2+ (cancel remainder → 5.3 distribute + D1/D3).
+Generic Zod validation error bodies deferred to Phase 3 / OpenAPI hardening.
 

@@ -8,7 +8,7 @@
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';
-import type { PluginId } from '../lib/types.js';
+import type { PluginId } from '../lib/device-message/types.js';
 import { PLUGIN_CATALOG } from './catalog.js';
 import type { DeliveryPattern, DeviceMessagingPlugin } from './plugin.interface.js';
 

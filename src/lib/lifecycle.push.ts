@@ -10,7 +10,7 @@
 
 import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from './redis-repository/index.js';
-import type { DeviceMessage, ParsedIncomingEvent } from './types.js';
+import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.js';
 import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
 
 

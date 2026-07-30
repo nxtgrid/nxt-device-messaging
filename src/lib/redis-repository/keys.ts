@@ -1,4 +1,4 @@
-import { PhaseEnum } from '../types.js';
+import { PhaseEnum } from '../device-message/types.js';
 
 /**
  * Redis key builders for the device-message delivery pipeline.

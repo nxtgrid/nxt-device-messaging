@@ -5,7 +5,7 @@
 import { ulid } from 'ulid';
 
 import { UnknownPluginError, type Outgoing } from '../../src/engine/outgoing.js';
-import type { CreateDeviceMessage, DeviceMessage, PluginId } from '../../src/lib/types.js';
+import type { CreateDeviceMessage, DeviceMessage, PluginId } from '../../src/lib/device-message/types.js';
 
 export type InMemoryOutgoingOptions = {
   /** When set, enqueue throws {@link UnknownPluginError} for other ids. */

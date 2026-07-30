@@ -5,7 +5,8 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation done through 5.1; **Phase 1b Intermezzo (I0–I3 done; I4 optional / close next)**
+**Status:** Phase 0 complete; Phase 1 foundation through 5.1; **Phase 1b Intermezzo I0–I3 done
+(HTTP↔Redis exit met); I4 optional or close, then Unit 5.2+**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -40,7 +41,7 @@ not the stale plan's Nest controllers.
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1. (5.2+ paused for 1b) | Foundation done through 5.1 |
-| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I3 done; I4 optional / close** |
+| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I3 done (exit met); I4 optional / close** |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003** (remainder): webhook HMAC/DLQ, ingress, token, OpenAPI, auth polish | Partially pulled into 1b |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -114,14 +115,17 @@ engine. Unit 5.2+ stays paused until this phase closes. See decisions-log sessio
       (no HMAC/DLQ/OpenAPI/ingress).
 - [x] **I3 — Enqueue → Redis.** Thin `src/engine/outgoing.ts` (enqueue + get-by-correlation);
       plugin `bottleneckKey` → initial queue; distribute no-op. **Domain + Redis hash fields
-      flipped to camelCase**; Redis **key paths** stay snake_case (`idx:correlation_id:`,
-      `idx:external_delivery_id:`). Deleted `src/http/wire.ts` and in-memory `message-store`.
-      ADR-003 §2 amended. Smoke: `src/http/smoke/message.http` + Valkey.
+      camelCase**; Redis **key paths** snake_case (`idx:correlation_id:`). Deleted `wire.ts` /
+      in-memory store. Create DTO = Zod `createDeviceMessageSchema` in
+      `lib/device-message/schemas.ts` → `CreateDeviceMessage` in `types.ts`; HTTP lean
+      (maps `UnknownPluginError` → 400). Optional `correlationId` (no server ULID). Smoke +
+      README Valkey-only compose. **Intermezzo HTTP↔Redis exit criterion met.**
 - [ ] **I4 — Optional.** Cancel and/or one stub distribute/send tick — only if needed for the
-      skeleton; otherwise defer to Unit 5.2+.
+      skeleton; otherwise **close Intermezzo** and resume Unit 5.2+ (cancel remainder → 5.3).
 
-**Intermezzo done when:** `POST /message/enqueue` + `GET /message/:correlationId` work against
-local Valkey with a config-enabled stub plugin. Then resume Unit 5.2+.
+**Intermezzo HTTP↔Redis done when:** `POST /message/enqueue` + `GET /message/:correlationId`
+work against local Valkey with a config-enabled stub plugin — **met in I3.** Full Intermezzo
+close = maintainer choice on I4 vs defer. Then resume Unit 5.2+.
 
 ### Phase 1 (engine resumed after 1b)
 

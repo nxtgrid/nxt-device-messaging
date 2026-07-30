@@ -17,7 +17,7 @@
 import { decodeTime } from 'ulid';
 import { redisRepo } from './redis-repository/index.js';
 import { redisKeys } from './redis-repository/keys.js';
-import type { DeviceMessage, ParsedIncomingEvent } from './types.js';
+import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.js';
 
 /**
  * Maximum age for PULL awaiting-task messages before permanent failure (48 hours).

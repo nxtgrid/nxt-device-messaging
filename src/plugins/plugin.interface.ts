@@ -15,7 +15,7 @@ import type {
   FailureContext,
   ParsedIncomingEvent,
   PluginId,
-} from '../lib/types.js';
+} from '../lib/device-message/types.js';
 
 /** How confirmation works after send — not inferred from bottleneck kind (ADR-006 §3). */
 export type DeliveryPattern = 'PUSH' | 'PULL';

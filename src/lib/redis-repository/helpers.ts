@@ -6,7 +6,7 @@ import type {
   DeviceMessageDeliveryStatus,
   PhaseEnum,
   FailureReason,
-} from '../types.js';
+} from '../device-message/types.js';
 
 /**
  * Convert a flat array [key1, val1, key2, val2, ...] to an object.

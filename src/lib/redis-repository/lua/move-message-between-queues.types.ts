@@ -1,4 +1,4 @@
-import { type DeviceMessageDeliveryStatus } from '../../types.js';
+import { type DeviceMessageDeliveryStatus } from '../../device-message/types.js';
 
 /**
  * KEYS parameters for move-message-between-queues.lua

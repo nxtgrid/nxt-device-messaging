@@ -1,19 +1,27 @@
 /**
- * @fileoverview Core domain types for device command delivery.
+ * @fileoverview Domain types for the device-message aggregate.
  *
- * Ported from nxt-backend `legacy/.../device-messages/lib/types.ts` (baseline db5c2ac)
- * with ADR-003 renames and plugin selection. Domain + Redis hash fields are camelCase
- * (Intermezzo I3). Plugin-specific command predicates and helpers stay with plugins
- * (Phase 2). Delivery pattern (PUSH/PULL) is declared on each plugin; the registry
- * exposes that to the engine. PULL awaiting-task keys use `pluginId` (ADR-006); initial
- * queues use plugin `bottleneckKey`, not a core switch.
+ * Create DTO is inferred from Zod in `./schemas.ts`. Lifecycle fields are TypeScript-only.
  */
 
-/**
- * Electrical phase for per-phase commands. When set, Redis correlation indexes append
- * `_ph{phase}` so one logical read (e.g. voltage) can enqueue three messages.
- */
-export type PhaseEnum = 'A' | 'B' | 'C';
+import { z } from 'zod';
+
+import {
+  createDeviceMessageSchema,
+  phaseSchema,
+  setDatePayloadSchema,
+  setTimePayloadSchema,
+} from './schemas.js';
+
+/** Create DTO — inferred from {@link createDeviceMessageSchema}. */
+export type CreateDeviceMessage = z.infer<typeof createDeviceMessageSchema>;
+
+export type PhaseEnum = z.infer<typeof phaseSchema>;
+export type DeviceMessageDevice = CreateDeviceMessage['device'];
+export type GatewayInfo = NonNullable<DeviceMessageDevice['gateway']>;
+export type DeviceType = DeviceMessageDevice['type'];
+export type SetDatePayload = z.infer<typeof setDatePayloadSchema>;
+export type SetTimePayload = z.infer<typeof setTimePayloadSchema>;
 
 /**
  * Opaque plugin id; core routes by this string.
@@ -21,30 +29,8 @@ export type PhaseEnum = 'A' | 'B' | 'C';
  */
 export type PluginId = string;
 
-export type GatewayInfo = {
-  id?: number;
-  externalReference?: string;
-  snr?: number;
-  rssi?: number;
-};
-
-/** Types of devices we can communicate with. */
-export type DeviceType = 'ELECTRICITY_METER';
-
 /** Outcome of command execution on the device. */
 export type MessageResponseStatus = 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE';
-
-export type SetDatePayload = {
-  year: number;
-  month: number;
-  day: number;
-};
-
-export type SetTimePayload = {
-  hour: number;
-  minute: number;
-  second?: number;
-};
 
 /**
  * Delivery status representing the message's position in the delivery pipeline.
@@ -61,19 +47,6 @@ export type DeviceMessageDeliveryStatus =
   | 'SENT_TO_DEVICE'
   | 'DELIVERY_SUCCESSFUL'
   | 'DELIVERY_FAILED';
-
-/**
- * Target device identity only (ADR-003 §3).
- * Manufacturer/protocol selection is replaced by {@link CreateDeviceMessage.pluginId}.
- */
-export type DeviceMessageDevice = {
-  /** Device category. */
-  type: DeviceType;
-  /** Unique identifier (e.g., meter serial number). */
-  externalReference: string;
-  /** Gateway that relays messages to this device. */
-  gateway?: GatewayInfo;
-};
 
 /**
  * Context provided when a delivery attempt fails.
@@ -119,40 +92,10 @@ export type CancelMessageResult = {
 };
 
 /**
- * Fields supplied when enqueuing a command (former CreateDeviceMessageDto).
- * HTTP enqueue Zod (`src/http/schemas.ts`) matches this shape (ADR-003 §2–§3).
- */
-export type CreateDeviceMessage = {
-  /** Opaque command type; plugins validate and close the set (ADR-003 §4). */
-  commandType: string;
-  priority: number;
-  /** Plugin that will deliver this command. */
-  pluginId: PluginId;
-  /** Payload for delivery, optional. */
-  requestData?: {
-    token?: string;
-    payload?: SetDatePayload | SetTimePayload;
-  };
-  /**
-   * Electrical phase when the command is phase-specific.
-   * Drives Redis index key suffix `_ph{phase}` so multi-phase reads enqueue one message each.
-   */
-  phase?: PhaseEnum;
-  /**
-   * Network (grid) the device belongs to.
-   * `null` means unbound (orphan / test); LoRaWAN routes to the `unassigned` bucket.
-   */
-  networkId: number | null;
-  /** Caller-supplied opaque correlation handle (former meter_interaction_id). */
-  correlationId?: string;
-  device: DeviceMessageDevice;
-};
-
-/**
  * A message to be delivered to a remote device.
  *
  * Lifecycle:
- * 1. Created via CreateDeviceMessage and enqueued
+ * 1. Created via {@link CreateDeviceMessage} and enqueued
  * 2. Moves through delivery queues (NS → GW → Device)
  * 3. Receives response or times out
  * 4. On failure: retries with backoff or fails permanently

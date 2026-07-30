@@ -15,7 +15,7 @@
 
 import type { DeliveryConfig } from '../config/schema.js';
 import { redisKeys } from './redis-repository/keys.js';
-import type { DeviceMessageDeliveryStatus } from './types.js';
+import type { DeviceMessageDeliveryStatus } from './device-message/types.js';
 import { _moveQueue, QUEUE_NS_KEY } from './queue-moving.js';
 
 /** Awaiting task queue config for PULL pattern plugins. */

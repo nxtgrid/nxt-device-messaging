@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BottleneckKeyInput } from '../../../src/plugins/plugin.interface.js';
-import type { DeviceMessage } from '../../../src/lib/types.js';
+import type { DeviceMessage } from '../../../src/lib/device-message/types.js';
 import {
   createStubPlugin,
   createStubPullPlugin,
