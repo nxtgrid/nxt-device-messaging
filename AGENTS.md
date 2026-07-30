@@ -53,9 +53,10 @@ one-shot registry, `stub/`), `src/http/` (enqueue/get → Redis via `engine/outg
 `smoke/` httpYac `.httpyac.cjs`), `src/engine/base.ts` (5.1) + thin `outgoing.ts` (I3).
 Stub plugins `stub-push` / `stub-pull` from config at boot (I1). Distribute still no-op.
 
-- **Dev:** `pnpm install` → `cp .env.example .env` → `pnpm dev` (loads `.env`; port **3100**)
+- **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
+  `pnpm dev` (loads `.env`; port **3100**)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
-- **Compose:** same `.env`, then `docker compose up --build`
+- **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
 
 ## Workflow
 

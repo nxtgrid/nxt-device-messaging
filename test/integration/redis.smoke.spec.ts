@@ -14,6 +14,7 @@ const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 
 describe.skipIf(!shouldRun)('redis repository smoke', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
     if (redisRepo) {
@@ -23,6 +24,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
 
   it('connects, registers Lua commands, and round-trips a message', async () => {
     ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     expect(await redisRepo.client.ping()).toBe('PONG');
     expect(typeof redisRepo.client.fetchNextMessageInQueueAndMove).toBe('function');
@@ -61,7 +63,18 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       inFlightQueueKeys: [ queueKey ],
     });
 
+    // messageFullCleanup does not SREM queues_to_distribute_from — the distributor Lua
+    // GC's that when a queue empties. Smoke has no distribute pass, so tidy explicitly.
+    await redisRepo.client.srem(
+      redisKeys.listOfInitialQueuesToDistributeFrom(),
+      queueKey,
+    );
+
     expect(await redisRepo.getMessageFromCorrelationId(correlationId)).toBeNull();
     expect(await redisRepo.client.zcard(queueKey)).toBe(0);
+    expect(await redisRepo.client.sismember(
+      redisKeys.listOfInitialQueuesToDistributeFrom(),
+      queueKey,
+    )).toBe(0);
   });
 });
