@@ -11,21 +11,21 @@ import {
 } from '../../../src/plugins/stub/index.js';
 
 const deviceOnly: BottleneckKeyInput = {
-  network_id: 42,
+  networkId: 42,
   device: {
     type: 'ELECTRICITY_METER',
-    external_reference: 'm-1',
+    externalReference: 'm-1',
   },
 };
 
 const sampleMessage = {
   id: 'msg-1',
-  command_type: 'READ',
+  commandType: 'READ',
   pluginId: STUB_PUSH_ID,
-  network_id: 42,
+  networkId: 42,
   device: deviceOnly.device,
-  delivery_queue_id: '',
-  delivery_status: 'QUEUED',
+  deliveryQueueId: '',
+  deliveryStatus: 'QUEUED',
 } as DeviceMessage;
 
 describe('stub plugins', () => {
@@ -35,7 +35,7 @@ describe('stub plugins', () => {
     expect(plugin.deliveryPattern).toBe('PUSH');
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
     expect(plugin.bottleneckKey(deviceOnly)).toBe('queue:stub_network:42');
-    expect(plugin.bottleneckKey({ ...deviceOnly, network_id: null })).toBe(
+    expect(plugin.bottleneckKey({ ...deviceOnly, networkId: null })).toBe(
       'queue:stub_network:unassigned',
     );
     expect(plugin.incoming.handle).toBeTypeOf('function');
@@ -50,7 +50,7 @@ describe('stub plugins', () => {
     expect(plugin.admission).toEqual({ strategy: 'concurrency', maxInFlight: 5 });
     expect(
       plugin.bottleneckKey({
-        network_id: null,
+        networkId: null,
         device: { ...deviceOnly.device, gateway: { id: 7 } },
       }),
     ).toBe('queue:stub_gateway:7');
@@ -68,7 +68,7 @@ describe('stub plugins', () => {
     });
     await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toBe('stub-ext-id');
     expect(plugin.outgoing.getRemoteStatus(sampleMessage)).toEqual({
-      delivery_status: 'QUEUED',
+      deliveryStatus: 'QUEUED',
     });
     expect(plugin.outgoing.parseError(new Error('boom'))).toEqual({ reason: 'boom' });
   });

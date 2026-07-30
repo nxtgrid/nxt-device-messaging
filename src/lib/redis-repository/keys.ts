@@ -3,7 +3,12 @@ import { PhaseEnum } from '../types.js';
 /**
  * Redis key builders for the device-message delivery pipeline.
  *
- * Notes:
+ * Casing convention (locked):
+ * - **Key paths + Lua locals** — snake_case (`device_message:…`, `idx:correlation_id:…`)
+ * - **Hash fields** (serialized domain) — camelCase (`deliveryStatus`, `correlationId`, …)
+ * - Segment separator is `:` (not `#`).
+ *
+ * Other notes:
  * - Unit 2 intentionally omits `queueInitial()` (ADR-006): initial queue selection
  *   is owned by plugins via `bottleneckKey(message) → string`.
  * - Queue key shape is a naming convention: `queue:{bottleneckKind}:{bottleneckId}`.

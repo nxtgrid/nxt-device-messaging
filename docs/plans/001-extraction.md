@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation done through 5.1; **Phase 1b Intermezzo (I0–I2 done; I3 next)**
+**Status:** Phase 0 complete; Phase 1 foundation done through 5.1; **Phase 1b Intermezzo (I0–I3 done; I4 optional / close next)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -40,7 +40,7 @@ not the stale plan's Nest controllers.
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1. (5.2+ paused for 1b) | Foundation done through 5.1 |
-| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I2 done; I3 next** |
+| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I3 done; I4 optional / close** |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003** (remainder): webhook HMAC/DLQ, ingress, token, OpenAPI, auth polish | Partially pulled into 1b |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -109,12 +109,14 @@ engine. Unit 5.2+ stays paused until this phase closes. See decisions-log sessio
 - [x] **I2 — Thin HTTP.** Zod + routes for `POST /message/enqueue` and
       `GET /message/:correlationId` under `src/http/`; **camelCase wire** (ADR-003);
       Bearer when `DEVICE_MESSAGING_API_KEY` is set; in-memory store until I3; temporary
-      `wire.ts` map to snake_case domain. Plugin enablement once via `pluginRegistry.get`.
-      Smoke: `src/http/smoke/` (httpYac). Not full Phase 3 (no HMAC/DLQ/OpenAPI/ingress).
-- [ ] **I3 — Enqueue → Redis.** Wire enqueue (and get) so a curl / httpYac creates a message
-      visible via get-by-correlation / Redis. Thin 5.2-shaped outgoing; distribute may stay
-      no-op. **Prefer** flipping domain + Redis hash fields to camelCase in this pass and
-      deleting `src/http/wire.ts` (see decisions-log 14b); else keep the interim map.
+      `wire.ts` map to snake_case domain (deleted in I3). Plugin enablement once via
+      `pluginRegistry.get`. Smoke: `src/http/smoke/` (httpYac). Not full Phase 3
+      (no HMAC/DLQ/OpenAPI/ingress).
+- [x] **I3 — Enqueue → Redis.** Thin `src/engine/outgoing.ts` (enqueue + get-by-correlation);
+      plugin `bottleneckKey` → initial queue; distribute no-op. **Domain + Redis hash fields
+      flipped to camelCase**; Redis **key paths** stay snake_case (`idx:correlation_id:`,
+      `idx:external_delivery_id:`). Deleted `src/http/wire.ts` and in-memory `message-store`.
+      ADR-003 §2 amended. Smoke: `src/http/smoke/message.http` + Valkey.
 - [ ] **I4 — Optional.** Cancel and/or one stub distribute/send tick — only if needed for the
       skeleton; otherwise defer to Unit 5.2+.
 
@@ -127,9 +129,9 @@ local Valkey with a config-enabled stub plugin. Then resume Unit 5.2+.
       - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
         `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
         Requeue via `plugin.bottleneckKey` (not `queueInitial`).
-        `BottleneckKeyInput` = `{ network_id, device }`; requeue uses `getMessageRawPropsById`.
-      - [ ] **5.2** Outgoing: enqueue, cancel, get-by-correlation — **paused** (partially
-        satisfied by I3; finish remaining surface after Intermezzo)
+        `BottleneckKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
+      - [ ] **5.2** Outgoing: enqueue, cancel, get-by-correlation — **paused** (enqueue/get
+        satisfied by I3; finish cancel + remaining surface after Intermezzo)
       - [ ] **5.3** D1 then distribute + D3 admission — **after Intermezzo**
       - [ ] **5.4** sendOne + resolution cycle
       - [ ] **5.5** Incoming

@@ -25,7 +25,7 @@ export type DeliveryPattern = 'PUSH' | 'PULL';
  * Not the full create DTO — only network + device (incl. DCU/gateway).
  */
 export type BottleneckKeyInput = {
-  network_id: number | null;
+  networkId: number | null;
   device: DeviceMessageDevice;
 };
 
@@ -65,7 +65,7 @@ export type GenerateTokenInput = {
   type: string;
   issueDateString: string;
   device: {
-    external_reference: string;
+    externalReference: string;
     decoderKey?: string;
   };
   payload?: {
@@ -103,7 +103,7 @@ export type DeviceMessagingPlugin = {
     /** Remote queue status (PUSH GW extension). */
     getRemoteStatus(
       message: DeviceMessage,
-    ): Promise<{ delivery_status: string }> | { delivery_status: string };
+    ): Promise<{ deliveryStatus: string }> | { deliveryStatus: string };
     /** Map a thrown error into retry/fail context. */
     parseError(err: unknown): FailureContext;
   };

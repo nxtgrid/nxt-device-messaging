@@ -1,5 +1,5 @@
 /**
- * Redis repository smoke test (Unit 2).
+ * Redis repository smoke test (Unit 2 / I3 camelCase).
  *
  * Opt-in so default `pnpm test` / CI does not require Valkey:
  *
@@ -31,27 +31,31 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
     const correlationId = `smoke-${ Date.now() }`;
     const queueKey = `queue:smoke:${ correlationId }`;
 
-    await redisRepo.enqueueDeviceMessage(
+    const enqueued = await redisRepo.enqueueDeviceMessage(
       {
-        command_type: 'SMOKE_TEST',
+        commandType: 'SMOKE_TEST',
         priority: 1,
         pluginId: 'smoke-test',
-        network_id: null,
-        correlation_id: correlationId,
+        networkId: null,
+        correlationId,
         device: {
           type: 'ELECTRICITY_METER',
-          external_reference: 'smoke-meter',
+          externalReference: 'smoke-meter',
         },
       },
       queueKey,
     );
 
+    expect(enqueued.commandType).toBe('SMOKE_TEST');
+    expect(enqueued.deliveryStatus).toBe('QUEUED');
+
     const message = await redisRepo.getMessageFromCorrelationId(correlationId);
     expect(message).not.toBeNull();
-    expect(message?.command_type).toBe('SMOKE_TEST');
+    expect(message?.commandType).toBe('SMOKE_TEST');
     expect(message?.pluginId).toBe('smoke-test');
-    expect(message?.network_id).toBeNull();
-    expect(message?.delivery_status).toBe('QUEUED');
+    expect(message?.networkId).toBeNull();
+    expect(message?.deliveryStatus).toBe('QUEUED');
+    expect(message?.device.externalReference).toBe('smoke-meter');
 
     await redisRepo.messageFullCleanup(message!, {
       inFlightQueueKeys: [ queueKey ],

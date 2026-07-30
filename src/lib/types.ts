@@ -2,10 +2,11 @@
  * @fileoverview Core domain types for device command delivery.
  *
  * Ported from nxt-backend `legacy/.../device-messages/lib/types.ts` (baseline db5c2ac)
- * with ADR-003 renames and plugin selection. Plugin-specific command predicates and
- * helpers stay with plugins (Phase 2). Delivery pattern (PUSH/PULL) is declared on each
- * plugin; the registry exposes that to the engine. PULL awaiting-task keys use `pluginId`
- * (ADR-006); initial queues use plugin `bottleneckKey`, not a core switch.
+ * with ADR-003 renames and plugin selection. Domain + Redis hash fields are camelCase
+ * (Intermezzo I3). Plugin-specific command predicates and helpers stay with plugins
+ * (Phase 2). Delivery pattern (PUSH/PULL) is declared on each plugin; the registry
+ * exposes that to the engine. PULL awaiting-task keys use `pluginId` (ADR-006); initial
+ * queues use plugin `bottleneckKey`, not a core switch.
  */
 
 /**
@@ -22,7 +23,7 @@ export type PluginId = string;
 
 export type GatewayInfo = {
   id?: number;
-  external_reference?: string;
+  externalReference?: string;
   snr?: number;
   rssi?: number;
 };
@@ -69,7 +70,7 @@ export type DeviceMessageDevice = {
   /** Device category. */
   type: DeviceType;
   /** Unique identifier (e.g., meter serial number). */
-  external_reference: string;
+  externalReference: string;
   /** Gateway that relays messages to this device. */
   gateway?: GatewayInfo;
 };
@@ -90,7 +91,7 @@ export type FailureContext = {
 };
 
 /**
- * Record of a delivery attempt failure, stored in failure_history.
+ * Record of a delivery attempt failure, stored in failureHistory.
  */
 export type FailureReason = {
   /** Human-readable description of what went wrong. */
@@ -112,23 +113,23 @@ export type FailureReason = {
  * Returned by cancel-one / cancel-many Redis helpers.
  */
 export type CancelMessageResult = {
-  correlation_id: string;
+  correlationId: string;
   /** CANCELLED: all messages removed. NOT_CANCELLABLE: at least one was in-flight. NOT_FOUND: no messages in Redis. */
   result: 'CANCELLED' | 'NOT_CANCELLABLE' | 'NOT_FOUND';
 };
 
 /**
  * Fields supplied when enqueuing a command (former CreateDeviceMessageDto).
- * HTTP Zod DTOs land in Phase 3; this is the domain shape (ADR-003 §2–§3).
+ * HTTP enqueue Zod (`src/http/schemas.ts`) matches this shape (ADR-003 §2–§3).
  */
 export type CreateDeviceMessage = {
   /** Opaque command type; plugins validate and close the set (ADR-003 §4). */
-  command_type: string;
+  commandType: string;
   priority: number;
   /** Plugin that will deliver this command. */
   pluginId: PluginId;
   /** Payload for delivery, optional. */
-  request_data?: {
+  requestData?: {
     token?: string;
     payload?: SetDatePayload | SetTimePayload;
   };
@@ -141,9 +142,9 @@ export type CreateDeviceMessage = {
    * Network (grid) the device belongs to.
    * `null` means unbound (orphan / test); LoRaWAN routes to the `unassigned` bucket.
    */
-  network_id: number | null;
+  networkId: number | null;
   /** Caller-supplied opaque correlation handle (former meter_interaction_id). */
-  correlation_id?: string;
+  correlationId?: string;
   device: DeviceMessageDevice;
 };
 
@@ -160,9 +161,9 @@ export type DeviceMessage = CreateDeviceMessage & {
   /** Unique identifier (ULID). */
   id: string;
   /** External queue ID from network server (ChirpStack, Calin API, etc.). */
-  delivery_queue_id: string;
+  deliveryQueueId: string;
   /** Current position in delivery pipeline. */
-  delivery_status: DeviceMessageDeliveryStatus;
+  deliveryStatus: DeviceMessageDeliveryStatus;
   /** Response data from the device (on success). */
   response?: {
     status: MessageResponseStatus;
@@ -172,9 +173,9 @@ export type DeviceMessage = CreateDeviceMessage & {
   /** True if device sent this message without being asked. */
   unsolicited?: boolean;
   /** Number of delivery attempts (0 = first attempt). */
-  retry_count?: number;
+  retryCount?: number;
   /** History of failed delivery attempts. */
-  failure_history?: FailureReason[];
+  failureHistory?: FailureReason[];
 };
 
 /**
@@ -183,11 +184,11 @@ export type DeviceMessage = CreateDeviceMessage & {
  */
 export type ParsedIncomingEvent = {
   /** Opaque command type (optional for ACK events). */
-  command_type?: string;
+  commandType?: string;
   /** External queue ID to correlate with stored message. */
-  delivery_queue_id?: string;
+  deliveryQueueId?: string;
   /** New delivery status based on event type. */
-  delivery_status: DeviceMessageDeliveryStatus;
+  deliveryStatus: DeviceMessageDeliveryStatus;
   /** Device information from the event. */
   device: DeviceMessageDevice;
   /** Response payload from device (for uplink events). */
@@ -198,5 +199,5 @@ export type ParsedIncomingEvent = {
   };
   /** True if this is an unsolicited uplink from the device. */
   unsolicited?: boolean;
-  failure_context?: FailureContext;
+  failureContext?: FailureContext;
 };

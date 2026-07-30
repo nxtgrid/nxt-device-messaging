@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { createOutgoing } from './engine/outgoing.js';
 import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -20,7 +21,7 @@ function resolvePort(): number {
  * Composition root — runtime already booted; build Fastify shell and listen.
  */
 const app = await buildApp({
-  pluginRegistry,
+  outgoing: createOutgoing(),
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
 const port = resolvePort();

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../../src/app.js';
-import { createMessageStore } from '../../../src/http/message-store.js';
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
 import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+import { createInMemoryOutgoing } from '../../helpers/in-memory-outgoing.js';
 
 const enqueueBody = {
   commandType: 'READ',
@@ -17,13 +16,10 @@ const enqueueBody = {
   },
 };
 
-describe('message command routes (I2)', () => {
-  it('enqueues into the in-memory store and returns via get (camelCase wire)', async () => {
-    const messageStore = createMessageStore();
-    const app = await buildApp({
-      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
-      messageStore,
-    });
+describe('message command routes (I3)', () => {
+  it('enqueues via outgoing and returns via get (camelCase)', async () => {
+    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const app = await buildApp({ outgoing });
 
     const enqueue = await app.inject({
       method: 'POST',
@@ -38,7 +34,6 @@ describe('message command routes (I2)', () => {
     expect(created.device.externalReference).toBe('m-1');
     expect(created.deliveryStatus).toBe('QUEUED');
     expect(created.id).toEqual(expect.any(String));
-    expect(created).not.toHaveProperty('correlation_id');
 
     const get = await app.inject({
       method: 'GET',
@@ -50,9 +45,9 @@ describe('message command routes (I2)', () => {
     await app.close();
   });
 
-  it('rejects unknown pluginId once (not registered in config)', async () => {
+  it('maps UnknownPluginError from outgoing to 400', async () => {
     const app = await buildApp({
-      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
     const response = await app.inject({
@@ -70,7 +65,7 @@ describe('message command routes (I2)', () => {
 
   it('returns 404 when correlation id is missing', async () => {
     const app = await buildApp({
-      pluginRegistry: createPluginRegistry([]),
+      outgoing: createInMemoryOutgoing(),
     });
 
     const response = await app.inject({
@@ -84,7 +79,7 @@ describe('message command routes (I2)', () => {
 
   it('requires Bearer when apiKey is configured', async () => {
     const app = await buildApp({
-      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
       apiKey: 'secret',
     });
 
@@ -111,7 +106,7 @@ describe('message command routes (I2)', () => {
 
   it('rejects invalid bodies', async () => {
     const app = await buildApp({
-      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
     const response = await app.inject({

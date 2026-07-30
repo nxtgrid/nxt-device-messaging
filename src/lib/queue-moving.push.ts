@@ -58,16 +58,16 @@ export const moveQueuePush = {
    * Creates an index for looking up the message by external delivery ID.
    *
    * @param id - Message ULID
-   * @param delivery_queue_id - External queue ID from ChirpStack
+   * @param deliveryQueueId - External queue ID from ChirpStack
    * @param deliveryConfig - Shared delivery knobs (TTL + GW timeout)
    */
   fromNsToGw({
     id,
-    delivery_queue_id,
+    deliveryQueueId,
     deliveryConfig,
   }: {
     id: string;
-    delivery_queue_id: string;
+    deliveryQueueId: string;
     deliveryConfig: DeliveryConfig;
   }) {
     const timesOutAt = Date.now() + deliveryConfig.gwInFlightTimeoutMs;
@@ -76,9 +76,9 @@ export const moveQueuePush = {
       QUEUE_NS_KEY,
       CONFIG_QUEUE_GW.KEY,
       timesOutAt,
-      { delivery_status: CONFIG_QUEUE_GW.MESSAGE_STATUS, delivery_queue_id },
+      { deliveryStatus: CONFIG_QUEUE_GW.MESSAGE_STATUS, deliveryQueueId },
       deliveryConfig.messageTtlSeconds,
-      redisKeys.indexExternalDeliveryId(delivery_queue_id),
+      redisKeys.indexExternalDeliveryId(deliveryQueueId),
     );
   },
 
@@ -102,7 +102,7 @@ export const moveQueuePush = {
       CONFIG_QUEUE_GW.KEY,
       CONFIG_QUEUE_DEVICE.KEY,
       timesOutAt,
-      { delivery_status: CONFIG_QUEUE_DEVICE.MESSAGE_STATUS },
+      { deliveryStatus: CONFIG_QUEUE_DEVICE.MESSAGE_STATUS },
       deliveryConfig.messageTtlSeconds,
     );
   },

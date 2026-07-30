@@ -36,18 +36,18 @@ export const moveQueuePull = {
    * Note: For PULL pattern, the score represents "next poll time" (not timeout).
    *
    * @param id - Message ULID
-   * @param delivery_queue_id - External task ID from the API (e.g. CALIN TaskNo)
+   * @param deliveryQueueId - External task ID from the API (e.g. CALIN TaskNo)
    * @param pluginId - Opaque plugin id (determines `queue_awaiting_task:{pluginId}`)
    * @param deliveryConfig - Shared delivery knobs (TTL + initial poll delay)
    */
   async fromNsToAwaitingTask({
     id,
-    delivery_queue_id,
+    deliveryQueueId,
     pluginId,
     deliveryConfig,
   }: {
     id: string;
-    delivery_queue_id: string;
+    deliveryQueueId: string;
     pluginId: string;
     deliveryConfig: DeliveryConfig;
   }): Promise<void> {
@@ -59,11 +59,11 @@ export const moveQueuePull = {
       queueKey,
       firstPollAt,
       {
-        delivery_status: CONFIG_QUEUE_AWAITING_TASK.MESSAGE_STATUS,
-        delivery_queue_id,
+        deliveryStatus: CONFIG_QUEUE_AWAITING_TASK.MESSAGE_STATUS,
+        deliveryQueueId,
       },
       deliveryConfig.messageTtlSeconds,
-      redisKeys.indexExternalDeliveryId(delivery_queue_id),
+      redisKeys.indexExternalDeliveryId(deliveryQueueId),
     );
   },
 };

@@ -6,9 +6,10 @@ File-based requests for the [httpYac](https://marketplace.visualstudio.com/items
 
 1. Install **httpYac** (`anweber.vscode-httpyac`); disable other `.http` extensions if they fight it.
 2. Copy `.env.example` → `.env` if needed. For auth’d requests set e.g.
-   `DEVICE_MESSAGING_API_KEY=dev-key` (httpYac loads parent `.env` via `$dotenv`).
+   `DEVICE_MESSAGING_API_KEY=dev-key` (must match `apiKey` in `.httpyac.cjs`).
 3. Status bar → httpYac environment **`local`**.
 4. `pnpm dev` (config from `DEVICE_MESSAGING_CONFIG_PATH`, stubs in `config.example.json`).
+5. Valkey up for enqueue/get persistence (`docker compose up -d valkey` or local Redis).
 
 ## Auth
 
@@ -35,4 +36,4 @@ Open `message.http` (or `healthz.http`) and **Send**. Enqueue is `# @name`’d s
 |------|------|
 | `.httpyac.cjs` | `baseUrl` + `local` env (`.cjs` — package is ESM) |
 | `healthz.http` | Liveness (no auth) |
-| `message.http` | Enqueue + get (Bearer from dotenv) |
+| `message.http` | Enqueue + get (Bearer from `apiKey` in `.httpyac.cjs`) |

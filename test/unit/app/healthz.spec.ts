@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../../src/app.js';
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
+import { createInMemoryOutgoing } from '../../helpers/in-memory-outgoing.js';
 
 describe('GET /healthz', () => {
   it('returns 200 with ok: true', async () => {
     const app = await buildApp({
-      pluginRegistry: createPluginRegistry([]),
+      outgoing: createInMemoryOutgoing(),
     });
 
     const response = await app.inject({

@@ -4,18 +4,13 @@ import {
   messageRoutes,
   type MessageRoutesOpts,
 } from './http/message-routes.js';
-import { createMessageStore } from './http/message-store.js';
 
-export type BuildAppOptions = {
-  readonly pluginRegistry: MessageRoutesOpts['pluginRegistry'];
-  /** When set, command routes require Bearer auth (ADR-003 §5). */
-  readonly apiKey?: string;
-  /** Defaults to a fresh in-memory store (I2; Redis in I3). */
-  readonly messageStore?: MessageRoutesOpts['messageStore'];
-};
+/** Same surface as the message plugin — `buildApp` does not invent defaults. */
+export type BuildAppOptions = MessageRoutesOpts;
 
 /**
  * Builds the HTTP application (ADR-001). Ops probes stay unauthenticated (ADR-005 §5).
+ * Callers (composition root / tests) supply {@link MessageRoutesOpts.outgoing}.
  */
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -26,11 +21,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { ok: true as const };
   });
 
-  await app.register(messageRoutes, {
-    pluginRegistry: options.pluginRegistry,
-    messageStore: options.messageStore ?? createMessageStore(),
-    apiKey: options.apiKey,
-  });
+  await app.register(messageRoutes, options);
 
   return app;
 }

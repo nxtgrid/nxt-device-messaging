@@ -29,7 +29,7 @@ export type PushIncoming = {
 export type PushOutgoing = {
   getRemoteStatus(
     message: DeviceMessage,
-  ): Promise<{ delivery_status: string }> | { delivery_status: string };
+  ): Promise<{ deliveryStatus: string }> | { deliveryStatus: string };
 };
 
 /** Result of a PUSH pattern timeout: a message that needs retryOrFail. */
@@ -81,8 +81,8 @@ export async function maybeExtendMessageInGwQueue(
   deliveryConfig: DeliveryConfig,
 ): Promise<boolean> {
   try {
-    const { delivery_status } = await plugin.getRemoteStatus(message);
-    if (delivery_status === 'DELIVERY_FAILED') return false;
+    const { deliveryStatus } = await plugin.getRemoteStatus(message);
+    if (deliveryStatus === 'DELIVERY_FAILED') return false;
   }
   catch (err) {
     console.error('[DEVICE MESSAGING] Error checking status for message', message, err);

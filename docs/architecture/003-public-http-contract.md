@@ -1,8 +1,8 @@
 # ADR-003: Public HTTP Contract
 
 **Date:** 2026-07-27
-**Status:** Accepted — amended 2026-07-30 (command API wire casing = camelCase; Redis/domain
-snake_case interim until rename pass)
+**Status:** Accepted — amended 2026-07-30 (command API + domain + Redis hash fields =
+camelCase; Redis key paths + Lua locals = snake_case)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -58,20 +58,24 @@ MGET-optimise lookups for large batches. Message-bus delivery remains **deferred
 
 | Inherited | Here |
 |---|---|
-| `meter_interaction_id` | `correlationId` / `correlation_id` (opaque string, caller-supplied) |
-| `grid_id` | `networkId` / `network_id` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
-| `message_type` | `commandType` / `command_type` (opaque string to the core; see decision 4) |
+| `meter_interaction_id` | `correlationId` (opaque string, caller-supplied) |
+| `grid_id` | `networkId` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
+| `message_type` | `commandType` (opaque string to the core; see decision 4) |
 
 Aligns with `nxt-backend` ADR-010 decision 4 and with estate vocabulary in ADR-011
 (`command_type` on `meter_command_batches` — that column name stays on the estate DB).
 
-**Wire JSON (command API + webhook) is camelCase** (`correlationId`, `commandType`,
-`networkId`, `externalReference`, …). Path params match (`:correlationId`).
+**Wire JSON, in-process domain types, and Redis hash fields are camelCase**
+(`correlationId`, `commandType`, `networkId`, `externalReference`, `deliveryStatus`, …).
+Path params match (`:correlationId`).
 
-**Redis hash fields and in-process domain types** still use snake_case today (port from the
-frozen module). End state: flip domain + Redis to camelCase in one pass (see decisions-log;
-revisit at I3) and drop the HTTP↔domain map. Until then the HTTP layer maps once at the
-boundary.
+**Redis key paths and Lua locals are snake_case** (keyspace / script style), with `:` as
+the segment separator — e.g. `device_message:{id}`, `idx:correlation_id:…`,
+`idx:external_delivery_id:…`. Hash field names stay on the camelCase side of that divide
+(they are the serialized JS object).
+
+Estate Postgres columns (e.g. ADR-011 `command_type`) are unrelated and stay snake_case
+on `nxt-backend`.
 
 ### 3. Caller selects the plugin via `pluginId`
 
@@ -92,9 +96,9 @@ Bundled plugin ids (kebab-case, manufacturer + network server where both matter)
 A message or token request for a plugin that is not enabled fails that request clearly
 (ADR-002 decision 6); the process does not crash.
 
-### 4. `command_type` is a string to the core; plugins close the set
+### 4. `commandType` is a string to the core; plugins close the set
 
-The engine treats `command_type` as opaque. Each plugin declares the commands it accepts and
+The engine treats `commandType` as opaque. Each plugin declares the commands it accepts and
 validates on enqueue / token generate (400 on unknown type or invalid payload for that type).
 Bundled plugins keep concrete TypeScript unions locally. This preserves the single-file-plugin
 goal: a third-party plugin is not forced into the CALIN/NXT command vocabulary, and adding a
@@ -120,10 +124,10 @@ Config: URL in the artifact (`resultWebhook.url`, ADR-002); signing secret in en
 Same set as today's `publish()` — with room to add transitions later without breaking
 consumers that ignore unknown statuses:
 
-1. First handoff to the network server (`SENT_TO_NS`, only when `retry_count` is 0)
+1. First handoff to the network server (`SENT_TO_NS`, only when `retryCount` is 0)
 2. Terminal success (`DELIVERY_SUCCESSFUL`)
 3. Terminal failure (`DELIVERY_FAILED`, including max-retries and PULL age timeout)
-4. Unsolicited uplinks (no `correlation_id`)
+4. Unsolicited uplinks (no `correlationId`)
 
 Mid-pipeline GW ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events today and
 do not in v1.
@@ -219,7 +223,7 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
 
 - **Terminal-only webhooks** — would change `meter-interactions` PROCESSING behaviour;
   rejected in favour of parity with `publish()`.
-- **Core `command_type` enum** — couples core to CALIN/NXT vocabulary; breaks third-party
+- **Core `commandType` enum** — couples core to CALIN/NXT vocabulary; breaks third-party
   plugins.
 - **Manufacturer + protocol on the wire** — split/rejoin dance; replaced by `pluginId`.
 - **Separate Redis DB for webhook state** — needless second client; many hosts only expose

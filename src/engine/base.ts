@@ -36,7 +36,7 @@ export function emitDeliveryEvent(_message: Partial<DeviceMessage>): void {
  *
  * Decision logic:
  * - If skipRetry is true: fail immediately (unrecoverable error)
- * - If retry_count >= maxRetries: clean up and emit failure
+ * - If retryCount >= maxRetries: clean up and emit failure
  * - Otherwise: schedule retry with exponential backoff
  *
  * @param messageId - ULID of the message
@@ -59,19 +59,19 @@ export async function retryOrFail(
     return;
   }
 
-  const currentRetryCount = message.retry_count ?? 0;
+  const currentRetryCount = message.retryCount ?? 0;
   const isFinalFailure =
     failureContext.skipRetry || currentRetryCount >= config.delivery.maxRetries;
   const newFailureHistory: FailureReason[] = [
     {
       timestamp: (new Date()).toISOString(),
-      status: message.delivery_status,
+      status: message.deliveryStatus,
       reason: failureContext.reason,
       ...(isNotNil(failureContext.errorCode) && { errorCode: failureContext.errorCode }),
       ...(failureContext.details && { details: failureContext.details }),
       isFinal: isFinalFailure,
     },
-    ...(message.failure_history ?? []),
+    ...(message.failureHistory ?? []),
   ];
 
   if (isFinalFailure) {
@@ -80,8 +80,8 @@ export async function retryOrFail(
     });
     emitDeliveryEvent({
       ...message,
-      failure_history: newFailureHistory,
-      delivery_status: 'DELIVERY_FAILED',
+      failureHistory: newFailureHistory,
+      deliveryStatus: 'DELIVERY_FAILED',
     });
     return;
   }
@@ -91,9 +91,9 @@ export async function retryOrFail(
   const nextRetryAt = Date.now() + backoffMs;
 
   const updateProps = {
-    retry_count: newRetryCount,
-    delivery_status: 'TO_RETRY' as DeviceMessageDeliveryStatus,
-    failure_history: newFailureHistory,
+    retryCount: newRetryCount,
+    deliveryStatus: 'TO_RETRY' as DeviceMessageDeliveryStatus,
+    failureHistory: newFailureHistory,
   };
 
   await moveQueue.fromAnyToRetry(
@@ -119,8 +119,8 @@ export async function requeueMessage(messageId: string): Promise<void> {
     await redisRepo.getMessageRawPropsById(messageId, [
       'priority',
       'device',
-      'network_id',
-      'plugin_id',
+      'networkId',
+      'pluginId',
     ]);
 
   if (!priorityStr || !deviceStr || !pluginId) {
@@ -140,10 +140,10 @@ export async function requeueMessage(messageId: string): Promise<void> {
 
   const priority = parseInt(priorityStr, 10);
   const device = JSON.parse(deviceStr) as DeviceMessageDevice;
-  // `network_id` is omitted from the hash when null (see serializeCreateDeviceMessage).
-  const network_id = networkIdStr !== null ? parseInt(networkIdStr, 10) : null;
+  // `networkId` is omitted from the hash when null (see serializeCreateDeviceMessage).
+  const networkId = networkIdStr !== null ? parseInt(networkIdStr, 10) : null;
 
-  const destinationQueue = plugin.bottleneckKey({ network_id, device });
+  const destinationQueue = plugin.bottleneckKey({ networkId, device });
   await redisRepo.requeueMessage(
     messageId,
     QUEUE_RETRY_KEY,

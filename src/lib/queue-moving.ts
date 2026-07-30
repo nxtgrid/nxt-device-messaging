@@ -54,8 +54,8 @@ export const _moveQueue = async (
   toQueue: string,
   timesOutAt: number,
   updateProps: {
-    delivery_status: DeviceMessageDeliveryStatus;
-    delivery_queue_id?: string;
+    deliveryStatus: DeviceMessageDeliveryStatus;
+    deliveryQueueId?: string;
   },
   messageTtlSeconds: number,
   indexToCreate?: string,
@@ -69,8 +69,8 @@ export const _moveQueue = async (
     indexToCreate ?? '',
     messageId,
     timesOutAt,
-    updateProps.delivery_status,
-    updateProps.delivery_queue_id ?? '',
+    updateProps.deliveryStatus,
+    updateProps.deliveryQueueId ?? '',
     messageTtlSeconds,
   );
 
@@ -124,9 +124,9 @@ export const moveQueue = {
     currentQueueKey: string,
     nextRetryAt: number,
     updateProps: {
-      retry_count: number;
-      delivery_status: DeviceMessageDeliveryStatus;
-      failure_history: FailureReason[];
+      retryCount: number;
+      deliveryStatus: DeviceMessageDeliveryStatus;
+      failureHistory: FailureReason[];
     },
     options?: {
       concurrencyRateLimitKey?: string;
@@ -142,20 +142,20 @@ export const moveQueue = {
 
     const [ currentDeliveryQueueId ] = await redisRepo.client.hmget(
       messageKey,
-      'delivery_queue_id',
+      'deliveryQueueId',
     );
 
     const pipeline = redisRepo.client.multi();
 
-    // 1. Update message hash (clear delivery_queue_id since it's now stale)
+    // 1. Update message hash (clear deliveryQueueId since it's now stale)
     pipeline.hset(messageKey, {
-      retry_count: updateProps.retry_count,
-      delivery_status: updateProps.delivery_status,
-      failure_history: JSON.stringify(updateProps.failure_history),
+      retryCount: updateProps.retryCount,
+      deliveryStatus: updateProps.deliveryStatus,
+      failureHistory: JSON.stringify(updateProps.failureHistory),
     });
     // @RACE-CONDITION :: Deleting this, while the message is already 'selected' by the 'checkStatus'
-    // PULL pattern Cron job, will cause that to check the message status for an `undefined` delivery_queue_id -> 💥
-    pipeline.hdel(messageKey, 'delivery_queue_id');
+    // PULL pattern Cron job, will cause that to check the message status for an `undefined` deliveryQueueId → 💥
+    pipeline.hdel(messageKey, 'deliveryQueueId');
 
     // 2. Move between queues
     pipeline.zrem(currentQueueKey, messageId);

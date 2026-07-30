@@ -23,8 +23,8 @@
   ARGV:
     [1] message_id         - The message ULID (member in sorted sets)
     [2] destination_score  - Score for the destination sorted set (timeout or poll time)
-    [3] delivery_status    - New delivery_status value
-    [4] delivery_queue_id  - New delivery_queue_id value ('' to skip)
+    [3] deliveryStatus     - New deliveryStatus value
+    [4] deliveryQueueId    - New deliveryQueueId value ('' to skip)
     [5] index_ttl_seconds  - TTL for the index key (only used if index_key provided)
 
   Returns:
@@ -57,12 +57,12 @@ end
 redis.call('ZADD', destination_queue, destination_score, message_id)
 
 -- ============================================================================
--- Step 3: Update message hash
+-- Step 3: Update message hash (camelCase field names — I3)
 -- ============================================================================
 if delivery_queue_id ~= '' then
-  redis.call('HSET', message_key, 'delivery_status', delivery_status, 'delivery_queue_id', delivery_queue_id)
+  redis.call('HSET', message_key, 'deliveryStatus', delivery_status, 'deliveryQueueId', delivery_queue_id)
 else
-  redis.call('HSET', message_key, 'delivery_status', delivery_status)
+  redis.call('HSET', message_key, 'deliveryStatus', delivery_status)
 end
 
 -- ============================================================================

@@ -52,7 +52,7 @@ export function createStubPlugin(options: {
 
   const bottleneckKey = (input: BottleneckKeyInput): string => {
     if (deliveryPattern === 'PUSH') {
-      const networkPart = input.network_id == null ? 'unassigned' : String(input.network_id);
+      const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
       return `queue:stub_network:${ networkPart }`;
     }
     const gatewayId = input.device.gateway?.id;
@@ -64,8 +64,8 @@ export function createStubPlugin(options: {
     async sendOne(_message: DeviceMessage): Promise<string> {
       return 'stub-ext-id';
     },
-    getRemoteStatus(_message: DeviceMessage): { delivery_status: string } {
-      return { delivery_status: 'QUEUED' };
+    getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
+      return { deliveryStatus: 'QUEUED' };
     },
     parseError: parseStubError,
   };

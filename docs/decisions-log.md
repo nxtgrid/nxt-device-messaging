@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Intermezzo I3; Unit 5.2+ paused). Domain/Redis camelCase rename deferred to I3 — see session 14b* | — |
+| — | *(none blocking Intermezzo close / I4; Unit 5.2+ paused)* | — |
 
 ### Deferred with locked criteria
 
@@ -36,8 +36,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 `docs/plans/001-extraction.md`.
 
 **Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Next work is the
-**walking-skeleton Intermezzo** (I3–I4; I0–I2 done) — enqueue→Redis — so contracts are
-exerciseable before more engine. See session 12–14 and plan **Phase 1b**.
+**walking-skeleton Intermezzo** (I0–I3 done; I4 optional or close) — so contracts are
+exerciseable before more engine. See session 12–15 and plan **Phase 1b**.
 
 Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
 **done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
@@ -632,4 +632,40 @@ allows, else keep the wire map one more chunk.
 - Verified: `/healthz` OK; enqueue/get with Bearer succeed against in-memory store.
 
 **I2 closed.** Next chunk is **I3**.
+
+### 2026-07-30 — session 15: I3 enqueue → Redis + domain/Redis camelCase
+
+**Decided:** Flip domain types + Redis hash fields + index prefixes to camelCase in this
+pass; delete `src/http/wire.ts`. Greenfield Valkey at cutover — no dual-write. Estate
+Postgres `command_type` (ADR-011) stays snake_case on `nxt-backend`.
+
+**Landed:**
+
+- Domain (`src/lib/types.ts`) + serialize/deserialize + Lua HSET field names +
+  `idx:correlationId:` / `idx:externalDeliveryId:` — all camelCase.
+- `BottleneckKeyInput.networkId`; plugin SPI / stubs / queue-moving / lifecycle / engine
+  base updated.
+- Thin `src/engine/outgoing.ts` — enqueue via `plugin.bottleneckKey` + Redis; get-by-
+  correlation; **no distribute**.
+- HTTP routes use injected `Outgoing` (default Redis); deleted in-memory `message-store`
+  and `wire.ts`. Unit tests inject in-memory outgoing.
+- ADR-003 §2 amended; ADR-006 bottleneck examples aligned. Plan / AGENTS synced.
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
+
+**Intermezzo HTTP↔Redis exit criterion met in code.** Smoke against Valkey:
+`src/http/smoke/message.http` with Valkey up + `pnpm dev`.
+
+**Next:** **I4** optional (cancel and/or one stub distribute/send tick), or **close
+Intermezzo** and resume Unit 5.2+ (cancel remainder, then 5.3 distribute + D1/D3).
+
+### 2026-07-30 — session 15b: Redis key vs hash-field casing locked
+
+**Decided — clear divide:**
+
+- **JS domain + Redis hash fields** = camelCase (serialized object properties)
+- **Redis key paths + Lua locals** = snake_case; segment separator `:` (not `#`)
+
+Index prefixes reverted to snake_case: `idx:correlation_id:`, `idx:external_delivery_id:`.
+Documented on `redisKeys`, ADR-003 §2, AGENTS, plan I3.
 

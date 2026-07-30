@@ -48,8 +48,8 @@ declare module 'iovalkey' {
       index_key: string,
       message_id: string,
       destination_score: number | string,
-      delivery_status: DeviceMessageDeliveryStatus,
-      delivery_queue_id: string,
+      deliveryStatus: DeviceMessageDeliveryStatus,
+      deliveryQueueId: string,
       index_ttl_seconds: number | string,
     ): Promise<MoveMessageResult>;
   }
@@ -120,7 +120,10 @@ export const redisRepo = {
   /** Raw Redis client for advanced operations (queue Lua scripts, pipelines). */
   client: _client,
 
-  async enqueueDeviceMessage(dto: CreateDeviceMessage, queueKey: string): Promise<void> {
+  async enqueueDeviceMessage(
+    dto: CreateDeviceMessage,
+    queueKey: string,
+  ): Promise<DeviceMessage> {
     const messageId = ulid();
     const messageKey = redisKeys.message(messageId);
     const serializedHash = serializeCreateDeviceMessage(dto);
@@ -139,12 +142,18 @@ export const redisRepo = {
     pipeline.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), queueKey);
 
     // 4. Create correlation indexes (optionally per phase)
-    if (dto.correlation_id) {
-      const indexKey = redisKeys.indexCorrelationId(dto.correlation_id, dto.phase);
+    if (dto.correlationId) {
+      const indexKey = redisKeys.indexCorrelationId(dto.correlationId, dto.phase);
       pipeline.set(indexKey, messageKey, 'EX', MESSAGE_TTL_SECONDS);
     }
 
     await pipeline.exec();
+
+    return deserializeMessage(messageId, {
+      ...Object.fromEntries(
+        Object.entries(serializedHash).map(([ key, value ]) => [ key, String(value) ]),
+      ),
+    });
   },
 
   async requeueMessage(
@@ -159,7 +168,7 @@ export const redisRepo = {
     const score = -1 * priority;
     pipeline.zadd(toQueueKey, score, messageId);
     pipeline.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), toQueueKey);
-    pipeline.hset(redisKeys.message(messageId), { delivery_status: 'QUEUED' });
+    pipeline.hset(redisKeys.message(messageId), { deliveryStatus: 'QUEUED' });
 
     await pipeline.exec();
   },
@@ -256,8 +265,8 @@ export const redisRepo = {
     const messageKey = redisKeys.message(message.id);
 
     const indexesToDelete = [
-      message.correlation_id && redisKeys.indexCorrelationId(message.correlation_id, message.phase),
-      message.delivery_queue_id && redisKeys.indexExternalDeliveryId(message.delivery_queue_id),
+      message.correlationId && redisKeys.indexCorrelationId(message.correlationId, message.phase),
+      message.deliveryQueueId && redisKeys.indexExternalDeliveryId(message.deliveryQueueId),
     ].filter(Boolean) as string[];
 
     const inFlightQueueKeys = options?.inFlightQueueKeys ?? [

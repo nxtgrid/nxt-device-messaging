@@ -85,7 +85,7 @@ export async function pollAwaitingTasksFor(
   for (const messageId of messageIds) {
     const message = await redisRepo.getMessageById(messageId);
     // Guard: message might have been cleaned up or moved by reaper
-    if (!message?.delivery_queue_id) continue;
+    if (!message?.deliveryQueueId) continue;
 
     const parsedEvent = await plugin.fetchStatus(message);
 
@@ -143,15 +143,15 @@ export async function getPullTimeouts(
       results.push({
         message: {
           ...message,
-          delivery_status: 'DELIVERY_FAILED',
-          failure_history: [
+          deliveryStatus: 'DELIVERY_FAILED',
+          failureHistory: [
             {
               timestamp: new Date(now).toISOString(),
               status: 'DELIVERED_TO_NS',
               reason: 'Timed out waiting for remote task completion',
               isFinal: true,
             },
-            ...(message.failure_history ?? []),
+            ...(message.failureHistory ?? []),
           ],
         },
       });

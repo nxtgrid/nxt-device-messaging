@@ -73,7 +73,7 @@ redis.call('ZADD', destination_queue, timeout_at, message_id)
 -- ============================================================================
 -- Step 5: Update message status
 -- ============================================================================
-redis.call('HSET', device_message_key, 'delivery_status', new_status)
+redis.call('HSET', device_message_key, 'deliveryStatus', new_status)
 
 -- ============================================================================
 -- Step 6: Fetch and return the complete message

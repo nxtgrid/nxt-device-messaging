@@ -33,7 +33,7 @@ Real topologies (why two policies exist):
 
 | Topology | Example plugin | Constraint | Queue bucket | Admission today |
 |---|---|---|---|---|
-| Radio network (any GW) | `calin-chirpstack` | Don’t flood the network | Per `network_id` (or `unassigned`) | Spacing / flood lock (~2s) |
+| Radio network (any GW) | `calin-chirpstack` | Don’t flood the network | Per `networkId` (or `unassigned`) | Spacing / flood lock (~2s) |
 | Meter pinned to one DCU | `calin-api-v1` / `v2` | Don’t overload the DCU / vendor API | Per DCU (`gateway.id` in legacy) | Concurrency cap (e.g. 5) + track set |
 
 Hard cutover (no dual-write Redis) lets us change key ownership and distributor shape without
@@ -43,10 +43,10 @@ migrating live queues.
 
 ## Decisions (locked)
 
-### 1. Plugins own `bottleneckKey({ network_id, device }) → string`
+### 1. Plugins own `bottleneckKey({ networkId, device }) → string`
 
 Each plugin returns the full Redis initial-queue key from **topology inputs only**
-(`network_id` + `device`, incl. DCU/gateway) — not the full create DTO. Core **does not**
+(`networkId` + `device`, incl. DCU/gateway) — not the full create DTO. Core **does not**
 port `queueInitial` and **does not** branch on manufacturer/protocol/`pluginId` to build
 that key.
 
@@ -61,14 +61,14 @@ Examples:
 | Plugin | Situation | Key |
 |---|---|---|
 | `calin-chirpstack` | Network `42` | `queue:lorawan_network:42` |
-| `calin-chirpstack` | `network_id: null` | `queue:lorawan_network:unassigned` |
+| `calin-chirpstack` | `networkId: null` | `queue:lorawan_network:unassigned` |
 | `calin-api-v1` | DCU / gateway `7` | `queue:gateway:7` (or `queue:dcu:7` — **plugin vocabulary**) |
 
 `{bottleneckKind}` and id encoding are **plugin-owned**. Core must not switch on
 `lorawan_network` vs `gateway`. Renaming `gateway` → `dcu` is a plugin concern only.
 
 `enqueueDeviceMessage(dto, queueKey)` already takes the key from the caller; the caller becomes
-`plugin.bottleneckKey({ network_id, device })` once the registry exists (Unit 5/6).
+`plugin.bottleneckKey({ networkId, device })` once the registry exists (Unit 5/6).
 
 ### 2. Admission is declared with named strategies (+ custom escape hatch)
 
@@ -214,7 +214,7 @@ core ADR needed unless two bundled plugins would collide under boot-time kind re
   id: 'calin-chirpstack',
   deliveryPattern: 'PUSH',
   bottleneckKey: (m) =>
-    `queue:lorawan_network:${m.network_id == null ? 'unassigned' : m.network_id}`,
+    `queue:lorawan_network:${m.networkId == null ? 'unassigned' : m.networkId}`,
   admission: { strategy: 'spacing', minIntervalMs: 2_000 },
 }
 
