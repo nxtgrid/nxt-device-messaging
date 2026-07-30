@@ -56,6 +56,7 @@ export default tseslint.config(
       'coverage/**',
       'node_modules/**',
       'eslint.config.mjs',
+      'src/http/smoke/**',
     ],
   },
   {

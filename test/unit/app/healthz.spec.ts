@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../../src/app.js';
+import { createPluginRegistry } from '../../../src/plugins/registry.js';
 
 describe('GET /healthz', () => {
   it('returns 200 with ok: true', async () => {
-    const app = await buildApp();
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([]),
+    });
 
     const response = await app.inject({
       method: 'GET',

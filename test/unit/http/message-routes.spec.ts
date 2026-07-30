@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+
+import { buildApp } from '../../../src/app.js';
+import { createMessageStore } from '../../../src/http/message-store.js';
+import { createPluginRegistry } from '../../../src/plugins/registry.js';
+import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+
+const enqueueBody = {
+  commandType: 'READ',
+  priority: 1,
+  pluginId: STUB_PUSH_ID,
+  networkId: 42,
+  correlationId: 'corr-1',
+  device: {
+    type: 'ELECTRICITY_METER' as const,
+    externalReference: 'm-1',
+  },
+};
+
+describe('message command routes (I2)', () => {
+  it('enqueues into the in-memory store and returns via get (camelCase wire)', async () => {
+    const messageStore = createMessageStore();
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+      messageStore,
+    });
+
+    const enqueue = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: enqueueBody,
+    });
+    expect(enqueue.statusCode).toBe(201);
+    const created = enqueue.json();
+    expect(created.correlationId).toBe('corr-1');
+    expect(created.commandType).toBe('READ');
+    expect(created.networkId).toBe(42);
+    expect(created.device.externalReference).toBe('m-1');
+    expect(created.deliveryStatus).toBe('QUEUED');
+    expect(created.id).toEqual(expect.any(String));
+    expect(created).not.toHaveProperty('correlation_id');
+
+    const get = await app.inject({
+      method: 'GET',
+      url: '/message/corr-1',
+    });
+    expect(get.statusCode).toBe(200);
+    expect(get.json()).toEqual(created);
+
+    await app.close();
+  });
+
+  it('rejects unknown pluginId once (not registered in config)', async () => {
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: { ...enqueueBody, pluginId: 'calin-api-v2' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: 'Unknown or disabled pluginId: calin-api-v2',
+    });
+
+    await app.close();
+  });
+
+  it('returns 404 when correlation id is missing', async () => {
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([]),
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/message/missing',
+    });
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it('requires Bearer when apiKey is configured', async () => {
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+      apiKey: 'secret',
+    });
+
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: enqueueBody,
+    });
+    expect(unauthorized.statusCode).toBe(401);
+
+    const authorized = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      headers: { authorization: 'Bearer secret' },
+      payload: enqueueBody,
+    });
+    expect(authorized.statusCode).toBe(201);
+
+    const healthz = await app.inject({ method: 'GET', url: '/healthz' });
+    expect(healthz.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('rejects invalid bodies', async () => {
+    const app = await buildApp({
+      pluginRegistry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: { pluginId: STUB_PUSH_ID },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'Invalid request body' });
+
+    await app.close();
+  });
+});

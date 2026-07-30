@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Intermezzo I2; Unit 5.2+ paused)* | — |
+| — | *(none blocking Intermezzo I3; Unit 5.2+ paused). Domain/Redis camelCase rename deferred to I3 — see session 14b* | — |
 
 ### Deferred with locked criteria
 
@@ -36,8 +36,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 `docs/plans/001-extraction.md`.
 
 **Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Next work is the
-**walking-skeleton Intermezzo** (I2–I4; I0–I1 done) — thin HTTP + enqueue→Redis — so
-contracts are exerciseable before more engine. See session 12–13 and plan **Phase 1b**.
+**walking-skeleton Intermezzo** (I3–I4; I0–I2 done) — enqueue→Redis — so contracts are
+exerciseable before more engine. See session 12–14 and plan **Phase 1b**.
 
 Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
 **done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
@@ -573,4 +573,63 @@ remains for now.
 **Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
 
 **Next:** **I2** — thin HTTP (unchanged).
+
+### 2026-07-30 — session 14: I2 thin HTTP (enqueue + get)
+
+**Landed:**
+
+- `src/http/` — Zod schemas (`enqueueBodySchema`, path params), Bearer hook
+  (`DEVICE_MESSAGING_API_KEY`; skip when unset), in-memory `MessageStore`, routes for
+  `POST /message/enqueue` (201) and `GET /message/:correlationId` (200/404).
+- `buildApp({ pluginRegistry, apiKey?, messageStore? })` — deps injected (no `runtime`
+  import from HTTP); `main.ts` passes boot registry + env key. `/healthz` stays open.
+- Plugin enablement: **one** `pluginRegistry.get(pluginId)` in the enqueue handler.
+  Zod validates shape only (no known-id enum / catalog re-check).
+- Missing `correlation_id` on enqueue → generate ULID. Store is one message per
+  correlation id (last write wins) until I3 Redis.
+
+**Decided (this chunk):** in-memory Map placeholder; auth minimal (Bearer when set).
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
+
+**Next:** **I3** — replace in-memory store with Redis enqueue + get-by-correlation.
+
+### 2026-07-30 — session 14b: command API camelCase + httpYac smoke
+
+**Decided — outward API is fully camelCase.** Zod + responses use `commandType`,
+`correlationId`, `networkId`, `externalReference`, etc. Aligns with ADR-003 webhook wire.
+Amended ADR-003 §2 (vocabulary vs wire casing).
+
+**Interim map:** `src/http/wire.ts` maps camelCase ↔ snake_case domain. Exists only until
+domain + Redis flip; then delete it.
+
+**Redis / domain camelCase (not this chunk — revisit at I3):**
+
+- **No production dual-write obstacle** — company cutover is stop-then-start onto a greenfield
+  Valkey; no need to read old snake_case hashes in prod.
+- **Real cost:** atomic rename across `lib/types.ts`, redis-repository serialize/deserialize,
+  Lua (if any field names), index key prefix `idx:correlation_id:` (optional cosmetic), and
+  all call sites already ported in Units 1–5.1. Do it in **one pass** with I3 (or immediately
+  before) so enqueue writes camelCase and the HTTP map disappears.
+- Estate Postgres `command_type` (ADR-011) is unrelated — stays on `nxt-backend`.
+
+**Landed:** camelCase schemas/routes/tests; `src/http/smoke/` httpYac (`.httpyac.js`,
+`healthz.http`, `message.http`, README) — Bearer via `{{$dotenv DEVICE_MESSAGING_API_KEY}}`
+(no login `@ref`; enqueue `# @name` for get-by-response). `.env.example` sets
+`DEVICE_MESSAGING_API_KEY=dev-key`. ESLint ignores `src/http/smoke/**`.
+
+**Next:** **I3** — Redis enqueue/get; prefer domain+Redis camelCase in that pass if scope
+allows, else keep the wire map one more chunk.
+
+### 2026-07-30 — session 14c: httpYac polish; I2 closed
+
+**Landed (smoke only):**
+
+- `.httpyac.js` → `.httpyac.cjs` (package is `"type": "module"`; CJS `module.exports`).
+- Dropped `$dotenv` for the API key — multi-root workspaces often miss this repo’s `.env`.
+  Local `apiKey: 'dev-key'` in `.httpyac.cjs` (mirror `nxt-backend` `devApiKey`); keep in
+  sync with `DEVICE_MESSAGING_API_KEY` in `.env`.
+- Verified: `/healthz` OK; enqueue/get with Bearer succeed against in-memory store.
+
+**I2 closed.** Next chunk is **I3**.
 

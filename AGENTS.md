@@ -39,17 +39,17 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo in
-progress (I0–I1 done).**
+progress (I0–I2 done; I3 next).**
 
 Course correction (decisions-log session 12): **Unit 5.2+ is paused.** Do **not** continue
-bottom-up engine until the walking skeleton lands. Next chunk is **I2** (thin HTTP
-enqueue/get).
+bottom-up engine until the walking skeleton lands. Next chunk is **I3** (enqueue → Redis).
 
 Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
-(`config`, `pluginRegistry`), Fastify `/healthz` on **3100**, deploy stubs (ADR-005),
-`src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle, `src/plugins/` (SPI, catalog,
-one-shot registry, `stub/`), `src/engine/base.ts` (5.1). Stub plugins `stub-push` /
-`stub-pull` are built from config at boot (I1).
+(`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
+deploy stubs (ADR-005), `src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle,
+`src/plugins/` (SPI, catalog, one-shot registry, `stub/`), `src/http/` (I2 enqueue/get,
+interim `wire.ts` map, in-memory store until I3; `smoke/` httpYac `.httpyac.cjs`),
+`src/engine/base.ts` (5.1). Stub plugins `stub-push` / `stub-pull` from config at boot (I1).
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `pnpm dev` (loads `.env`; port **3100**)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`

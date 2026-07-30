@@ -19,7 +19,10 @@ function resolvePort(): number {
 /**
  * Composition root — runtime already booted; build Fastify shell and listen.
  */
-const app = await buildApp();
+const app = await buildApp({
+  pluginRegistry,
+  apiKey: process.env.DEVICE_MESSAGING_API_KEY,
+});
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });

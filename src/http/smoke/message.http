@@ -1,0 +1,44 @@
+# Command API smoke — Bearer from `.httpyac.cjs` `apiKey` (keep in sync with `.env`).
+
+### Enqueue stub-push
+# @name enqueueStubPush
+POST {{baseUrl}}/message/enqueue
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "commandType": "READ",
+  "priority": 1,
+  "pluginId": "stub-push",
+  "networkId": 42,
+  "correlationId": "httpyac-demo-1",
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-1"
+  }
+}
+
+### GET by correlationId (fixed)
+GET {{baseUrl}}/message/httpyac-demo-1
+Authorization: Bearer {{apiKey}}
+
+### GET by correlationId (from enqueue response)
+# @ref enqueueStubPush
+GET {{baseUrl}}/message/{{enqueueStubPush.correlationId}}
+Authorization: Bearer {{apiKey}}
+
+### Enqueue unknown plugin (expect 400)
+POST {{baseUrl}}/message/enqueue
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "commandType": "READ",
+  "priority": 1,
+  "pluginId": "calin-api-v2",
+  "networkId": null,
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-1"
+  }
+}

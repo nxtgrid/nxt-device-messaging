@@ -1,7 +1,8 @@
 # ADR-003: Public HTTP Contract
 
 **Date:** 2026-07-27
-**Status:** Accepted
+**Status:** Accepted — amended 2026-07-30 (command API wire casing = camelCase; Redis/domain
+snake_case interim until rename pass)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -51,25 +52,32 @@ Cancel uses POST (not DELETE) so single and batch share one verb family and carr
 body. Soft-document an upper bound on batch size (on the order of hundreds); the port may
 MGET-optimise lookups for large batches. Message-bus delivery remains **deferred**.
 
-### 2. Full-pipeline field renames
+### 2. Field vocabulary (names) and wire casing
 
-These names are used everywhere — HTTP, Redis hash fields, indexes, logs — not only at the
-boundary:
+**Vocabulary** (same words HTTP ↔ Redis ↔ logs — not a Postgres constraint):
 
 | Inherited | Here |
 |---|---|
-| `meter_interaction_id` | `correlation_id` (opaque string, caller-supplied) |
-| `grid_id` | `network_id` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
-| `message_type` | `command_type` (opaque string to the core; see decision 4) |
+| `meter_interaction_id` | `correlationId` / `correlation_id` (opaque string, caller-supplied) |
+| `grid_id` | `networkId` / `network_id` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
+| `message_type` | `commandType` / `command_type` (opaque string to the core; see decision 4) |
 
 Aligns with `nxt-backend` ADR-010 decision 4 and with estate vocabulary in ADR-011
-(`command_type` on `meter_command_batches`).
+(`command_type` on `meter_command_batches` — that column name stays on the estate DB).
+
+**Wire JSON (command API + webhook) is camelCase** (`correlationId`, `commandType`,
+`networkId`, `externalReference`, …). Path params match (`:correlationId`).
+
+**Redis hash fields and in-process domain types** still use snake_case today (port from the
+frozen module). End state: flip domain + Redis to camelCase in one pass (see decisions-log;
+revisit at I3) and drop the HTTP↔domain map. Until then the HTTP layer maps once at the
+boundary.
 
 ### 3. Caller selects the plugin via `pluginId`
 
 `device.manufacturer` + `device.protocol` are dropped from the public contract. The caller
 passes a required `pluginId`. The service routes enqueue, token generation, and ingress by
-that id. `device` on the wire is identity only (`type`, `external_reference`, optional
+that id. `device` on the wire is identity only (`type`, `externalReference`, optional
 `gateway`).
 
 Bundled plugin ids (kebab-case, manufacturer + network server where both matter):
@@ -148,9 +156,9 @@ do not in v1.
 }
 ```
 
-Wire JSON is **camelCase**. Queue internals (`delivery_queue_id`, `retry_count`, priority,
-`request_data`) are omitted from the webhook; `GET /message/:correlationId` may expose more
-for inspection.
+Wire JSON is **camelCase** (same as the command API). Queue internals (`deliveryQueueId`,
+`retryCount`, priority, `requestData`) are omitted from the webhook; `GET /message/:correlationId`
+may expose more for inspection.
 
 #### Signing (opt-in)
 
