@@ -39,15 +39,16 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo in
-progress (I0 done — docs pivot).**
+progress (I0–I1 done).**
 
 Course correction (decisions-log session 12): **Unit 5.2+ is paused.** Do **not** continue
-bottom-up engine until the walking skeleton lands. Next chunk is **I1** (boot + stub
-plugins from config).
+bottom-up engine until the walking skeleton lands. Next chunk is **I2** (thin HTTP
+enqueue/get).
 
 Already in place: tooling (ADR-004), config loader (ADR-002), Fastify `/healthz` on **3100**,
-deploy stubs (ADR-005), `src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle, plugin
-SPI + registry, `src/engine/base.ts` (5.1).
+deploy stubs (ADR-005), `src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle,
+`src/plugins/` (SPI, catalog, one-shot registry, `stub/`), `src/engine/base.ts` (5.1).
+Stub plugins `stub-push` / `stub-pull` are built from config at boot (I1).
 
 - **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`

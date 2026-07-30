@@ -5,7 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation done through 5.1; **Phase 1b Intermezzo next (I0 done)**
+**Status:** Phase 0 complete; Phase 1 foundation done through 5.1; **Phase 1b Intermezzo (I0–I1 done; I2 next)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -40,7 +40,7 @@ not the stale plan's Nest controllers.
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1. (5.2+ paused for 1b) | Foundation done through 5.1 |
-| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0 done; I1 next** |
+| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I1 done; I2 next** |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | HTTP contract per **ADR-003** (remainder): webhook HMAC/DLQ, ingress, token, OpenAPI, auth polish | Partially pulled into 1b |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
@@ -89,11 +89,12 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
       `PullIncoming`; param `plugin`) — deleted at Unit 6 for `DeviceMessagingPlugin`.
       Max age + poll ladder = module defaults (D5). No concurrency export (ADR-006).
       Cleanup options pass-through only (D2).
-- [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** `plugin.interface.ts`,
-      `plugin-registry.ts`. `DeviceMessagingPlugin` with nested `outgoing` / `incoming` /
-      optional `token`; `Admission` declaration (ADR-006); in-memory registry
-      (`register` / `get` / `getAll` / `getByDeliveryPattern`). **Not** here: D1 owner map,
-      D3 admission execution, D5 timeout move, config-driven construction, real plugins.
+- [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** Now under `src/plugins/`
+      (`plugin.interface.ts`, `registry.ts`, `catalog.ts`). `DeviceMessagingPlugin` with
+      nested `outgoing` / `incoming` / optional `token`; `Admission` declaration (ADR-006);
+      one-shot `createPluginRegistry(config.plugins)` + `setPluginRegistry` /
+      `getPluginRegistry`. **Not** here: D1 owner map, D3 admission execution, D5 timeout
+      move, real plugins.
 
 ### Phase 1b — Walking skeleton Intermezzo
 
@@ -101,9 +102,10 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
 engine. Unit 5.2+ stays paused until this phase closes. See decisions-log session 12.
 
 - [x] **I0 — Docs pivot.** Plan / AGENTS / decisions-log course correction only.
-- [ ] **I1 — Boot + stub plugins.** Composition root loads config; constructs and registers
-      stub plugin(s) listed in `plugins[]` (no vendor I/O). `bottleneckKey` / `deliveryPattern` /
-      `admission` / no-op `sendOne` (and PULL `fetchStatus` → null if needed).
+- [x] **I1 — Boot + stub plugins.** Composition root loads config; one-shot
+      `createPluginRegistry(config.plugins)` from `PLUGIN_CATALOG` (`stub-push` /
+      `stub-pull` under `src/plugins/stub/`). Lookup-only registry; unknown / duplicate ids
+      fail at boot. `config.default.json` stays empty; `config.example.json` lists both stubs.
 - [ ] **I2 — Thin HTTP.** Zod + routes for `POST /message/enqueue` and
       `GET /message/:correlationId` per ADR-003 (auth minimal or stub). Not full Phase 3
       (no HMAC webhook, DLQ, OpenAPI, ingress).
@@ -134,7 +136,7 @@ local Valkey with a config-enabled stub plugin. Then resume Unit 5.2+.
 - [ ] **Unit 6 — Plugin SPI polish + config wiring.** Formalize anything still open on
       `DeviceMessagingPlugin` (command-type validation ADR-003 §4; optional tightening of
       PUSH/PULL incoming requirements). Construct only plugins present in config (ADR-002 §6) —
-      stub construction may land in **I1**; Unit 6 tightens real plugins.
+      **stub construction landed in I1**; Unit 6 adds real plugin factories to the same map.
       **D5 (ADR-002):** plugin `tuning` owns NS / GW / device / poll delays once Unit 5 can
       resolve via the registry — then drop those keys from core `delivery`. Stale sketch in
       `nxt-backend` plan 001 task 3.1 is detail only — correct `network_id` to `number | null`.
@@ -175,8 +177,11 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `lib/retry-helpers.ts` | 45 | 3 | **ported** → `src/lib/retry-helpers.ts` |
 | `lib/lifecycle.push.ts` | 82 | 4 | **ported** → `src/lib/lifecycle.push.ts` |
 | `lib/lifecycle.pull.ts` | 138 | 4 | **ported** → `src/lib/lifecycle.pull.ts` |
-| *(new)* `lib/plugin.interface.ts` | — | pre–5 | **ported** → `src/lib/plugin.interface.ts` |
-| *(new)* `lib/plugin-registry.ts` | — | pre–5 | **ported** → `src/lib/plugin-registry.ts` |
+| *(new)* `lib/plugin.interface.ts` | — | pre–5 | **ported** → `src/plugins/plugin.interface.ts` (moved from `lib/` post-I1) |
+| *(new)* `lib/plugin-registry.ts` | — | pre–5 → I1 tidy | **ported** → `src/plugins/registry.ts` (one-shot from config; no mutable register) |
+| *(new)* `plugins/catalog.ts` | — | I1 tidy | **ported** → `src/plugins/catalog.ts` |
+| *(new)* `plugins/stub.ts` | — | I1 | **ported** → `src/plugins/stub/index.ts` (`stub-push` / `stub-pull`) |
+| *(new)* `plugins/register-from-config.ts` | — | I1 | **dropped** — folded into `createPluginRegistry` |
 | `device-messages.service.ts` | 140 | 5.1 | **ported** → `src/engine/base.ts` (no pub/sub; `emitDeliveryEvent` stub) |
 | `outgoing.service.ts` | 354 | 5 | pending |
 | `incoming.service.ts` | 163 | 5 | pending |

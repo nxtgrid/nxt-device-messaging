@@ -19,28 +19,10 @@
   },
   "plugins": [
     {
-      "id": "calin-chirpstack",
-      "settings": {
-        "chirpstackUrl": "https://chirpstack.example",
-        "applicationId": "…",
-        "profileId": "…"
-      },
-      "tuning": {
-        "nsTimeoutMs": 10000,
-        "floodPreventionWindowMs": 2000
-      }
+      "id": "stub-push"
     },
     {
-      "id": "calin-api-v2",
-      "settings": {
-        "baseUrl": "https://calin-api.example",
-        "companyName": "…",
-        "customerId": "…"
-      },
-      "tuning": {
-        "nsTimeoutMs": 30000,
-        "maxConcurrentPerGateway": 5
-      }
+      "id": "stub-pull"
     }
   ]
 }

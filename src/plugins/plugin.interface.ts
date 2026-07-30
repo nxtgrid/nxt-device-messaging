@@ -15,7 +15,7 @@ import type {
   FailureContext,
   ParsedIncomingEvent,
   PluginId,
-} from './types.js';
+} from '../lib/types.js';
 
 /** How confirmation works after send — not inferred from bottleneck kind (ADR-006 §3). */
 export type DeliveryPattern = 'PUSH' | 'PULL';

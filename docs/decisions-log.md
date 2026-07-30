@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Intermezzo I1; Unit 5.2+ paused)* | — |
+| — | *(none blocking Intermezzo I2; Unit 5.2+ paused)* | — |
 
 ### Deferred with locked criteria
 
@@ -36,8 +36,8 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 `docs/plans/001-extraction.md`.
 
 **Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Next work is the
-**walking-skeleton Intermezzo** (I1–I4) — stub plugins + thin HTTP + enqueue→Redis — so
-contracts are exerciseable before more engine. See session 12 and plan **Phase 1b**.
+**walking-skeleton Intermezzo** (I2–I4; I0–I1 done) — thin HTTP + enqueue→Redis — so
+contracts are exerciseable before more engine. See session 12–13 and plan **Phase 1b**.
 
 Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
 **done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
@@ -509,4 +509,46 @@ and D1–D5 “later” made progress hard to validate. Preferred approach going
 **I0 (this session):** docs only — no code.
 
 **Next:** **I1** — boot uses config; construct + register stub plugin(s) from `plugins[]`.
+
+### 2026-07-30 — session 13: I1 boot + stub plugins
+
+**Landed:**
+
+- `src/plugins/stub.ts` — shared `createStubPlugin`; bundled `stub-push` (PUSH + spacing,
+  `queue:stub_network:{id|unassigned}`) and `stub-pull` (PULL + concurrency,
+  `queue:stub_gateway:{id|unassigned}`). No-op `sendOne` → `stub-ext-id`; PULL
+  `fetchStatus` → `null`; PUSH `handle` → `null`.
+- `src/plugins/register-from-config.ts` — maps known stub ids → factories; unknown id
+  fails at boot (real plugins stay Phase 2 / Unit 6).
+- `main.ts` — after `loadConfig`, clears registry (tsx watch-safe) and registers
+  `config.plugins[]`.
+- `config.example.json` lists both stubs; `config.default.json` stays empty (ADR-002).
+
+**Decided (this chunk):** two stub ids (B), not a single configurable stub.
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
+
+**Next:** **I2** — thin HTTP Zod + routes for enqueue + get-by-correlation.
+
+### 2026-07-30 — session 13b: plugin boot tidy (one-shot registry under `plugins/`)
+
+**Decided:** Collapse empty-then-register into one-shot construction from config; keep all
+plugin code under `src/plugins/` (SPI, catalog, registry, per-plugin folders). Dynamic
+import of unused plugins deferred until Phase 2 size justifies it.
+
+**Landed:**
+
+- Moved SPI → `src/plugins/plugin.interface.ts`
+- `src/plugins/catalog.ts` — id → factory (`stub-push` / `stub-pull`)
+- `src/plugins/registry.ts` — `createPluginRegistry(entries)` lookup-only;
+  `setPluginRegistry` / `getPluginRegistry` (mirrors config store)
+- Stubs → `src/plugins/stub/index.ts`
+- Dropped `lib/plugin-registry.ts`, `lib/plugin.interface.ts`,
+  `plugins/register-from-config.ts`, mutable `register` / `clear` happy path
+- `main.ts`: `setPluginRegistry(createPluginRegistry(config.plugins))`
+- `engine/base.ts` uses `getPluginRegistry()`
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
+
+**Next:** **I2** — thin HTTP (unchanged).
 

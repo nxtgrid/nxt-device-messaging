@@ -9,7 +9,6 @@
 
 import { isNotNil } from 'ramda';
 import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
-import { pluginRegistry } from '../lib/plugin-registry.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { calculateBackoffDelay, getMaxRetries } from '../lib/retry-helpers.js';
 import type {
@@ -19,6 +18,7 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/types.js';
+import { getPluginRegistry } from '../plugins/registry.js';
 
 /**
  * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
@@ -128,7 +128,7 @@ export async function requeueMessage(messageId: string): Promise<void> {
     return;
   }
 
-  const plugin = pluginRegistry.get(pluginId);
+  const plugin = getPluginRegistry().get(pluginId);
   if (!plugin) {
     console.warn(
       `[DEVICE MESSAGING] No plugin registered for ${ pluginId } (message ${ messageId }). Removing from retry.`,
