@@ -5,14 +5,15 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation through 5.1; **Phase 1b Intermezzo I0–I3 done
-(HTTP↔Redis exit met); I4 optional or close, then Unit 5.2+**
+**Status:** Phase 0 complete; Phase 1 foundation through 5.1; **Phase 1b Intermezzo closed
+(I0–I3; I4 skipped). Next: Unit 5.2+ (cancel engine + thin cancel HTTP)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
 plugin interface sketch) — but its phase order, framework assumptions, and several task descriptions
-are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 implements **ADR-003**,
-not the stale plan's Nest controllers.
+are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 is **ADR-003 polish**
+(webhook HMAC/DLQ, OpenAPI, auth); command/ingress routes land thin with the engine units that
+need them (same pattern as Intermezzo enqueue/get).
 
 ---
 
@@ -23,14 +24,18 @@ not the stale plan's Nest controllers.
 2. **The source is `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend`, frozen at
    `db5c2ac`.** Both repos are in the same Cursor workspace. Read the source, never a description
    of it.
-3. Port / implement **one chunk at a time**, in the order the plan currently states (Intermezzo
-   before Unit 5.2+). Each chunk ends with the repo compiling. Stop after each chunk for review —
-   do not run ahead.
-4. **Update the import ledger** as each legacy file lands. The ledger, not git history, is the
+3. Port / implement **one chunk at a time**, in the order the plan currently states. Each chunk
+   ends with the repo compiling. Stop after each chunk for review — do not run ahead.
+4. **End-to-end rule (after Intermezzo):** each Unit 5 slice that has an ADR-003 **command or
+   ingress** surface ships **thin HTTP + httpYac smoke in the same chunk** (lean routes like
+   enqueue/get — not full OpenAPI/HMAC). Timer-only engine work (distribute, send, poll) has
+   **no** public route; exercise via bootable stub plugins + enqueue/get (and tests that may
+   invoke one tick). Do not invent a debug `POST /distribute` unless the maintainer asks.
+5. **Update the import ledger** as each legacy file lands. The ledger, not git history, is the
    authoritative record of what has been re-homed. A source file is only marked done when *every*
    behaviour in it has a home.
-5. Record deviations — anything not a faithful port — in the decisions log with a reason.
-6. **End-of-chunk ritual:** update `AGENTS.md` status, this plan’s checkboxes, and
+6. Record deviations — anything not a faithful port — in the decisions log with a reason.
+7. **End-of-chunk ritual:** update `AGENTS.md` status, this plan’s checkboxes, and
    `docs/decisions-log.md`; then write a **carry-over prompt** for the next fresh chat (done /
    next / out of scope / who drives). Cold sessions must not need the prior transcript if those
    three files + the prompt agree.
@@ -40,22 +45,21 @@ not the stale plan's Nest controllers.
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1. (5.2+ paused for 1b) | Foundation done through 5.1 |
-| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **I0–I3 done (exit met); I4 optional / close** |
+| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1; then 5.2+ after 1b | Foundation through 5.1; **resume 5.2+** |
+| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
-| **3** | HTTP contract per **ADR-003** (remainder): webhook HMAC/DLQ, ingress, token, OpenAPI, auth polish | Partially pulled into 1b |
+| **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; enqueue/get in 1b; cancel/token/ingress with Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation (Units 1–4, pre–Unit 5 SPI, Unit 5.1) is **done**.
-**Unit 5.2+ is paused** until **Phase 1b** closes. Phase 1b pulls forward thin HTTP (enqueue/get)
-and stub plugins so the service is curl-able; full Phase 3 and real plugins stay deferred.
-After 1b: resume Unit 5.2+ / D1–D3 against that path. Phase 4 still owns ADR-005 observability
-hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
+**Phase 1b is closed.** Resume Unit 5.2+ against the curl-able stub path. Phase 4 still owns
+ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
+already in Phase 0.
 
 ## Port units
 
-Foundation units were bottom-up; **Phase 1b runs next** (outside-in skeleton), then Unit 5.2+.
-Adapters remain one-pass into plugin shape (per-unit review is the control).
+Foundation was bottom-up; Intermezzo locked the outside-in path; **Unit 5.2+ resumes** with the
+end-to-end rule above. Adapters remain one-pass into plugin shape (per-unit review is the control).
 
 ### Phase 1
 
@@ -100,7 +104,7 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
 ### Phase 1b — Walking skeleton Intermezzo
 
 **Why:** exerciseable contracts (config → stub plugin → HTTP → Redis) before more bottom-up
-engine. Unit 5.2+ stays paused until this phase closes. See decisions-log session 12.
+engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
 
 - [x] **I0 — Docs pivot.** Plan / AGENTS / decisions-log course correction only.
 - [x] **I1 — Boot + stub plugins.** `src/runtime.ts` loads config and builds
@@ -120,26 +124,26 @@ engine. Unit 5.2+ stays paused until this phase closes. See decisions-log sessio
       `lib/device-message/schemas.ts` → `CreateDeviceMessage` in `types.ts`; HTTP lean
       (maps `UnknownPluginError` → 400). Optional `correlationId` (no server ULID). Smoke +
       README Valkey-only compose. **Intermezzo HTTP↔Redis exit criterion met.**
-- [ ] **I4 — Optional.** Cancel and/or one stub distribute/send tick — only if needed for the
-      skeleton; otherwise **close Intermezzo** and resume Unit 5.2+ (cancel remainder → 5.3).
+- [x] **I4 — Skipped.** Maintainer closed Intermezzo without optional cancel / stub
+      distribute tick (session 16). Cancel lands in Unit 5.2 with thin HTTP.
 
-**Intermezzo HTTP↔Redis done when:** `POST /message/enqueue` + `GET /message/:correlationId`
-work against local Valkey with a config-enabled stub plugin — **met in I3.** Full Intermezzo
-close = maintainer choice on I4 vs defer. Then resume Unit 5.2+.
+**Intermezzo closed.** HTTP↔Redis exit met in I3; I4 skipped. Resume Unit 5.2+.
 
 ### Phase 1 (engine resumed after 1b)
 
-- [ ] **Unit 5 — Core engine, framework-stripped.** Sliced for review:
+- [ ] **Unit 5 — Core engine, framework-stripped.** Sliced for review; **command/ingress
+      faces land thin HTTP in the same chunk** (end-to-end rule):
       - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
         `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
         Requeue via `plugin.bottleneckKey` (not `queueInitial`).
         `BottleneckKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
-      - [ ] **5.2** Outgoing: enqueue, cancel, get-by-correlation — **paused** (enqueue/get
-        satisfied by I3; finish cancel + remaining surface after Intermezzo)
-      - [ ] **5.3** D1 then distribute + D3 admission — **after Intermezzo**
-      - [ ] **5.4** sendOne + resolution cycle
-      - [ ] **5.5** Incoming
-      - [ ] **5.6** Token + interval timers (`engine.enabled`)
+      - [ ] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
+        `POST /messages/cancel` + smoke (enqueue/get already from I3)
+      - [ ] **5.3** D1 then distribute + D3 admission — timer-driven; exercise with stub
+        plugins + enqueue/get (no public distribute route)
+      - [ ] **5.4** sendOne + resolution cycle — same (internal; stubs + observe)
+      - [ ] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke
+      - [ ] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`)
       `@Injectable`/`@Module` removed; timers gated on `engine.enabled` (ADR-002 §7).
       **ADR-006 / deferred:** D1–D3 in 5.3+; D2 on cleanup paths as wired; D5 when touching
       stage-timeout reads.
@@ -242,10 +246,12 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 |---|---|---|
 | Message-bus adapter for results | ADR-003: HTTP webhook is v1; bus stays optional | A consumer needs broker delivery |
 | Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
+| Debug HTTP to run distribute / poll once | Nice for manual stepping; not in ADR-003; overkill while timers + stubs suffice | Manual smoke against timers becomes painful |
 | Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
 | HA / multi-instance (leader election, Redis-backed correlator) | `nxt-backend` ADR-010 §6 defers it | Evidence of multi-instance demand |
 
-Cancel is **not** deferred — ADR-003 ships `POST /message/cancel` and `POST /messages/cancel`.
+Cancel is **not** deferred — Unit **5.2** ships engine + `POST /message/cancel` /
+`POST /messages/cancel`.
 
 ## Notes & decisions log
 

@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Intermezzo close / I4; Unit 5.2+ paused)* | — |
+| — | *(none blocking Unit 5.2; Intermezzo closed)* | — |
 
 ### Deferred with locked criteria
 
@@ -24,24 +24,25 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
-| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Unit 5.3 **after** Intermezzo | None (no distributor yet) | 006 |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths **after** Intermezzo | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
-| D3 | Wire named admission strategies into `distribute` | Unit 5.3 **after** Intermezzo | None | 006 |
+| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Unit 5.3 | None (no distributor yet) | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
+| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
-| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins **after** Intermezzo | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
+| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
 **8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-**Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Phase 1b Intermezzo
-**I0–I3 done** (HTTP↔Redis exit met). Next: **I4** optional or close Intermezzo, then
-resume 5.2+. See session 12–15c and plan **Phase 1b**.
+**Course correction (2026-07-30):** Phase 1b Intermezzo **closed** (I0–I3; I4 skipped).
+Resume Unit **5.2+** with the end-to-end rule (session 16): ADR-003 command/ingress
+surfaces land thin HTTP with the engine chunk; timer-only paths use stub plugins +
+enqueue/get. See sessions 12–16 and plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
-**done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
-against a curl-able path. Also outstanding on `nxt-backend`:
+**done**. Intermezzo closed. Next is **5.2** (cancel + thin cancel HTTP). Also outstanding
+on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -692,4 +693,26 @@ Documented on `redisKeys`, ADR-003 §2, AGENTS, plan I3.
 **Next:** Maintainer chooses **I4** (optional cancel and/or stub distribute/send tick) **or
 close Intermezzo** and resume Unit 5.2+ (cancel remainder → 5.3 distribute + D1/D3).
 Generic Zod validation error bodies deferred to Phase 3 / OpenAPI hardening.
+
+### 2026-07-30 — session 16: close Intermezzo + end-to-end working rule
+
+**Decided:**
+
+- **Close Intermezzo.** Skip **I4** (no optional cancel / stub distribute tick in 1b).
+- **End-to-end rule after 1b:** each Unit 5 slice with an ADR-003 **command or ingress**
+  surface ships **thin HTTP + smoke in the same chunk** (same lean style as enqueue/get).
+  Remap: **5.2** cancel + cancel routes; **5.5** incoming + thin ingress; **5.6** token +
+  thin `POST /token/generate` (+ timers).
+- **Timer-only paths** (distribute / send / poll in 5.3–5.4): no public route. Exercise via
+  bootable **stub plugins** (`src/plugins/stub/` — real catalog entries, not test-only
+  fixtures) + enqueue/get; tests may invoke one tick.
+- **Debug HTTP** to run distribute/poll once: deferred (nice for manual stepping; overkill
+  while timers + stubs suffice). Revisit if smoke against timers becomes painful.
+- **Phase 3** shrinks to ADR-003 **polish** (webhook HMAC/DLQ, OpenAPI, auth hardening) —
+  not first landing of cancel/token/ingress routes.
+
+**Docs only** this session — AGENTS, plan 001, this log.
+
+**Next:** Unit **5.2** — cancel from legacy `outgoing.service.ts` + thin
+`POST /message/cancel` / `POST /messages/cancel` + httpYac smoke.
 

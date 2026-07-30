@@ -38,21 +38,22 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo:
-I0–I3 done (HTTP↔Redis exit criterion met). Next: I4 optional or close Intermezzo,
-then resume Unit 5.2+.**
+**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo
+closed (I0–I3; I4 skipped). Next: Unit 5.2+ — cancel engine + thin cancel HTTP.**
 
-Course correction (decisions-log session 12): **Unit 5.2+ stays paused** until Intermezzo
-closes. Do **not** continue bottom-up distribute/engine until then.
+Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
+command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
+paths (distribute / send / poll) stay internal — exercise via stub plugins +
+enqueue/get (no public debug trigger for now).
 
 Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
 (`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
-lifecycle, `src/plugins/` (SPI, catalog, one-shot registry, `stub/`), `src/http/` (lean
-enqueue/get; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts` (5.1) +
-`outgoing.ts` (I3 — Redis enqueue/get, `UnknownPluginError` → HTTP 400). Stub plugins
-`stub-push` / `stub-pull` from config at boot. **Distribute still no-op.**
+lifecycle, `src/plugins/` (SPI, catalog, one-shot registry, `stub/` — real bootable
+plugins, not test-only fixtures), `src/http/` (lean enqueue/get; `message-params.ts`;
+`smoke/` httpYac), `src/engine/base.ts` (5.1) + `outgoing.ts` (I3 — Redis enqueue/get,
+`UnknownPluginError` → HTTP 400). **Distribute still no-op.**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
