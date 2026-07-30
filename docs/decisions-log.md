@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Phase 1 Unit 5; discuss D1/D2/D3/D5 as they come up)* | — |
+| — | *(none blocking Intermezzo I1; Unit 5.2+ paused)* | — |
 
 ### Deferred with locked criteria
 
@@ -24,20 +24,24 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
-| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Units 5–6 | None (no distributor yet) | 006 |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Units 5–6 | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
-| D3 | Wire named admission strategies into `distribute` | Units 5–6 | None | 006 |
+| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Unit 5.3 **after** Intermezzo | None (no distributor yet) | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths **after** Intermezzo | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
+| D3 | Wire named admission strategies into `distribute` | Unit 5.3 **after** Intermezzo | None | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
-| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Units 5–6 (+ plugin units) | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
+| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins **after** Intermezzo | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
 **8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
 **10 (bottleneck + admission → ADR-006)** are **settled** — see the log below and
 `docs/plans/001-extraction.md`.
 
-Phase 0 scaffold is **done** (ADR-001–005 executed). Phase 1 Units 1–4 and **pre–Unit 5**
-(SPI + registry) are **done**; **Unit 5.1** (engine base) is **done**. Next is Unit 5.2+
-(engine slices; discuss D1/D2/D3/D5 as they come up), plus items owned by `nxt-backend`:
+**Course correction (2026-07-30):** bottom-up Unit 5.2+ is **paused**. Next work is the
+**walking-skeleton Intermezzo** (I1–I4) — stub plugins + thin HTTP + enqueue→Redis — so
+contracts are exerciseable before more engine. See session 12 and plan **Phase 1b**.
+
+Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
+**done**. **Do not** continue Unit 5.2 until the Intermezzo is closed. Then resume 5.2+/D1–D3
+against a curl-able path. Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -483,4 +487,26 @@ construction, real plugins, command-type validation (Unit 6 polish).
 **Checks:** `pnpm typecheck` / `lint` / `test` / `build`.
 
 **Next:** Unit 5.2 (enqueue / cancel / get-by-correlation) after review.
+
+### 2026-07-30 — session 12: I0 docs pivot (walking-skeleton Intermezzo)
+
+**Course correction.** Bottom-up engine port (Unit 5.2+) produced high-quality substrate but
+deferred too many contracts (HTTP, config-driven plugins, real E2E). Continual interim seams
+and D1–D5 “later” made progress hard to validate. Preferred approach going forward: lock
+**exerciseable** API + config + stub plugins, then finish engine against that path.
+
+**Decided:**
+
+- Insert **Phase 1b — Walking skeleton Intermezzo** (slices I1–I4) **before** Unit 5.2+.
+- Unit **5.2+ paused** until Intermezzo closes. D1/D2/D3/D5 revisit only **after** I1–I4
+  (still with locked ADR criteria — do not invent half solutions in the Intermezzo).
+- Intermezzo pulls forward a **thin** slice of Phase 3 (enqueue/get Zod + routes) and a
+  **stub** of Phase 2 (dummy plugins). Full ADR-003 (HMAC webhook, DLQ, OpenAPI, ingress)
+  and real CALIN/ChirpStack plugins stay on their phases.
+- Work continues in **small reviewable chats**; each chunk ends with docs sync + a
+  **carry-over prompt** for a fresh session (see plan “How to work”).
+
+**I0 (this session):** docs only — no code.
+
+**Next:** **I1** — boot uses config; construct + register stub plugin(s) from `plugins[]`.
 

@@ -38,15 +38,16 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete; Phase 1 in progress (Units 1–4 done; pre–Unit 5 SPI landed).** Tooling
-(ADR-004), config loader (ADR-002), Fastify shell with `GET /healthz` on port **3100**, and
-deployment stubs (ADR-005: Dockerfile, compose + Valkey, CI/GHCR) are in place. Core domain
-types live in `src/lib/types.ts`; Redis repository + Lua in `src/lib/redis-repository/`;
-queue primitives in `src/lib/queue-moving*.ts` and `src/lib/retry-helpers.ts`; lifecycle in
-`src/lib/lifecycle.{push,pull}.ts`; plugin SPI + registry in `src/lib/plugin.interface.ts`
-and `src/lib/plugin-registry.ts`. Engine base in `src/engine/base.ts` (Unit 5.1).
-**Unit 5.2+** (outgoing / distribute / …) next; Unit 6 is SPI polish + config-driven
-construction.
+**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo in
+progress (I0 done — docs pivot).**
+
+Course correction (decisions-log session 12): **Unit 5.2+ is paused.** Do **not** continue
+bottom-up engine until the walking skeleton lands. Next chunk is **I1** (boot + stub
+plugins from config).
+
+Already in place: tooling (ADR-004), config loader (ADR-002), Fastify `/healthz` on **3100**,
+deploy stubs (ADR-005), `src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle, plugin
+SPI + registry, `src/engine/base.ts` (5.1).
 
 - **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
