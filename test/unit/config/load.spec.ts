@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getConfig, loadConfig, setConfig } from '../../../src/config/index.js';
+import { loadConfig } from '../../../src/config/index.js';
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 const FROM_PATH_FIXTURE = join(FIXTURES_DIR, 'from-path.config.json');
@@ -111,28 +111,5 @@ describe('loadConfig', () => {
     expect(config.delivery.gwInFlightTimeoutMs).toBe(900_000);
     expect(config.delivery.deviceInFlightTimeoutMs).toBe(12_000);
     expect(config.delivery.initialPollDelayMs).toBe(10_000);
-  });
-});
-
-describe('getConfig / setConfig', () => {
-  it('returns the config previously set', () => {
-    const testConfig = {
-      $schemaVersion: '1' as const,
-      engine: { enabled: false },
-      delivery: {
-        maxRetries: 1,
-        retryBaseDelayMs: 100,
-        retryBackoffMultiplier: 2,
-        retryMaxDelayMs: 1000,
-        messageTtlSeconds: 60,
-        nsInFlightTimeoutMs: 20_000,
-        gwInFlightTimeoutMs: 900_000,
-        deviceInFlightTimeoutMs: 12_000,
-        initialPollDelayMs: 10_000,
-      },
-      plugins: [],
-    };
-    setConfig(testConfig);
-    expect(getConfig()).toBe(testConfig);
   });
 });

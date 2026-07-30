@@ -1,16 +1,16 @@
 /**
  * @fileoverview Plugin registry — built once from config `plugins[]` (ADR-002 §6).
  *
- * Lookup-only after construction. No empty-then-register happy path.
- * Process-wide store mirrors config (`setPluginRegistry` / `getPluginRegistry`).
+ * Lookup-only after construction. Call from `runtime.ts` (or tests) with config entries;
+ * do not import `runtime` from this module.
  *
  * No `queueKey → pluginId` map here (D1 — Unit 5). No admission execution (D3 — Unit 5).
  */
 
-import { PLUGIN_CATALOG } from './catalog.js';
-import type { DeliveryPattern, DeviceMessagingPlugin } from './plugin.interface.js';
 import type { DeviceMessagingConfig } from '../config/schema.js';
 import type { PluginId } from '../lib/types.js';
+import { PLUGIN_CATALOG } from './catalog.js';
+import type { DeliveryPattern, DeviceMessagingPlugin } from './plugin.interface.js';
 
 export type PluginRegistry = {
   /** Look up by plugin id. */
@@ -58,26 +58,4 @@ export function createPluginRegistry(
       return Object.values(plugins).filter(plugin => plugin.deliveryPattern === pattern);
     },
   };
-}
-
-let currentRegistry: PluginRegistry | undefined;
-
-/**
- * Stores the active registry. Used by the composition root after
- * {@link createPluginRegistry}, and by tests as `setPluginRegistry(...)`.
- */
-export function setPluginRegistry(registry: PluginRegistry): void {
-  currentRegistry = registry;
-}
-
-/**
- * Returns the active registry. Throws if called before boot (or test) setup.
- */
-export function getPluginRegistry(): PluginRegistry {
-  if (currentRegistry === undefined) {
-    throw new Error(
-      'getPluginRegistry() was called before plugins were loaded. Call createPluginRegistry() + setPluginRegistry() in main.ts (or setPluginRegistry() in tests) first.',
-    );
-  }
-  return currentRegistry;
 }

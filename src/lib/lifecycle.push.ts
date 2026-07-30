@@ -8,9 +8,11 @@
  * Functions return data; side effects (retryOrFail) are handled by the caller.
  */
 
+import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from './redis-repository/index.js';
 import type { DeviceMessage, ParsedIncomingEvent } from './types.js';
 import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
+
 
 /**
  * Interim structural minimum for PUSH ingress (Unit 4).
@@ -69,12 +71,14 @@ export async function getPushTimeouts(now: number): Promise<PushTimeoutResult[]>
  * @param messageId - ULID of the message
  * @param message - The full message (already fetched by caller)
  * @param plugin - Plugin (or structural minimum with `getRemoteStatus`)
+ * @param deliveryConfig - Shared delivery knobs (GW timeout)
  * @returns true if timeout was extended, false if should proceed to retryOrFail
  */
 export async function maybeExtendMessageInGwQueue(
   messageId: string,
   message: DeviceMessage,
   plugin: PushOutgoing,
+  deliveryConfig: DeliveryConfig,
 ): Promise<boolean> {
   try {
     const { delivery_status } = await plugin.getRemoteStatus(message);
@@ -85,6 +89,6 @@ export async function maybeExtendMessageInGwQueue(
     return false;
   }
 
-  await moveQueuePush.extendGwQueueTimeout(messageId);
+  await moveQueuePush.extendGwQueueTimeout(messageId, deliveryConfig);
   return true;
 }

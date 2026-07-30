@@ -8,11 +8,12 @@
  * This file contains shared primitives used by both patterns.
  */
 
-import { getConfig } from '../config/index.js';
+import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from './redis-repository/index.js';
 import { deserializeMessage, rawHashToObject } from './redis-repository/helpers.js';
 import { redisKeys } from './redis-repository/keys.js';
 import type { DeviceMessageDeliveryStatus, FailureReason } from './types.js';
+
 
 /**
  * Configuration for an in-flight queue stage.
@@ -56,10 +57,10 @@ export const _moveQueue = async (
     delivery_status: DeviceMessageDeliveryStatus;
     delivery_queue_id?: string;
   },
+  messageTtlSeconds: number,
   indexToCreate?: string,
 ): Promise<boolean> => {
   const messageKey = redisKeys.message(messageId);
-  const ttlSeconds = getConfig().delivery.messageTtlSeconds;
 
   const result = await redisRepo.client.moveMessageBetweenQueues(
     fromQueue,
@@ -70,7 +71,7 @@ export const _moveQueue = async (
     timesOutAt,
     updateProps.delivery_status,
     updateProps.delivery_queue_id ?? '',
-    ttlSeconds,
+    messageTtlSeconds,
   );
 
   return result === 1;
@@ -90,8 +91,8 @@ export const moveQueue = {
    * @param fromQueueKey - Initial queue to pick from (plugin `bottleneckKey`)
    * @returns The message if one was picked, undefined if queue was empty
    */
-  async pickNextAndMoveToNs(fromQueueKey: string) {
-    const timesOutAt = Date.now() + getConfig().delivery.nsInFlightTimeoutMs;
+  async pickNextAndMoveToNs(fromQueueKey: string, deliveryConfig: DeliveryConfig) {
+    const timesOutAt = Date.now() + deliveryConfig.nsInFlightTimeoutMs;
     const initialQueuesList = redisKeys.listOfInitialQueuesToDistributeFrom();
 
     const raw = await redisRepo.client.fetchNextMessageInQueueAndMove(

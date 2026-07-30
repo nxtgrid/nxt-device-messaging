@@ -10,7 +10,7 @@
 import { isNotNil } from 'ramda';
 import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
-import { calculateBackoffDelay, getMaxRetries } from '../lib/retry-helpers.js';
+import { calculateBackoffDelay } from '../lib/retry-helpers.js';
 import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
@@ -18,7 +18,8 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/types.js';
-import { getPluginRegistry } from '../plugins/registry.js';
+import { config, pluginRegistry } from '../runtime.js';
+
 
 /**
  * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
@@ -59,8 +60,8 @@ export async function retryOrFail(
   }
 
   const currentRetryCount = message.retry_count ?? 0;
-  const maxRetries = getMaxRetries();
-  const isFinalFailure = failureContext.skipRetry || currentRetryCount >= maxRetries;
+  const isFinalFailure =
+    failureContext.skipRetry || currentRetryCount >= config.delivery.maxRetries;
   const newFailureHistory: FailureReason[] = [
     {
       timestamp: (new Date()).toISOString(),
@@ -85,7 +86,7 @@ export async function retryOrFail(
     return;
   }
 
-  const backoffMs = calculateBackoffDelay(currentRetryCount);
+  const backoffMs = calculateBackoffDelay(currentRetryCount, config.delivery);
   const newRetryCount = currentRetryCount + 1;
   const nextRetryAt = Date.now() + backoffMs;
 
@@ -128,7 +129,7 @@ export async function requeueMessage(messageId: string): Promise<void> {
     return;
   }
 
-  const plugin = getPluginRegistry().get(pluginId);
+  const plugin = pluginRegistry.get(pluginId);
   if (!plugin) {
     console.warn(
       `[DEVICE MESSAGING] No plugin registered for ${ pluginId } (message ${ messageId }). Removing from retry.`,

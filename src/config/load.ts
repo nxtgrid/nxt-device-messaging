@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 
 import { deepFreeze } from './deep-freeze.js';
 import { deviceMessagingConfigSchema, type DeviceMessagingConfig } from './schema.js';
-import { setConfig } from './store.js';
 
 const DEFAULT_CONFIG_FILENAME = 'config.default.json';
 
@@ -21,19 +20,19 @@ export interface LoadConfigOptions {
 }
 
 /**
- * Resolves, parses, validates, freezes, and stores service configuration (ADR-002 §4).
+ * Resolves, parses, validates, and freezes service configuration (ADR-002 §4).
  *
  * Precedence: `DEVICE_MESSAGING_CONFIG_JSON` → `DEVICE_MESSAGING_CONFIG_URL` →
  * `DEVICE_MESSAGING_CONFIG_PATH` → bundled `config.default.json`.
+ *
+ * Process boot exports the result from `src/runtime.ts` — this function does not store globals.
  */
 export async function loadConfig(
   options: LoadConfigOptions = {},
 ): Promise<DeviceMessagingConfig> {
   const rawJson = await resolveRawConfig(options);
   const config = parseConfig(rawJson);
-  const frozenConfig = deepFreeze(config);
-  setConfig(frozenConfig);
-  return frozenConfig;
+  return deepFreeze(config);
 }
 
 async function resolveRawConfig(options: LoadConfigOptions): Promise<string> {

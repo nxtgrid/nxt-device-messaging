@@ -16,9 +16,9 @@
   },
   "scripts": {
     "prepare": "husky",
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsup",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -12,7 +12,7 @@
  *   [cleanup] or [queue_awaiting_retry]
  */
 
-import { getConfig } from '../config/index.js';
+import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from './redis-repository/index.js';
 import { redisKeys } from './redis-repository/keys.js';
 import { _moveQueue, type QueueConfig, QUEUE_NS_KEY } from './queue-moving.js';
@@ -59,21 +59,25 @@ export const moveQueuePush = {
    *
    * @param id - Message ULID
    * @param delivery_queue_id - External queue ID from ChirpStack
+   * @param deliveryConfig - Shared delivery knobs (TTL + GW timeout)
    */
   fromNsToGw({
     id,
     delivery_queue_id,
+    deliveryConfig,
   }: {
     id: string;
     delivery_queue_id: string;
+    deliveryConfig: DeliveryConfig;
   }) {
-    const timesOutAt = Date.now() + getConfig().delivery.gwInFlightTimeoutMs;
+    const timesOutAt = Date.now() + deliveryConfig.gwInFlightTimeoutMs;
     return _moveQueue(
       id,
       QUEUE_NS_KEY,
       CONFIG_QUEUE_GW.KEY,
       timesOutAt,
       { delivery_status: CONFIG_QUEUE_GW.MESSAGE_STATUS, delivery_queue_id },
+      deliveryConfig.messageTtlSeconds,
       redisKeys.indexExternalDeliveryId(delivery_queue_id),
     );
   },
@@ -83,15 +87,23 @@ export const moveQueuePush = {
    * Called when we receive confirmation that gateway transmitted the downlink.
    *
    * @param id - Message ULID
+   * @param deliveryConfig - Shared delivery knobs (TTL + device timeout)
    */
-  fromGwToDevice({ id }: { id: string }) {
-    const timesOutAt = Date.now() + getConfig().delivery.deviceInFlightTimeoutMs;
+  fromGwToDevice({
+    id,
+    deliveryConfig,
+  }: {
+    id: string;
+    deliveryConfig: DeliveryConfig;
+  }) {
+    const timesOutAt = Date.now() + deliveryConfig.deviceInFlightTimeoutMs;
     return _moveQueue(
       id,
       CONFIG_QUEUE_GW.KEY,
       CONFIG_QUEUE_DEVICE.KEY,
       timesOutAt,
       { delivery_status: CONFIG_QUEUE_DEVICE.MESSAGE_STATUS },
+      deliveryConfig.messageTtlSeconds,
     );
   },
 
@@ -104,9 +116,10 @@ export const moveQueuePush = {
    * the remote status check and this call.
    *
    * @param messageId - ULID of the message
+   * @param deliveryConfig - Shared delivery knobs (GW timeout)
    */
-  extendGwQueueTimeout(messageId: string) {
-    const newTimesOutAt = Date.now() + getConfig().delivery.gwInFlightTimeoutMs;
+  extendGwQueueTimeout(messageId: string, deliveryConfig: DeliveryConfig) {
+    const newTimesOutAt = Date.now() + deliveryConfig.gwInFlightTimeoutMs;
     return redisRepo.client.zadd(CONFIG_QUEUE_GW.KEY, 'XX', newTimesOutAt, messageId);
   },
 };

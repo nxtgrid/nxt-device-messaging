@@ -77,7 +77,7 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
       `queueAwaitingTask(pluginId)`; `messageFullCleanup` takes `inFlightQueueKeys` (interim —
       see ADR-006 D2). No admission engine and no `queueKey → pluginId` map yet (D1/D3).
 - [x] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
-      Hardcoded timeout/retry constants → `delivery.*` via `getConfig()` (ADR-002 §5).
+      Hardcoded timeout/retry constants → `delivery.*` passed into helpers (ADR-002 §5).
       **Interim:** stage timeouts on `delivery` — end state is plugin `tuning` (**D5**).
       PULL `fromNsToAwaitingTask` takes `pluginId` (not `NetworkServerImplementation`).
       `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
@@ -92,9 +92,9 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
 - [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** Now under `src/plugins/`
       (`plugin.interface.ts`, `registry.ts`, `catalog.ts`). `DeviceMessagingPlugin` with
       nested `outgoing` / `incoming` / optional `token`; `Admission` declaration (ADR-006);
-      one-shot `createPluginRegistry(config.plugins)` + `setPluginRegistry` /
-      `getPluginRegistry`. **Not** here: D1 owner map, D3 admission execution, D5 timeout
-      move, real plugins.
+      one-shot `createPluginRegistry(config.plugins)` exported from `src/runtime.ts` with
+      `config`. **Not** here: D1 owner map, D3 admission execution, D5 timeout move, real
+      plugins.
 
 ### Phase 1b — Walking skeleton Intermezzo
 
@@ -102,10 +102,10 @@ Adapters remain one-pass into plugin shape (per-unit review is the control).
 engine. Unit 5.2+ stays paused until this phase closes. See decisions-log session 12.
 
 - [x] **I0 — Docs pivot.** Plan / AGENTS / decisions-log course correction only.
-- [x] **I1 — Boot + stub plugins.** Composition root loads config; one-shot
-      `createPluginRegistry(config.plugins)` from `PLUGIN_CATALOG` (`stub-push` /
-      `stub-pull` under `src/plugins/stub/`). Lookup-only registry; unknown / duplicate ids
-      fail at boot. `config.default.json` stays empty; `config.example.json` lists both stubs.
+- [x] **I1 — Boot + stub plugins.** `src/runtime.ts` loads config and builds
+      `pluginRegistry` from `PLUGIN_CATALOG` (`stub-push` / `stub-pull` under
+      `src/plugins/stub/`). Lookup-only registry; unknown / duplicate ids fail at boot.
+      `config.default.json` stays empty; `config.example.json` lists both stubs.
 - [ ] **I2 — Thin HTTP.** Zod + routes for `POST /message/enqueue` and
       `GET /message/:correlationId` per ADR-003 (auth minimal or stub). Not full Phase 3
       (no HMAC webhook, DLQ, OpenAPI, ingress).

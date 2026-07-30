@@ -45,14 +45,15 @@ Course correction (decisions-log session 12): **Unit 5.2+ is paused.** Do **not*
 bottom-up engine until the walking skeleton lands. Next chunk is **I2** (thin HTTP
 enqueue/get).
 
-Already in place: tooling (ADR-004), config loader (ADR-002), Fastify `/healthz` on **3100**,
-deploy stubs (ADR-005), `src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle,
-`src/plugins/` (SPI, catalog, one-shot registry, `stub/`), `src/engine/base.ts` (5.1).
-Stub plugins `stub-push` / `stub-pull` are built from config at boot (I1).
+Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
+(`config`, `pluginRegistry`), Fastify `/healthz` on **3100**, deploy stubs (ADR-005),
+`src/lib/types.ts`, Redis/Lua, queue primitives, lifecycle, `src/plugins/` (SPI, catalog,
+one-shot registry, `stub/`), `src/engine/base.ts` (5.1). Stub plugins `stub-push` /
+`stub-pull` are built from config at boot (I1).
 
-- **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
+- **Dev:** `pnpm install` → `cp .env.example .env` → `pnpm dev` (loads `.env`; port **3100**)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
-- **Compose:** copy `.env.example` → `.env`, then `docker compose up --build`
+- **Compose:** same `.env`, then `docker compose up --build`
 
 ## Workflow
 

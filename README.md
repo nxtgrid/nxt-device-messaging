@@ -42,6 +42,7 @@ Plan and decisions: [`docs/plans/001-extraction.md`](docs/plans/001-extraction.m
 ```bash
 corepack enable
 pnpm install
+cp .env.example .env   # loads via --env-file on `pnpm dev` / `pnpm start`
 pnpm dev
 ```
 
@@ -54,15 +55,15 @@ curl -sS http://127.0.0.1:3100/healthz
 
 Config loads from the ADR-002 precedence chain
 (`DEVICE_MESSAGING_CONFIG_JSON` → `_URL` → `_PATH` → bundled `config.default.json`).
-See `config.example.json` for a fuller artifact shape and `.env.example` for env vars.
+`.env.example` points `DEVICE_MESSAGING_CONFIG_PATH` at `config.example.json` (stubs enabled).
 
 ## Scripts
 
 | Command | What it does |
 |---|---|
-| `pnpm dev` | Run with `tsx watch` (reload on change) |
+| `pnpm dev` | `tsx watch` with `.env` loaded if present |
 | `pnpm build` | Production bundle to `dist/` via tsup |
-| `pnpm start` | Run the built `dist/main.js` |
+| `pnpm start` | Run `dist/main.js` with `.env` loaded if present |
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest (unit tests under `test/`) |

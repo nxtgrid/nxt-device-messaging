@@ -1,17 +1,10 @@
 /**
  * @fileoverview Retry logic utilities for device message delivery.
  *
- * Constants are config-backed via `delivery.*` (ADR-002 §5) with in-code defaults.
+ * Knobs come from the caller's `deliveryConfig` slice (ADR-002 §5) — no boot import.
  */
 
-import { getConfig } from '../config/index.js';
-
-/**
- * Maximum number of retries before permanent failure.
- * Total attempts = maxRetries + 1 (the original try).
- * With defaults (11 retries, base 2s, ×2), ~1h 8m of retrying before jitter.
- */
-export const getMaxRetries = (): number => getConfig().delivery.maxRetries;
+import type { DeliveryConfig } from '../config/schema.js';
 
 /**
  * Calculate the delay before the next retry using exponential backoff.
@@ -24,15 +17,22 @@ export const getMaxRetries = (): number => getConfig().delivery.maxRetries;
  * - Attempt 1: 2^1 * 2000 = 4 seconds
  * - Attempt 2: 2^2 * 2000 = 8 seconds
  *
+ * With defaults (11 retries, base 2s, ×2), ~1h 8m of retrying before jitter
+ * (total attempts = maxRetries + 1).
+ *
  * @param retryCount - Number of previous retry attempts (0 = first failure)
+ * @param deliveryConfig - Shared delivery knobs from config
  * @returns Delay in milliseconds before next retry
  */
-export const calculateBackoffDelay = (retryCount: number): number => {
+export const calculateBackoffDelay = (
+  retryCount: number,
+  deliveryConfig: DeliveryConfig,
+): number => {
   const {
     retryBaseDelayMs,
     retryBackoffMultiplier,
     retryMaxDelayMs,
-  } = getConfig().delivery;
+  } = deliveryConfig;
 
   const delay = retryBaseDelayMs * Math.pow(retryBackoffMultiplier, retryCount);
   const cappedDelay = Math.min(delay, retryMaxDelayMs);

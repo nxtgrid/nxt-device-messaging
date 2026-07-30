@@ -552,3 +552,25 @@ import of unused plugins deferred until Phase 2 size justifies it.
 
 **Next:** **I2** — thin HTTP (unchanged).
 
+### 2026-07-30 — session 13c: `runtime.ts` boot exports (drop getConfig / getPluginRegistry)
+
+**Decided:** Process boot is `src/runtime.ts` (top-level await): `export const config` and
+`export const pluginRegistry`. Call sites import bindings (may use at module top level).
+`lib/` must not import `runtime` — helpers take `delivery` (etc.) as arguments.
+
+**Landed:**
+
+- `src/runtime.ts` — `await loadConfig()` + `createPluginRegistry(config.plugins)`
+- Removed `config/store.ts` (`getConfig` / `setConfig`); `loadConfig` returns frozen config only
+- Removed `setPluginRegistry` / `getPluginRegistry` from `plugins/registry.ts`
+- `main.ts` / `engine/base.ts` import from `runtime`
+- Queue / retry / lifecycle helpers take `delivery` instead of reading a global
+- ADR-002 §4 amended; ADR-004 test notes updated
+
+**Deferred:** pre-run script collapsing URL/CMS → local JSON (ops); in-app `CONFIG_URL`
+remains for now.
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build` green.
+
+**Next:** **I2** — thin HTTP (unchanged).
+

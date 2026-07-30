@@ -56,3 +56,6 @@ export const deviceMessagingConfigSchema = z.object({
 }).strict();
 
 export type DeviceMessagingConfig = z.infer<typeof deviceMessagingConfigSchema>;
+
+/** Shared delivery-engine knobs (`config.delivery`). */
+export type DeliveryConfig = DeviceMessagingConfig['delivery'];

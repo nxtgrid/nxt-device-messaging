@@ -1,6 +1,5 @@
 import { buildApp } from './app.js';
-import { loadConfig, getConfig } from './config/index.js';
-import { createPluginRegistry, setPluginRegistry, getPluginRegistry } from './plugins/registry.js';
+import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;
@@ -18,17 +17,13 @@ function resolvePort(): number {
 }
 
 /**
- * Composition root — loads config, builds plugin registry, Fastify shell, listens.
+ * Composition root — runtime already booted; build Fastify shell and listen.
  */
-await loadConfig();
-const config = getConfig();
-setPluginRegistry(createPluginRegistry(config.plugins));
-
 const app = await buildApp();
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });
-const pluginIds = getPluginRegistry().getAll().map(plugin => plugin.id).join(',') || '(none)';
+const pluginIds = pluginRegistry.getAll().map(plugin => plugin.id).join(',') || '(none)';
 console.info(
   `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, plugins=${ pluginIds })`,
 );

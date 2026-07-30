@@ -13,7 +13,7 @@
  * Timeout is handled separately via message age check.
  */
 
-import { getConfig } from '../config/index.js';
+import type { DeliveryConfig } from '../config/schema.js';
 import { redisKeys } from './redis-repository/keys.js';
 import type { DeviceMessageDeliveryStatus } from './types.js';
 import { _moveQueue, QUEUE_NS_KEY } from './queue-moving.js';
@@ -38,18 +38,21 @@ export const moveQueuePull = {
    * @param id - Message ULID
    * @param delivery_queue_id - External task ID from the API (e.g. CALIN TaskNo)
    * @param pluginId - Opaque plugin id (determines `queue_awaiting_task:{pluginId}`)
+   * @param deliveryConfig - Shared delivery knobs (TTL + initial poll delay)
    */
   async fromNsToAwaitingTask({
     id,
     delivery_queue_id,
     pluginId,
+    deliveryConfig,
   }: {
     id: string;
     delivery_queue_id: string;
     pluginId: string;
+    deliveryConfig: DeliveryConfig;
   }): Promise<void> {
     const queueKey = redisKeys.queueAwaitingTask(pluginId);
-    const firstPollAt = Date.now() + getConfig().delivery.initialPollDelayMs;
+    const firstPollAt = Date.now() + deliveryConfig.initialPollDelayMs;
     await _moveQueue(
       id,
       QUEUE_NS_KEY,
@@ -59,6 +62,7 @@ export const moveQueuePull = {
         delivery_status: CONFIG_QUEUE_AWAITING_TASK.MESSAGE_STATUS,
         delivery_queue_id,
       },
+      deliveryConfig.messageTtlSeconds,
       redisKeys.indexExternalDeliveryId(delivery_queue_id),
     );
   },

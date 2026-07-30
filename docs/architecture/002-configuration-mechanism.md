@@ -12,6 +12,9 @@
 > Phase 1 Unit 3 — see decision **D5** in `docs/decisions-log.md` and §5 below. End state:
 > only cross-plugin knobs stay on `delivery`; NS / GW / device / poll delays live in plugin
 > `tuning` (defaults in code). Do not treat Unit 3’s `nsInFlightTimeoutMs` etc. as permanent.
+>
+> **Amendment (2026-07-30):** Access is via `src/runtime.ts` boot exports (`config`,
+> `pluginRegistry`), not `getConfig()` / `setConfig()`. See §4.
 
 ---
 
@@ -130,13 +133,21 @@ Resolution follows `nxt-backend` ADR-007 decision 4's precedence, with service-l
 **`DEVICE_MESSAGING_CONFIG_JSON` (inline) → `DEVICE_MESSAGING_CONFIG_URL` (fetch) →
 `DEVICE_MESSAGING_CONFIG_PATH` (file) → bundled `config.default.json`.**
 
-At startup, before anything else is constructed: **resolve → `JSON.parse` → Zod `.parse()` →
-`Object.freeze` → `setConfig()`**. All code reads through a single global accessor `getConfig()`,
-which throws if called before the config is set. Tests override with `setConfig(testConfig)`.
+At startup (`src/runtime.ts`, top-level await): **resolve → `JSON.parse` → Zod `.parse()` →
+`Object.freeze` → export `config`**. The same module builds `pluginRegistry` from
+`config.plugins`. Call sites `import { config, pluginRegistry } from '../runtime.js'` and may
+bind values at module top level.
+
+**Import rule:** only composition / engine / HTTP import `runtime`. `lib/` helpers take the
+slices they need as arguments (e.g. `delivery`) so unit tests never pull boot I/O.
+
+`loadConfig()` remains a pure async function (returns the frozen config; no process-wide store).
+Tests of resolution call `loadConfig({ defaultConfigPath })` directly; tests of plugins call
+`createPluginRegistry([...])` without importing `runtime`.
 
 There is no DI container to inject a config service into (ADR-001 decision 2), so a frozen
-module-level object is simply the right primitive here — `nxt-backend` ADR-007's original
-justification applies with more force, not less.
+module-level binding from the boot module is the right primitive here — `nxt-backend` ADR-007's
+original justification applies with more force, not less.
 
 The repo ships the Zod schema, a documented `config.example.json`, and a minimal
 `config.default.json` that boots with no plugins enabled.
@@ -159,9 +170,10 @@ it, while leaving an operator free to tune for their own network.
 | | PULL `initialPollDelayMs`, max message age, concurrency caps already sketched as tuning |
 
 Unit 3 temporarily put stage timeouts on `delivery` so queue primitives could read
-`getConfig()` before a registry existed. When `queueKey → pluginId` and the plugin SPI land,
+shared knobs before a registry existed. When `queueKey → pluginId` and the plugin SPI land,
 callers resolve timeouts from the owning plugin’s merged tuning — then remove those keys from
-the core `delivery` schema.
+the core `delivery` schema. Queue helpers take `delivery` (or later plugin tuning) as an
+argument; they do not import `runtime`.
 
 ### 6. Honesty rules — fail fast, but degrade gracefully at runtime
 
@@ -223,7 +235,8 @@ instance name and has no meaning to an adopter.
 
 - Two configuration surfaces (artifact and env) means an operator must understand the split. The
   rule is simple — secrets in env, everything else in the artifact — but it is a rule to learn.
-- A global `getConfig()` singleton is less pure than injection; mitigated by `setConfig()` in tests.
+- Boot exports (`config` / `pluginRegistry`) are less pure than full parameter injection;
+  mitigated by keeping `lib/` free of `runtime` and injecting slices into helpers.
 - Boot stops at the first misconfigured plugin rather than reporting all of them. Accepted;
   aggregation is a future nicety.
 - Composing plugin schemas at runtime means the root config type is not fully static. The inferred
