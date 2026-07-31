@@ -6,7 +6,7 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 complete; Phase 1 foundation through **5.2**; **Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Next: Unit 5.3 (distribute + D1/D3)**
+(I0–I3; I4 skipped). Unit 5.3: D1 done (B); next distribute + D3**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -139,8 +139,9 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
         `BottleneckKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
       - [x] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
         `POST /messages/cancel` + smoke (enqueue/get already from I3)
-      - [ ] **5.3** D1 then distribute + D3 admission — timer-driven; exercise with stub
-        plugins + enqueue/get (no public distribute route)
+      - [ ] **5.3** distribute + D3 admission — timer-driven; exercise with stub
+        plugins + enqueue/get (no public distribute route).
+        **D1 done (session 18):** boot-time `bottleneckKind` registry (option B).
       - [ ] **5.4** sendOne + resolution cycle — same (internal; stubs + observe)
       - [ ] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke
       - [ ] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`)

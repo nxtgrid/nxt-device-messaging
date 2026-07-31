@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Unit 5.3; 5.2 closed)* | — |
+| — | *(none blocking distribute; D1 locked B — session 18)* | — |
 
 ### Deferred with locked criteria
 
@@ -24,9 +24,9 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
-| D1 | `queueKey → pluginId` for distribute (Redis map vs boot-time kind registry) | Unit 5.3 | None (no distributor yet) | 006 |
+| ~~D1~~ | ~~`queueKey → pluginId`~~ → **B boot-time `bottleneckKind`** (session 18) | — | — | 006 |
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
-| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None | 006 |
+| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None (D1 owner map ready) | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
@@ -758,4 +758,23 @@ Generic Zod validation error bodies deferred to Phase 3 / OpenAPI hardening.
 locally scoped helpers (closures), returned object literal as the interface. Exemplar:
 `createOutgoing(registry)`. Locked in ADR-001 §2 amendment + `AGENTS.md` code conventions.
 Not a container; not mandatory for pure helpers / Redis module singleton.
+
+### 2026-07-31 — session 18: Unit 5.3 — D1 = boot-time kind registry (B)
+
+**Decided — D1 option B.** Distribute maps `queueKey → plugin` via a boot-time
+`bottleneckKind` index — not an enqueue-time Redis owner hash (A).
+
+**Landed (D1 only; no distribute / D3 yet):**
+
+- SPI: `DeviceMessagingPlugin.bottleneckKind`
+- `bottleneckKindFromQueueKey` — parse `queue:{kind}:{id}` for **lookup only**
+- Registry: `getByBottleneckKind` inside `createPluginRegistry`; boot fails on
+  duplicate kind
+- Stubs: `stub_network` / `stub_gateway` (+ exported kind constants)
+- ADR-006 Status + D1 section amended
+- Follow-up: dropped `createPluginRegistryFromPlugins` (test-only split; indexing
+  stays in `createPluginRegistry`)
+
+**Next:** Unit 5.3 continue — `createDistribute` + D3 admission (still stop before
+`sendOne` unless maintainer widens scope).
 

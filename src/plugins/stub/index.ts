@@ -20,6 +20,12 @@ export const STUB_PUSH_ID = 'stub-push' as const;
 /** Config / registry id for the PULL stub. */
 export const STUB_PULL_ID = 'stub-pull' as const;
 
+/** Bottleneck kind for PUSH stub queues (`queue:stub_network:{id}`). */
+export const STUB_PUSH_BOTTLENECK_KIND = 'stub_network' as const;
+
+/** Bottleneck kind for PULL stub queues (`queue:stub_gateway:{id}`). */
+export const STUB_PULL_BOTTLENECK_KIND = 'stub_gateway' as const;
+
 const STUB_PUSH_ADMISSION: Admission = {
   strategy: 'spacing',
   minIntervalMs: 2000,
@@ -46,18 +52,19 @@ function parseStubError(err: unknown): FailureContext {
 export function createStubPlugin(options: {
   readonly id: PluginId;
   readonly deliveryPattern: DeliveryPattern;
+  readonly bottleneckKind: string;
   readonly admission: Admission;
 }): DeviceMessagingPlugin {
-  const { id, deliveryPattern, admission } = options;
+  const { id, deliveryPattern, bottleneckKind, admission } = options;
 
   const bottleneckKey = (input: BottleneckKeyInput): string => {
     if (deliveryPattern === 'PUSH') {
       const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
-      return `queue:stub_network:${ networkPart }`;
+      return `queue:${ bottleneckKind }:${ networkPart }`;
     }
     const gatewayId = input.device.gateway?.id;
     const gatewayPart = gatewayId == null ? 'unassigned' : String(gatewayId);
-    return `queue:stub_gateway:${ gatewayPart }`;
+    return `queue:${ bottleneckKind }:${ gatewayPart }`;
   };
 
   const outgoing: DeviceMessagingPlugin['outgoing'] = {
@@ -78,6 +85,7 @@ export function createStubPlugin(options: {
   return {
     id,
     deliveryPattern,
+    bottleneckKind,
     admission,
     bottleneckKey,
     outgoing,
@@ -92,6 +100,7 @@ export function createStubPushPlugin(
   return createStubPlugin({
     id: STUB_PUSH_ID,
     deliveryPattern: 'PUSH',
+    bottleneckKind: STUB_PUSH_BOTTLENECK_KIND,
     admission: STUB_PUSH_ADMISSION,
   });
 }
@@ -103,6 +112,7 @@ export function createStubPullPlugin(
   return createStubPlugin({
     id: STUB_PULL_ID,
     deliveryPattern: 'PULL',
+    bottleneckKind: STUB_PULL_BOTTLENECK_KIND,
     admission: STUB_PULL_ADMISSION,
   });
 }

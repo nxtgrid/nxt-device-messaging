@@ -6,7 +6,9 @@ import {
   createStubPlugin,
   createStubPullPlugin,
   createStubPushPlugin,
+  STUB_PULL_BOTTLENECK_KIND,
   STUB_PULL_ID,
+  STUB_PUSH_BOTTLENECK_KIND,
   STUB_PUSH_ID,
 } from '../../../src/plugins/stub/index.js';
 
@@ -34,6 +36,7 @@ describe('stub plugins', () => {
     expect(plugin.id).toBe(STUB_PUSH_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
+    expect(plugin.bottleneckKind).toBe(STUB_PUSH_BOTTLENECK_KIND);
     expect(plugin.bottleneckKey(deviceOnly)).toBe('queue:stub_network:42');
     expect(plugin.bottleneckKey({ ...deviceOnly, networkId: null })).toBe(
       'queue:stub_network:unassigned',
@@ -48,6 +51,7 @@ describe('stub plugins', () => {
     expect(plugin.id).toBe(STUB_PULL_ID);
     expect(plugin.deliveryPattern).toBe('PULL');
     expect(plugin.admission).toEqual({ strategy: 'concurrency', maxInFlight: 5 });
+    expect(plugin.bottleneckKind).toBe(STUB_PULL_BOTTLENECK_KIND);
     expect(
       plugin.bottleneckKey({
         networkId: null,
@@ -64,6 +68,7 @@ describe('stub plugins', () => {
     const plugin = createStubPlugin({
       id: 'custom-stub',
       deliveryPattern: 'PUSH',
+      bottleneckKind: 'custom_kind',
       admission: { strategy: 'spacing', minIntervalMs: 1 },
     });
     await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toBe('stub-ext-id');

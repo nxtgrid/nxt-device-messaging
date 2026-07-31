@@ -3,7 +3,8 @@
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution of named strategies is Unit 5 (D3).
- * `queueKey → pluginId` ownership (D1) and stage-timeout relocation (D5) are not here.
+ * `queueKey → plugin` via boot-time `bottleneckKind` (ADR-006 D1-B). Stage-timeout
+ * relocation (D5) is not here.
  *
  * Unit 4 interim facets (`PushIncoming` / `PushOutgoing` / `PullIncoming`) are deleted once
  * the engine types against this SPI.
@@ -89,8 +90,15 @@ export type DeviceMessagingPlugin = {
   readonly deliveryPattern: DeliveryPattern;
 
   /**
+   * Middle segment of this plugin's initial-queue keys (`queue:{kind}:{id}`).
+   * Must be unique among enabled plugins (ADR-006 D1-B). Used only to resolve
+   * the owning plugin at distribute time — never to choose admission policy.
+   */
+  readonly bottleneckKind: string;
+
+  /**
    * Full Redis initial-queue key for a message (ADR-006 §1).
-   * Core does not build or parse bottleneck topology.
+   * Core does not build or parse bottleneck topology for policy.
    */
   bottleneckKey(input: BottleneckKeyInput): string;
 

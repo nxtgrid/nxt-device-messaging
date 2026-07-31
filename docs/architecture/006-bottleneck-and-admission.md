@@ -1,7 +1,8 @@
 # ADR-006: Queue Bottleneck Keys and Admission Strategies
 
 **Date:** 2026-07-29
-**Status:** Accepted
+**Status:** Accepted — **Amendment (2026-07-31):** D1 decided as **B** (boot-time
+`bottleneckKind` registry). See § Deferred D1 and decisions-log session 18.
 
 > How plugins declare *where* work is queued (topology → Redis key) and *whether* the
 > distributor may take the next message from that queue (admission). Replaces the frozen
@@ -125,24 +126,27 @@ runs.
 
 ### D1 — How distribute maps `queueKey` → `pluginId`
 
-**Open.** Two candidates (pick at Unit 5/6, not earlier unless blocked):
+**Decided (2026-07-31): option B — boot-time kind registry.**
 
 | Option | Idea | Pros | Cons |
 |---|---|---|---|
-| **A. Enqueue-time Redis map** | `HSET queue_owner {queueKey} {pluginId}` (or richer set member) | Exact ownership; kinds need not be globally unique | Extra Redis write; must GC owner entries; schema change |
-| **B. Boot-time kind registry** | Plugin registers `bottleneckKind`; distribute splits once for **lookup only** | No per-enqueue owner write | Kinds must be unique across enabled plugins; disabled plugin leaves ambiguous queues |
+| A. Enqueue-time Redis map | `HSET queue_owner {queueKey} {pluginId}` | Exact ownership; kinds need not be globally unique | Extra Redis write; must GC owner entries; schema change |
+| **B. Boot-time kind registry (chosen)** | Plugin declares `bottleneckKind`; distribute parses kind **only for lookup** | No per-enqueue owner write; fits one-shot registry | Kinds must be unique among enabled plugins; orphan queues if plugin disabled |
 
-**Design criteria when choosing:**
+**Locked behaviour:**
 
-1. Core still must not branch on topology for *policy* — lookup may parse kind **only** to
-   find the plugin, never to choose spacing vs concurrency.
-2. Prefer correctness when two plugins could theoretically share a kind string → bias **A**.
-3. Prefer minimal Redis surface if kinds are guaranteed unique by convention → **B** may win.
-4. Hard cutover: either option is allowed; no dual-write migration story required.
-5. Document the choice in the decisions log the session it lands; update this ADR’s Status
-   note or add an amendment bullet.
+1. Each plugin exposes `readonly bottleneckKind: string` (the `{kind}` in
+   `queue:{kind}:{id}`). Bundled stubs use `stub_network` / `stub_gateway`.
+2. `createPluginRegistry` indexes by kind and **fails boot** if two enabled plugins share a
+   kind.
+3. Distribute resolves owner via `bottleneckKindFromQueueKey(queueKey)` →
+   `registry.getByBottleneckKind(kind)`. Parse is lookup-only — **never** chooses admission
+   or PUSH/PULL (criterion 1).
+4. Option A rejected for now: bundled kinds are unique by convention; hard cutover; A’s
+   Redis write + GC not justified. Revisit A only if a real multi-plugin kind collision
+   appears that boot uniqueness cannot express.
 
-**Interim (until D1 lands):** none required for Unit 2 (no distributor yet).
+**Interim:** none — D1 landed in Unit 5.3 prep (session 18).
 
 ### D2 — `messageFullCleanup` and the set of in-flight queue keys
 
@@ -213,6 +217,7 @@ core ADR needed unless two bundled plugins would collide under boot-time kind re
 {
   id: 'calin-chirpstack',
   deliveryPattern: 'PUSH',
+  bottleneckKind: 'lorawan_network',
   bottleneckKey: (m) =>
     `queue:lorawan_network:${m.networkId == null ? 'unassigned' : m.networkId}`,
   admission: { strategy: 'spacing', minIntervalMs: 2_000 },
@@ -222,6 +227,7 @@ core ADR needed unless two bundled plugins would collide under boot-time kind re
 {
   id: 'calin-api-v1',
   deliveryPattern: 'PULL',
+  bottleneckKind: 'gateway',
   bottleneckKey: (m) => `queue:gateway:${m.device.gateway!.id}`,
   admission: {
     strategy: 'concurrency',
