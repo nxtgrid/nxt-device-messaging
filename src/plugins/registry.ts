@@ -4,7 +4,9 @@
  * Lookup-only after construction. Call from `runtime.ts` (or tests) with config entries;
  * do not import `runtime` from this module.
  *
- * No `queueKey → pluginId` map here (D1 — Unit 5). No admission execution (D3 — Unit 5).
+ * Distribute resolves `queueKey → plugin` by parsing `pluginId` from
+ * `queue:{pluginId}:{kind}:{id}` (ADR-006 D1) — no kind index here. Admission
+ * execution is Unit 5.3 (D3).
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';

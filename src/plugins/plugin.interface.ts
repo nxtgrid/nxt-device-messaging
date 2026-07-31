@@ -3,7 +3,8 @@
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution of named strategies is Unit 5 (D3).
- * `queueKey → pluginId` ownership (D1) and stage-timeout relocation (D5) are not here.
+ * Initial queues: {@link DeviceMessagingPlugin.initialQueueKey} + `buildInitialQueueKey`
+ * (ADR-006 D1). Stage-timeout relocation (D5) is not here.
  *
  * Unit 4 interim facets (`PushIncoming` / `PushOutgoing` / `PullIncoming`) are deleted once
  * the engine types against this SPI.
@@ -17,14 +18,14 @@ import type {
   PluginId,
 } from '../lib/device-message/types.js';
 
-/** How confirmation works after send — not inferred from bottleneck kind (ADR-006 §3). */
+/** How confirmation works after send — not inferred from the initial-queue key (ADR-006 §3). */
 export type DeliveryPattern = 'PUSH' | 'PULL';
 
 /**
- * Topology inputs for {@link DeviceMessagingPlugin.bottleneckKey}.
+ * Inputs for {@link DeviceMessagingPlugin.initialQueueKey}.
  * Not the full create DTO — only network + device (incl. DCU/gateway).
  */
-export type BottleneckKeyInput = {
+export type InitialQueueKeyInput = {
   networkId: number | null;
   device: DeviceMessageDevice;
 };
@@ -89,12 +90,12 @@ export type DeviceMessagingPlugin = {
   readonly deliveryPattern: DeliveryPattern;
 
   /**
-   * Full Redis initial-queue key for a message (ADR-006 §1).
-   * Core does not build or parse bottleneck topology.
+   * Redis initial-queue key for a message (ADR-006 §1).
+   * Prefer `buildInitialQueueKey` so keys are `queue:{pluginId}:{kind}:{id}`.
    */
-  bottleneckKey(input: BottleneckKeyInput): string;
+  initialQueueKey(input: InitialQueueKeyInput): string;
 
-  /** How hard the distributor may hit this plugin's bottleneck queues. */
+  /** How hard the distributor may hit this plugin's initial queues. */
   readonly admission: Admission;
 
   outgoing: {

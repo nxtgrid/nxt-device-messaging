@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BottleneckKeyInput } from '../../../src/plugins/plugin.interface.js';
+import type { InitialQueueKeyInput } from '../../../src/plugins/plugin.interface.js';
 import type { DeviceMessage } from '../../../src/lib/device-message/types.js';
 import {
   createStubPlugin,
@@ -10,7 +10,7 @@ import {
   STUB_PUSH_ID,
 } from '../../../src/plugins/stub/index.js';
 
-const deviceOnly: BottleneckKeyInput = {
+const deviceOnly: InitialQueueKeyInput = {
   networkId: 42,
   device: {
     type: 'ELECTRICITY_METER',
@@ -29,32 +29,32 @@ const sampleMessage = {
 } as DeviceMessage;
 
 describe('stub plugins', () => {
-  it('createStubPushPlugin uses PUSH + spacing and stub_network bottleneck', () => {
+  it('createStubPushPlugin uses PUSH + spacing and queue:stub-push:network:…', () => {
     const plugin = createStubPushPlugin({ id: STUB_PUSH_ID });
     expect(plugin.id).toBe(STUB_PUSH_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
-    expect(plugin.bottleneckKey(deviceOnly)).toBe('queue:stub_network:42');
-    expect(plugin.bottleneckKey({ ...deviceOnly, networkId: null })).toBe(
-      'queue:stub_network:unassigned',
+    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-push:network:42');
+    expect(plugin.initialQueueKey({ ...deviceOnly, networkId: null })).toBe(
+      'queue:stub-push:network:unassigned',
     );
     expect(plugin.incoming.handle).toBeTypeOf('function');
     expect(plugin.incoming.fetchStatus).toBeUndefined();
     expect(plugin.incoming.handle?.({})).toBeNull();
   });
 
-  it('createStubPullPlugin uses PULL + concurrency and stub_gateway bottleneck', async () => {
+  it('createStubPullPlugin uses PULL + concurrency and queue:stub-pull:gateway:…', async () => {
     const plugin = createStubPullPlugin({ id: STUB_PULL_ID });
     expect(plugin.id).toBe(STUB_PULL_ID);
     expect(plugin.deliveryPattern).toBe('PULL');
     expect(plugin.admission).toEqual({ strategy: 'concurrency', maxInFlight: 5 });
     expect(
-      plugin.bottleneckKey({
+      plugin.initialQueueKey({
         networkId: null,
         device: { ...deviceOnly.device, gateway: { id: 7 } },
       }),
-    ).toBe('queue:stub_gateway:7');
-    expect(plugin.bottleneckKey(deviceOnly)).toBe('queue:stub_gateway:unassigned');
+    ).toBe('queue:stub-pull:gateway:7');
+    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-pull:gateway:unassigned');
     expect(plugin.incoming.fetchStatus).toBeTypeOf('function');
     expect(plugin.incoming.handle).toBeUndefined();
     await expect(plugin.incoming.fetchStatus?.(sampleMessage)).resolves.toBeNull();
@@ -64,6 +64,7 @@ describe('stub plugins', () => {
     const plugin = createStubPlugin({
       id: 'custom-stub',
       deliveryPattern: 'PUSH',
+      nodeKind: 'network',
       admission: { strategy: 'spacing', minIntervalMs: 1 },
     });
     await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toBe('stub-ext-id');
@@ -71,5 +72,6 @@ describe('stub plugins', () => {
       deliveryStatus: 'QUEUED',
     });
     expect(plugin.outgoing.parseError(new Error('boom'))).toEqual({ reason: 'boom' });
+    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:custom-stub:network:42');
   });
 });

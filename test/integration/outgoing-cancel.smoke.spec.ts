@@ -41,7 +41,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
 
     const correlationId = `cancel-smoke-${ Date.now() }`;
     const networkId = 42;
-    const queueKey = `queue:stub_network:${ networkId }`;
+    const queueKey = `queue:stub-push:network:${ networkId }`;
 
     const enqueued = await outgoing.enqueue({
       commandType: 'READ',

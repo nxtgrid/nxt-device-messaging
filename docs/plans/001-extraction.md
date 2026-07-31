@@ -6,7 +6,7 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 complete; Phase 1 foundation through **5.2**; **Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Next: Unit 5.3 (distribute + D1/D3)**
+(I0–I3; I4 skipped). Unit 5.3: D1 done (`pluginId` in key); next distribute + D3**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -52,7 +52,7 @@ need them (same pattern as Intermezzo enqueue/get).
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **5.2** is **done**.
-**Phase 1b is closed.** Next is Unit **5.3** (distribute + D1/D3). Phase 4 still owns
+**Phase 1b is closed.** Unit **5.3** D1 done; next is distribute + D3. Phase 4 still owns
 ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
 already in Phase 0.
 
@@ -78,7 +78,7 @@ end-to-end rule above. Adapters remain one-pass into plugin shape (per-unit revi
       (ADR-003 §2) land here: `meter_interaction_id` → `correlation_id` (opaque **string**),
       `grid_id` → `network_id` (**`number | null`** — the `unassigned` LoRaWAN bucket must survive),
       `message_type` → `command_type`, and the index key prefix `idx:meter_interaction_id:` →
-      `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `bottleneckKey`);
+      `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `initialQueueKey`);
       `queueAwaitingTask(pluginId)`; `messageFullCleanup` takes `inFlightQueueKeys` (interim —
       see ADR-006 D2). No admission engine and no `queueKey → pluginId` map yet (D1/D3).
 - [x] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
@@ -86,7 +86,7 @@ end-to-end rule above. Adapters remain one-pass into plugin shape (per-unit revi
       **Interim:** stage timeouts on `delivery` — end state is plugin `tuning` (**D5**).
       PULL `fromNsToAwaitingTask` takes `pluginId` (not `NetworkServerImplementation`).
       `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
-      No distribute admission / `bottleneckKey` here.
+      No distribute admission / `initialQueueKey` wiring here.
 - [x] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
       PUSH: `getPushTimeouts` / `maybeExtendMessageInGwQueue`. PULL:
       `pollAwaitingTasksFor(pluginId, plugin)` / `getPullTimeouts(now, pluginIds)` — no
@@ -118,7 +118,7 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
       `pluginRegistry.get`. Smoke: `src/http/smoke/` (httpYac). Not full Phase 3
       (no HMAC/DLQ/OpenAPI/ingress).
 - [x] **I3 — Enqueue → Redis.** Thin `src/engine/outgoing.ts` (enqueue + get-by-correlation);
-      plugin `bottleneckKey` → initial queue; distribute no-op. **Domain + Redis hash fields
+      plugin `initialQueueKey` → initial queue; distribute no-op. **Domain + Redis hash fields
       camelCase**; Redis **key paths** snake_case (`idx:correlation_id:`). Deleted `wire.ts` /
       in-memory store. Create DTO = Zod `createDeviceMessageSchema` in
       `lib/device-message/schemas.ts` → `CreateDeviceMessage` in `types.ts`; HTTP lean
@@ -135,12 +135,14 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
       faces land thin HTTP in the same chunk** (end-to-end rule):
       - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
         `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
-        Requeue via `plugin.bottleneckKey` (not `queueInitial`).
-        `BottleneckKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
+        Requeue via `plugin.initialQueueKey` (not `queueInitial`).
+        `InitialQueueKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
       - [x] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
         `POST /messages/cancel` + smoke (enqueue/get already from I3)
-      - [ ] **5.3** D1 then distribute + D3 admission — timer-driven; exercise with stub
-        plugins + enqueue/get (no public distribute route)
+      - [ ] **5.3** distribute + D3 admission — timer-driven; exercise with stub
+        plugins + enqueue/get (no public distribute route).
+        **D1 done (session 18b):** `buildInitialQueueKey` → `queue:{pluginId}:{kind}:{id}`;
+        SPI `initialQueueKey` (reverts session 18 kind registry).
       - [ ] **5.4** sendOne + resolution cycle — same (internal; stubs + observe)
       - [ ] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke
       - [ ] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`)
@@ -162,8 +164,8 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
       decode-response-data, correlate-request-response, connectivity-helpers}`, plus
-      `lib/chirpstack-repository/` moved in as plugin-internal. `bottleneckKey` must handle the
-      `unassigned` bucket.
+      `lib/chirpstack-repository/` moved in as plugin-internal. `initialQueueKey` must handle
+      the `unassigned` bucket.
 - [ ] **Unit 8 — calin-api-v1** (~726 lines). Actively supported; V1 meters are in the field.
       Second real adapter, so this is what validates the plugin SPI (`nxt-backend` ADR-001).
 - [ ] **Unit 9 — calin-api-v2** (~500 lines).

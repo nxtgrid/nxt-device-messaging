@@ -88,7 +88,7 @@ export const moveQueue = {
    * Uses a Lua script for atomicity to prevent race conditions when
    * multiple workers are distributing messages.
    *
-   * @param fromQueueKey - Initial queue to pick from (plugin `bottleneckKey`)
+   * @param fromQueueKey - Initial queue to pick from (plugin `initialQueueKey`)
    * @returns The message if one was picked, undefined if queue was empty
    */
   async pickNextAndMoveToNs(fromQueueKey: string, deliveryConfig: DeliveryConfig) {
