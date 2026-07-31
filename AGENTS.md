@@ -39,8 +39,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0 complete. Phase 1 foundation through 5.2. Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Unit 5.3 in progress: D1 locked (boot-time `bottleneckKind`).
-Next: distribute + D3.**
+(I0–I3; I4 skipped). Unit 5.3 in progress: D1 locked (`buildInitialQueueKey` /
+`pluginId` in key). Next: distribute + D3.**
 
 Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -51,8 +51,8 @@ Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` b
 (`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
-lifecycle, `src/plugins/` (SPI + `bottleneckKind` D1-B, catalog, one-shot registry, `stub/`),
-`src/http/` (lean enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac),
+lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey`, catalog, registry,
+`stub/`), `src/http/` (lean enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac),
 `src/engine/base.ts` (5.1) + `outgoing.ts` (enqueue/get/cancel;
 `UnknownPluginError` → HTTP 400). **Distribute still no-op (D3 next).**
 
@@ -106,7 +106,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
 | 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
-| 006 | Queue bottleneck keys + named admission strategies (`spacing` / `concurrency` / `custom`) |
+| 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
 
 ### `nxt-backend` ADRs that constrain this repo
 

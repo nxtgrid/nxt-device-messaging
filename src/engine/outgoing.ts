@@ -40,7 +40,7 @@ export type Outgoing = {
 };
 
 /**
- * Redis-backed outgoing using plugin `bottleneckKey` for the initial queue.
+ * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  * Does not call distribute.
  *
  * @param registry - Enabled plugins (from boot `runtime` or a test registry)
@@ -55,7 +55,7 @@ export function createOutgoing(registry: PluginRegistry): Outgoing {
    *
    * Only `QUEUED` / `TO_RETRY` are cancellable — anything further along has
    * already been handed off to the network server. `QUEUED` resolves the
-   * bottleneck queue through the registered plugin (`bottleneckKey` — replaces
+   * initial queue through the registered plugin (`initialQueueKey` — replaces
    * legacy `queueInitial`).
    *
    * @param message - The device message to cancel
@@ -75,7 +75,7 @@ export function createOutgoing(registry: PluginRegistry): Outgoing {
     else {
       const plugin = registry.get(message.pluginId);
       if (!plugin) return false;
-      queueKey = plugin.bottleneckKey({
+      queueKey = plugin.initialQueueKey({
         networkId: message.networkId,
         device: message.device,
       });
@@ -120,7 +120,7 @@ export function createOutgoing(registry: PluginRegistry): Outgoing {
       const plugin = registry.get(create.pluginId);
       if (!plugin) throw new UnknownPluginError(create.pluginId);
 
-      const queueKey = plugin.bottleneckKey({
+      const queueKey = plugin.initialQueueKey({
         networkId: create.networkId,
         device: create.device,
       });

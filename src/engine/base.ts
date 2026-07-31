@@ -110,7 +110,7 @@ export async function retryOrFail(
  * Called when the backoff period has elapsed and the message is ready for another attempt.
  *
  * Uses a partial HMGET (not full hash deserialize) — only topology fields for
- * `bottleneckKey`, plus priority for the Redis score.
+ * `initialQueueKey`, plus priority for the Redis score.
  *
  * @param messageId - ULID of the message to requeue
  */
@@ -141,7 +141,7 @@ export async function requeueMessage(messageId: string): Promise<void> {
   // `networkId` is omitted from the hash when null (see serializeCreateDeviceMessage).
   const networkId = networkIdStr !== null ? parseInt(networkIdStr, 10) : null;
 
-  const destinationQueue = plugin.bottleneckKey({ networkId, device });
+  const destinationQueue = plugin.initialQueueKey({ networkId, device });
   await redisRepo.requeueMessage(
     messageId,
     QUEUE_RETRY_KEY,

@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking distribute; D1 locked B — session 18)* | — |
+| — | *(none blocking distribute; D1 locked — `pluginId` in key, session 18b)* | — |
 
 ### Deferred with locked criteria
 
@@ -24,9 +24,9 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
-| ~~D1~~ | ~~`queueKey → pluginId`~~ → **B boot-time `bottleneckKind`** (session 18) | — | — | 006 |
+| ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
-| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None (D1 owner map ready) | 006 |
+| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None (D1: parse `pluginId` from key) | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
@@ -761,19 +761,32 @@ Not a container; not mandatory for pure helpers / Redis module singleton.
 
 ### 2026-07-31 — session 18: Unit 5.3 — D1 = boot-time kind registry (B)
 
-**Decided — D1 option B.** Distribute maps `queueKey → plugin` via a boot-time
-`bottleneckKind` index — not an enqueue-time Redis owner hash (A).
+**Decided — D1 option B** (superseded same day by session 18b). Distribute maps
+`queueKey → plugin` via a boot-time `bottleneckKind` index.
 
-**Landed (D1 only; no distribute / D3 yet):**
+**Landed then reverted in 18b:** `bottleneckKind` SPI field, `getByBottleneckKind`,
+`bottleneckKindFromQueueKey`, stub kinds `stub_network` / `stub_gateway`.
 
-- SPI: `DeviceMessagingPlugin.bottleneckKind`
-- `bottleneckKindFromQueueKey` — parse `queue:{kind}:{id}` for **lookup only**
-- Registry: `getByBottleneckKind` inside `createPluginRegistry`; boot fails on
-  duplicate kind
-- Stubs: `stub_network` / `stub_gateway` (+ exported kind constants)
-- ADR-006 Status + D1 section amended
-- Follow-up: dropped `createPluginRegistryFromPlugins` (test-only split; indexing
-  stays in `createPluginRegistry`)
+### 2026-07-31 — session 18b: D1 revised — `pluginId` in initial-queue key
+
+**Decided — D1 option C (replaces 18/B).** The initial-queue key embeds `pluginId`;
+distribute parses that segment for `registry.get`. No kind registry, no Redis owner map.
+
+**Locked:**
+
+- Key shape: `queue:{pluginId}:{kind}:{id}` via `buildInitialQueueKey(pluginId, kind, id)`
+- SPI: `initialQueueKey(input)` (renamed from `bottleneckKey`); input type
+  `InitialQueueKeyInput`
+- `kind` = human label for the admission node; not used for policy
+- Parse helper: `pluginIdFromInitialQueueKey` (no enqueue re-check of the key we just built)
+- Hard cutover: legacy `queue:lorawan_network:…` / `queue:gateway:…` not preserved;
+  V1/V2 get separate per-plugin buckets
+
+**Reverted from session 18:** `bottleneckKind`, `getByBottleneckKind`,
+`bottleneck-kind.ts`, kind uniqueness at boot.
+
+**Landed:** helper + SPI + stubs (`queue:stub-push:network:…` /
+`queue:stub-pull:gateway:…`) + engine call sites + ADR-006 rewrite of §1/D1 + plan/AGENTS.
 
 **Next:** Unit 5.3 continue — `createDistribute` + D3 admission (still stop before
 `sendOne` unless maintainer widens scope).

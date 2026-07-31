@@ -10,8 +10,8 @@ import { PhaseEnum } from '../device-message/types.js';
  *
  * Other notes:
  * - Unit 2 intentionally omits `queueInitial()` (ADR-006): initial queue selection
- *   is owned by plugins via `bottleneckKey(message) → string`.
- * - Queue key shape is a naming convention: `queue:{bottleneckKind}:{bottleneckId}`.
+ *   is owned by plugins via `initialQueueKey` → `buildInitialQueueKey`.
+ * - Queue key shape: `queue:{pluginId}:{kind}:{id}` (ADR-006).
  *   Core must not parse queue keys for policy.
  * - Concurrency rate-limit set keys are plugin vocabulary (ADR-006 `trackKey`); core
  *   helpers take the opaque key string — no `gateway` / `unassigned` builders here.

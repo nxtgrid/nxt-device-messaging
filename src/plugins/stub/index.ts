@@ -7,10 +7,11 @@
 
 import type {
   Admission,
-  BottleneckKeyInput,
   DeliveryPattern,
   DeviceMessagingPlugin,
+  InitialQueueKeyInput,
 } from '../plugin.interface.js';
+import { buildInitialQueueKey } from '../initial-queue-key.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { DeviceMessage, FailureContext, PluginId } from '../../lib/device-message/types.js';
 
@@ -20,11 +21,11 @@ export const STUB_PUSH_ID = 'stub-push' as const;
 /** Config / registry id for the PULL stub. */
 export const STUB_PULL_ID = 'stub-pull' as const;
 
-/** Bottleneck kind for PUSH stub queues (`queue:stub_network:{id}`). */
-export const STUB_PUSH_BOTTLENECK_KIND = 'stub_network' as const;
+/** Human label in PUSH stub initial-queue keys (`queue:stub-push:network:…`). */
+export const STUB_PUSH_NODE_KIND = 'network' as const;
 
-/** Bottleneck kind for PULL stub queues (`queue:stub_gateway:{id}`). */
-export const STUB_PULL_BOTTLENECK_KIND = 'stub_gateway' as const;
+/** Human label in PULL stub initial-queue keys (`queue:stub-pull:gateway:…`). */
+export const STUB_PULL_NODE_KIND = 'gateway' as const;
 
 const STUB_PUSH_ADMISSION: Admission = {
   strategy: 'spacing',
@@ -52,19 +53,19 @@ function parseStubError(err: unknown): FailureContext {
 export function createStubPlugin(options: {
   readonly id: PluginId;
   readonly deliveryPattern: DeliveryPattern;
-  readonly bottleneckKind: string;
+  readonly nodeKind: string;
   readonly admission: Admission;
 }): DeviceMessagingPlugin {
-  const { id, deliveryPattern, bottleneckKind, admission } = options;
+  const { id, deliveryPattern, nodeKind, admission } = options;
 
-  const bottleneckKey = (input: BottleneckKeyInput): string => {
+  const initialQueueKey = (input: InitialQueueKeyInput): string => {
     if (deliveryPattern === 'PUSH') {
       const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
-      return `queue:${ bottleneckKind }:${ networkPart }`;
+      return buildInitialQueueKey(id, nodeKind, networkPart);
     }
     const gatewayId = input.device.gateway?.id;
     const gatewayPart = gatewayId == null ? 'unassigned' : String(gatewayId);
-    return `queue:${ bottleneckKind }:${ gatewayPart }`;
+    return buildInitialQueueKey(id, nodeKind, gatewayPart);
   };
 
   const outgoing: DeviceMessagingPlugin['outgoing'] = {
@@ -85,9 +86,8 @@ export function createStubPlugin(options: {
   return {
     id,
     deliveryPattern,
-    bottleneckKind,
     admission,
-    bottleneckKey,
+    initialQueueKey,
     outgoing,
     incoming,
   };
@@ -100,7 +100,7 @@ export function createStubPushPlugin(
   return createStubPlugin({
     id: STUB_PUSH_ID,
     deliveryPattern: 'PUSH',
-    bottleneckKind: STUB_PUSH_BOTTLENECK_KIND,
+    nodeKind: STUB_PUSH_NODE_KIND,
     admission: STUB_PUSH_ADMISSION,
   });
 }
@@ -112,7 +112,7 @@ export function createStubPullPlugin(
   return createStubPlugin({
     id: STUB_PULL_ID,
     deliveryPattern: 'PULL',
-    bottleneckKind: STUB_PULL_BOTTLENECK_KIND,
+    nodeKind: STUB_PULL_NODE_KIND,
     admission: STUB_PULL_ADMISSION,
   });
 }
