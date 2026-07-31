@@ -41,7 +41,8 @@ ADR-003 command/ingress surfaces land thin HTTP with the engine chunk; timer-onl
 use stub plugins + enqueue/get. See sessions 12–17 and plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **5.2** is **done**. Intermezzo closed.
-Next is **5.3** (distribute + D1/D3). Also outstanding on `nxt-backend`:
+Unit **5.3** D1 done (session 18b); next is **distribute + D3**. Also outstanding on
+`nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).

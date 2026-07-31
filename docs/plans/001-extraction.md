@@ -52,7 +52,7 @@ need them (same pattern as Intermezzo enqueue/get).
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **5.2** is **done**.
-**Phase 1b is closed.** Next is Unit **5.3** (distribute + D1/D3). Phase 4 still owns
+**Phase 1b is closed.** Unit **5.3** D1 done; next is distribute + D3. Phase 4 still owns
 ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
 already in Phase 0.
 
