@@ -16,7 +16,7 @@ const enqueueBody = {
   },
 };
 
-describe('message command routes (I3)', () => {
+describe('message command routes (enqueue / get / cancel)', () => {
   it('enqueues via outgoing and returns via get (camelCase)', async () => {
     const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
     const app = await buildApp({ outgoing });
@@ -116,6 +116,74 @@ describe('message command routes (I3)', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'Invalid request body' });
+
+    await app.close();
+  });
+
+  it('cancels one via POST /message/cancel', async () => {
+    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const app = await buildApp({ outgoing });
+
+    await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: enqueueBody,
+    });
+
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: '/message/cancel',
+      payload: { correlationId: 'corr-1' },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect(cancelled.json()).toEqual({ correlationId: 'corr-1', result: 'CANCELLED' });
+
+    const missing = await app.inject({
+      method: 'GET',
+      url: '/message/corr-1',
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const notFound = await app.inject({
+      method: 'POST',
+      url: '/message/cancel',
+      payload: { correlationId: 'never-enqueued' },
+    });
+    expect(notFound.statusCode).toBe(200);
+    expect(notFound.json()).toEqual({
+      correlationId: 'never-enqueued',
+      result: 'NOT_FOUND',
+    });
+
+    await app.close();
+  });
+
+  it('cancels many via POST /messages/cancel', async () => {
+    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const app = await buildApp({ outgoing });
+
+    await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: { ...enqueueBody, correlationId: 'corr-a' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: { ...enqueueBody, correlationId: 'corr-b' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages/cancel',
+      payload: { correlationIds: [ 'corr-a', 'corr-b', 'corr-missing' ] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([
+      { correlationId: 'corr-a', result: 'CANCELLED' },
+      { correlationId: 'corr-b', result: 'CANCELLED' },
+      { correlationId: 'corr-missing', result: 'NOT_FOUND' },
+    ]);
 
     await app.close();
   });

@@ -5,7 +5,12 @@
 import { ulid } from 'ulid';
 
 import { UnknownPluginError, type Outgoing } from '../../src/engine/outgoing.js';
-import type { CreateDeviceMessage, DeviceMessage, PluginId } from '../../src/lib/device-message/types.js';
+import type {
+  CancelMessageResult,
+  CreateDeviceMessage,
+  DeviceMessage,
+  PluginId,
+} from '../../src/lib/device-message/types.js';
 
 export type InMemoryOutgoingOptions = {
   /** When set, enqueue throws {@link UnknownPluginError} for other ids. */
@@ -18,6 +23,18 @@ export function createInMemoryOutgoing(options: InMemoryOutgoingOptions = {}): O
     ? new Set(options.knownPluginIds)
     : undefined;
   const byCorrelationId = new Map<string, DeviceMessage>();
+
+  const cancelOne = async (correlationId: string): Promise<CancelMessageResult> => {
+    const message = byCorrelationId.get(correlationId);
+    if (message === undefined) {
+      return { correlationId, result: 'NOT_FOUND' };
+    }
+    if (message.deliveryStatus !== 'QUEUED' && message.deliveryStatus !== 'TO_RETRY') {
+      return { correlationId, result: 'NOT_CANCELLABLE' };
+    }
+    byCorrelationId.delete(correlationId);
+    return { correlationId, result: 'CANCELLED' };
+  };
 
   return {
     async enqueue(create: CreateDeviceMessage): Promise<DeviceMessage> {
@@ -41,6 +58,12 @@ export function createInMemoryOutgoing(options: InMemoryOutgoingOptions = {}): O
 
     async getByCorrelationId(correlationId: string): Promise<DeviceMessage | null> {
       return byCorrelationId.get(correlationId) ?? null;
+    },
+
+    cancelOne,
+
+    async cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]> {
+      return Promise.all(correlationIds.map(id => cancelOne(id)));
     },
   };
 }

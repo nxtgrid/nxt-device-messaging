@@ -54,3 +54,13 @@ export const createDeviceMessageSchema = z.object({
   correlationId: z.string().min(1).optional(),
   device: deviceSchema,
 }).strict();
+
+/** `POST /message/cancel` body (ADR-003 §1). */
+export const cancelOneBodySchema = z.object({
+  correlationId: z.string().min(1),
+}).strict();
+
+/** `POST /messages/cancel` body (ADR-003 §1). */
+export const cancelManyBodySchema = z.object({
+  correlationIds: z.array(z.string().min(1)).min(1),
+}).strict();

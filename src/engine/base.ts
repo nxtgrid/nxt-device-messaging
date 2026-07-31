@@ -124,16 +124,14 @@ export async function requeueMessage(messageId: string): Promise<void> {
     ]);
 
   if (!priorityStr || !deviceStr || !pluginId) {
-    console.warn(`[DEVICE MESSAGING] Orphaned retry id ${ messageId }. Removing.`);
+    console.warn(`[requeueMessage] Orphaned retry id ${ messageId }. Removing.`);
     await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
     return;
   }
 
   const plugin = pluginRegistry.get(pluginId);
   if (!plugin) {
-    console.warn(
-      `[DEVICE MESSAGING] No plugin registered for ${ pluginId } (message ${ messageId }). Removing from retry.`,
-    );
+    console.warn(`[requeueMessage] No plugin registered for ${ pluginId } (message ${ messageId }). Removing from retry.`);
     await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
     return;
   }

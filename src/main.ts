@@ -21,7 +21,7 @@ function resolvePort(): number {
  * Composition root — runtime already booted; build Fastify shell and listen.
  */
 const app = await buildApp({
-  outgoing: createOutgoing(),
+  outgoing: createOutgoing(pluginRegistry),
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
 const port = resolvePort();

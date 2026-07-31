@@ -27,7 +27,28 @@ Authorization: Bearer {{apiKey}}
 GET {{baseUrl}}/message/{{enqueueStubPush.correlationId}}
 Authorization: Bearer {{apiKey}}
 
-### Enqueue unknown plugin (expect 400)
+### Cancel one (from enqueue — expect CANCELLED)
+# @ref enqueueStubPush
+# @name cancelOne
+POST {{baseUrl}}/message/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationId": "httpyac-demo-1"
+}
+
+### Cancel missing (expect NOT_FOUND)
+POST {{baseUrl}}/message/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationId": "httpyac-missing"
+}
+
+### Enqueue for batch cancel
+# @name enqueueForBatch
 POST {{baseUrl}}/message/enqueue
 Authorization: Bearer {{apiKey}}
 Content-Type: application/json
@@ -35,10 +56,21 @@ Content-Type: application/json
 {
   "commandType": "READ",
   "priority": 1,
-  "pluginId": "calin-api-v2",
-  "networkId": null,
+  "pluginId": "stub-push",
+  "networkId": 42,
+  "correlationId": "httpyac-batch-1",
   "device": {
     "type": "ELECTRICITY_METER",
-    "externalReference": "m-1"
+    "externalReference": "m-batch"
   }
+}
+
+### Cancel many
+# @ref enqueueForBatch
+POST {{baseUrl}}/messages/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationIds": ["{{enqueueForBatch.correlationId}}", "httpyac-missing"]
 }

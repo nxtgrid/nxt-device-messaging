@@ -38,8 +38,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation done through Unit 5.1. Phase 1b Intermezzo
-closed (I0–I3; I4 skipped). Next: Unit 5.2+ — cancel engine + thin cancel HTTP.**
+**Phase 0 complete. Phase 1 foundation through 5.2. Phase 1b Intermezzo closed
+(I0–I3; I4 skipped). Next: Unit 5.3 — distribute + D1/D3 (decide one at a time).**
 
 Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -51,8 +51,8 @@ Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` b
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
 lifecycle, `src/plugins/` (SPI, catalog, one-shot registry, `stub/` — real bootable
-plugins, not test-only fixtures), `src/http/` (lean enqueue/get; `message-params.ts`;
-`smoke/` httpYac), `src/engine/base.ts` (5.1) + `outgoing.ts` (I3 — Redis enqueue/get,
+plugins, not test-only fixtures), `src/http/` (lean enqueue/get/cancel; `message-params.ts`;
+`smoke/` httpYac), `src/engine/base.ts` (5.1) + `outgoing.ts` (enqueue/get/cancel;
 `UnknownPluginError` → HTTP 400). **Distribute still no-op.**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
@@ -60,7 +60,7 @@ plugins, not test-only fixtures), `src/http/` (lean enqueue/get; `message-params
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
 - **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
 - **Smoke:** `src/http/smoke/message.http` (httpYac); opt-in
-  `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/redis.smoke.spec.ts`
+  `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/`
 
 ## Workflow
 
@@ -143,5 +143,9 @@ the plugin interface sketch) — never as instructions.
 - Verb prefixes for booleans: `isLoading`, `hasError`, `canRetry`.
 - Prefer short single-purpose functions, early returns over nesting, and a functional style.
 - Prefer immutability: `readonly` for data that does not change, `as const` for literals.
+- **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
+  keep private helpers in that scope; return a plain object literal as the interface. Example:
+  `createOutgoing(registry)`. Complements ADR-001 §2 (no DI container). Pure helpers and
+  module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.

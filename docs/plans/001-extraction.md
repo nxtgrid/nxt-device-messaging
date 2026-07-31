@@ -5,8 +5,8 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation through 5.1; **Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Next: Unit 5.2+ (cancel engine + thin cancel HTTP)**
+**Status:** Phase 0 complete; Phase 1 foundation through **5.2**; **Phase 1b Intermezzo closed
+(I0–I3; I4 skipped). Next: Unit 5.3 (distribute + D1/D3)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -45,14 +45,14 @@ need them (same pattern as Intermezzo enqueue/get).
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1; then 5.2+ after 1b | Foundation through 5.1; **resume 5.2+** |
+| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1–5.2; then 5.3+ | Foundation through **5.2**; **next 5.3** |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
 | **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; enqueue/get in 1b; cancel/token/ingress with Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 foundation (Units 1–4, pre–Unit 5 SPI, Unit 5.1) is **done**.
-**Phase 1b is closed.** Resume Unit 5.2+ against the curl-able stub path. Phase 4 still owns
+Phase 0 is **done**. Phase 1 foundation through Unit **5.2** is **done**.
+**Phase 1b is closed.** Next is Unit **5.3** (distribute + D1/D3). Phase 4 still owns
 ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
 already in Phase 0.
 
@@ -137,7 +137,7 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
         `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
         Requeue via `plugin.bottleneckKey` (not `queueInitial`).
         `BottleneckKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
-      - [ ] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
+      - [x] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
         `POST /messages/cancel` + smoke (enqueue/get already from I3)
       - [ ] **5.3** D1 then distribute + D3 admission — timer-driven; exercise with stub
         plugins + enqueue/get (no public distribute route)

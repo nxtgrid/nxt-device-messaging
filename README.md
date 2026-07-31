@@ -23,8 +23,8 @@ power limit.
 ## Status
 
 **Walking skeleton in place (Intermezzo closed):** config-driven stub plugins, camelCase
-`POST /message/enqueue` + `GET /message/:correlationId` against local Valkey. Next engine
-work (cancel, distribute/send, …) continues end-to-end. Webhook polish / real
+`POST /message/enqueue` + `GET /message/:correlationId` + cancel against local Valkey.
+Next engine work (distribute/send, …) continues end-to-end. Webhook polish / real
 CALIN·ChirpStack plugins are not wired yet.
 
 Plan and decisions: [`docs/plans/001-extraction.md`](docs/plans/001-extraction.md),

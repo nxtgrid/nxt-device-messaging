@@ -83,7 +83,7 @@ export type FailureReason = {
 
 /**
  * Result of a cancel operation for a single correlation id.
- * Returned by cancel-one / cancel-many Redis helpers.
+ * Returned by cancel-one / cancel-many on the outgoing surface.
  */
 export type CancelMessageResult = {
   correlationId: string;

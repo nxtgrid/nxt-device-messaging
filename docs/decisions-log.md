@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Unit 5.2; Intermezzo closed)* | — |
+| — | *(none blocking Unit 5.3; 5.2 closed)* | — |
 
 ### Deferred with locked criteria
 
@@ -36,13 +36,12 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 `docs/plans/001-extraction.md`.
 
 **Course correction (2026-07-30):** Phase 1b Intermezzo **closed** (I0–I3; I4 skipped).
-Resume Unit **5.2+** with the end-to-end rule (session 16): ADR-003 command/ingress
-surfaces land thin HTTP with the engine chunk; timer-only paths use stub plugins +
-enqueue/get. See sessions 12–16 and plan **Phase 1b** / Unit 5.
+Unit **5.2** (cancel) done. Resume Unit **5.3+** with the end-to-end rule (session 16):
+ADR-003 command/ingress surfaces land thin HTTP with the engine chunk; timer-only paths
+use stub plugins + enqueue/get. See sessions 12–17 and plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 Units 1–4, pre–Unit 5 SPI, and Unit **5.1** are
-**done**. Intermezzo closed. Next is **5.2** (cancel + thin cancel HTTP). Also outstanding
-on `nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **5.2** is **done**. Intermezzo closed.
+Next is **5.3** (distribute + D1/D3). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -58,6 +57,7 @@ Each needs to land somewhere before it can be dropped from this list.
 
 | Finding | Lands in |
 |---|---|
+| **Thorough message-cleanup tests (wanted).** Enqueue into an empty DB creates **four** Redis entries: `device_message:{id}`, correlation `idx`, bottleneck queue membership, and `queues_to_distribute_from`. Messages then pass through stage queues; at every exit (cancel, success, final fail, timeout) the message **and all references** must be gone. `messageFullCleanup` today does not SREM `queues_to_distribute_from` (distributor Lua GC's empty queues). Build a dedicated integration suite once distribute + more exit paths exist — not only enqueue→cancel→get smoke | Integration tests / D2 exit-path audit |
 | **Vendor clients are shared with `meter-installs`.** `lib/chirpstack-repository/index.ts` (`registerDevice`, `setApplicationKeyForDevice`) and `adapters/calin-api-v2/lib/repo.ts` (`sendCalinApiV2Request`, `CalinApiV2Error`) are imported by `meter-installs/adapters/{calin-lorawan,calin-api-v2}/_install.service.ts`, which stays in `nxt-backend`. Extracting them leaves nxt-backend's hardware provisioning without its vendor clients. **Out of scope here, undecided** — three eventual options: re-implement thin provisioning clients in Metering, expose provisioning endpoints from this service, or share a package | `nxt-backend` Metering import (002f) |
 | ~~`nxt-backend` plan 001's Phase 1 cannot execute — it edits files in the frozen `legacy/` tree~~ | ✅ ADR-010 amendment §B, plan 001 stop-banner, `docs/plans/001-extraction.md` |
 | ~~`nxt-backend` ADR-010 decision 2's endpoint list has **no token endpoint**~~ | ✅ ADR-010 amendment §C, then **ADR-003** (`POST /token/generate`) |
@@ -715,4 +715,47 @@ Generic Zod validation error bodies deferred to Phase 3 / OpenAPI hardening.
 
 **Next:** Unit **5.2** — cancel from legacy `outgoing.service.ts` + thin
 `POST /message/cancel` / `POST /messages/cancel` + httpYac smoke.
+
+### 2026-07-31 — session 17: Unit 5.2 cancel + thin cancel HTTP
+
+**Landed:**
+
+- `src/engine/outgoing.ts` — `cancelOne` / `cancelMany` (legacy semantics): lookup all
+  messages for correlation id (base + phases); cancel only `QUEUED` / `TO_RETRY`; atomic
+  ZREM claim then `messageFullCleanup`. Outcomes `CANCELLED` | `NOT_CANCELLABLE` |
+  `NOT_FOUND`.
+- **Adaptation:** `queueInitial` → `plugin.bottleneckKey` via `pluginRegistry` (same as
+  enqueue / requeue). Missing plugin on `QUEUED` → not cancellable. `TO_RETRY` →
+  `QUEUE_RETRY_KEY`. No concurrency key on cleanup (D2 interim).
+- Thin HTTP: `POST /message/cancel` / `POST /messages/cancel` (Zod bodies in
+  `lib/device-message/schemas.ts`); **200** + result body for all three outcomes
+  (including `NOT_FOUND` — business result, not HTTP 404).
+- In-memory outgoing + route tests; httpYac smoke extended in `message.http`.
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build`.
+
+**Next:** Unit **5.3** — decide D1 with maintainer, then distribute + D3.
+
+### 2026-07-31 — session 17b: 5.2 review follow-ups
+
+**Landed:**
+
+- Lean plugin guards: cancel `if (!plugin) return false`; requeue drops warn (still
+  removes orphan from retry). Soft `registry.get` kept — call sites need different
+  missing-plugin policies (enqueue 400 vs cancel NOT_CANCELLABLE vs requeue drop).
+- `createOutgoing(registry)` — registry injected (no `runtime` import in outgoing);
+  composition root passes `pluginRegistry`.
+- Restored fuller cancel JSDoc / `@performance` from legacy (adapted to correlationId).
+- Opt-in integration smoke: `test/integration/outgoing-cancel.smoke.spec.ts`
+  (enqueue → cancel → get against real Redis + stub registry).
+- Carried finding: thorough cleanup suite wanted (4 enqueue keys + all stage exits).
+
+**Checks:** `pnpm lint` / `typecheck` / `test` / `build`; `RUN_REDIS_SMOKE=1` when Valkey up.
+
+### 2026-07-31 — session 17c: lock factory + closure DI pattern
+
+**Decided:** Preferred composition shape when practical — factory function with injected deps,
+locally scoped helpers (closures), returned object literal as the interface. Exemplar:
+`createOutgoing(registry)`. Locked in ADR-001 §2 amendment + `AGENTS.md` code conventions.
+Not a container; not mandatory for pure helpers / Redis module singleton.
 

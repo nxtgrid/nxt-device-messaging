@@ -36,4 +36,4 @@ Open `message.http` (or `healthz.http`) and **Send**. Enqueue is `# @name`’d s
 |------|------|
 | `.httpyac.cjs` | `baseUrl` + `local` env (`.cjs` — package is ESM) |
 | `healthz.http` | Liveness (no auth) |
-| `message.http` | Enqueue + get (Bearer from `apiKey` in `.httpyac.cjs`) |
+| `message.http` | Enqueue + get + cancel (Bearer from `apiKey` in `.httpyac.cjs`) |

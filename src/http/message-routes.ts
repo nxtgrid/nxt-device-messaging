@@ -1,5 +1,5 @@
 /**
- * @fileoverview Thin command routes: enqueue + get-by-correlation (Intermezzo I3).
+ * @fileoverview Thin command routes: enqueue, get-by-correlation, cancel (Unit 5.2).
  *
  * Lean HTTP: Zod + auth + map domain errors. Plugin enablement lives in {@link Outgoing}.
  */
@@ -7,7 +7,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { UnknownPluginError, type Outgoing } from '../engine/outgoing.js';
-import { createDeviceMessageSchema } from '../lib/device-message/schemas.js';
+import {
+  cancelManyBodySchema,
+  cancelOneBodySchema,
+  createDeviceMessageSchema,
+} from '../lib/device-message/schemas.js';
 import { createApiKeyHook } from './auth.js';
 import { correlationIdParamsSchema } from './message-params.js';
 
@@ -18,7 +22,7 @@ export type MessageRoutesOpts = {
 };
 
 /**
- * Registers `POST /message/enqueue` and `GET /message/:correlationId`.
+ * Registers enqueue, get-by-correlation, and cancel command routes.
  */
 export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, opts) => {
   app.addHook('onRequest', createApiKeyHook(opts.apiKey));
@@ -53,5 +57,25 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
     }
 
     return message;
+  });
+
+  app.post('/message/cancel', async (request, reply) => {
+    const parsed = cancelOneBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid request body' });
+    }
+
+    const result = await opts.outgoing.cancelOne(parsed.data.correlationId);
+    return reply.code(200).send(result);
+  });
+
+  app.post('/messages/cancel', async (request, reply) => {
+    const parsed = cancelManyBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid request body' });
+    }
+
+    const results = await opts.outgoing.cancelMany(parsed.data.correlationIds);
+    return reply.code(200).send(results);
   });
 };
