@@ -30,7 +30,7 @@ export function buildInitialQueueKey(
  *
  * @returns The plugin id, or `undefined` if the key does not match the convention
  */
-export function pluginIdFromInitialQueueKey(queueKey: string): string | undefined {
+export function getPluginIdFromInitialQueueKey(queueKey: string): string | undefined {
   const parts = queueKey.split(':');
   if (parts.length < 4 || parts[0] !== 'queue' || parts[1] === '') {
     return undefined;

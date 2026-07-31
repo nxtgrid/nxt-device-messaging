@@ -778,7 +778,7 @@ distribute parses that segment for `registry.get`. No kind registry, no Redis ow
 - SPI: `initialQueueKey(input)` (renamed from `bottleneckKey`); input type
   `InitialQueueKeyInput`
 - `kind` = human label for the admission node; not used for policy
-- Parse helper: `pluginIdFromInitialQueueKey` (no enqueue re-check of the key we just built)
+- Parse helper: `getPluginIdFromInitialQueueKey` (no enqueue re-check of the key we just built)
 - Hard cutover: legacy `queue:lorawan_network:…` / `queue:gateway:…` not preserved;
   V1/V2 get separate per-plugin buckets
 

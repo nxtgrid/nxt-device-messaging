@@ -147,7 +147,7 @@ runs.
 **Locked behaviour:**
 
 1. Plugins implement `initialQueueKey` using `buildInitialQueueKey(plugin.id, kind, id)`.
-2. Distribute: `pluginIdFromInitialQueueKey(queueKey)` → `registry.get(pluginId)`.
+2. Distribute: `getPluginIdFromInitialQueueKey(queueKey)` → `registry.get(pluginId)`.
    Parse is lookup-only — **never** chooses admission or PUSH/PULL.
 3. Human `kind` is for operators reading Redis; admission id/partition is the full key
    (and thus the `id` among peers of that plugin).

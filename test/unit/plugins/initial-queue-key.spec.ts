@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInitialQueueKey,
-  pluginIdFromInitialQueueKey,
+  getPluginIdFromInitialQueueKey,
 } from '../../../src/plugins/initial-queue-key.js';
 
 describe('buildInitialQueueKey', () => {
@@ -16,20 +16,20 @@ describe('buildInitialQueueKey', () => {
   });
 });
 
-describe('pluginIdFromInitialQueueKey', () => {
+describe('getPluginIdFromInitialQueueKey', () => {
   it('extracts pluginId for distribute lookup', () => {
-    expect(pluginIdFromInitialQueueKey('queue:calin-api-v1:gateway:7')).toBe(
+    expect(getPluginIdFromInitialQueueKey('queue:calin-api-v1:gateway:7')).toBe(
       'calin-api-v1',
     );
-    expect(pluginIdFromInitialQueueKey('queue:stub-pull:gateway:unassigned')).toBe(
+    expect(getPluginIdFromInitialQueueKey('queue:stub-pull:gateway:unassigned')).toBe(
       'stub-pull',
     );
   });
 
   it('returns undefined for malformed keys', () => {
-    expect(pluginIdFromInitialQueueKey('')).toBeUndefined();
-    expect(pluginIdFromInitialQueueKey('queue:only-two')).toBeUndefined();
-    expect(pluginIdFromInitialQueueKey('lock_queue:queue:x:y:z')).toBeUndefined();
-    expect(pluginIdFromInitialQueueKey('queue::network:1')).toBeUndefined();
+    expect(getPluginIdFromInitialQueueKey('')).toBeUndefined();
+    expect(getPluginIdFromInitialQueueKey('queue:only-two')).toBeUndefined();
+    expect(getPluginIdFromInitialQueueKey('lock_queue:queue:x:y:z')).toBeUndefined();
+    expect(getPluginIdFromInitialQueueKey('queue::network:1')).toBeUndefined();
   });
 });
