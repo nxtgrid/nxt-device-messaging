@@ -25,7 +25,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.4+ / cleanup paths | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey` | 006 |
 | ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `Outgoing.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
@@ -36,13 +36,12 @@ Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-
 `docs/plans/001-extraction.md`.
 
 **Course correction (2026-07-30):** Phase 1b Intermezzo **closed** (I0–I3; I4 skipped).
-Unit **5.2** (cancel) done. Resume Unit **5.3+** with the end-to-end rule (session 16):
-ADR-003 command/ingress surfaces land thin HTTP with the engine chunk; timer-only paths
-use stub plugins + enqueue/get. See sessions 12–17 and plan **Phase 1b** / Unit 5.
+End-to-end rule (session 16): ADR-003 command/ingress surfaces land thin HTTP with the
+engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12–19 and
+plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 through Unit **5.2** is **done**. Intermezzo closed.
-Unit **5.3** done (sessions 18b + 19); next is **5.4** (`sendOne`). Also outstanding on
-`nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **5.3** is **done**. Intermezzo closed.
+Next is **5.4** (`sendOne` + post-send moves). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -821,5 +820,7 @@ strategy; lean skip on bad queueKey / missing plugin; method-scoped log tags; dr
 `rateLimitKey` — `buildConcurrencyRateLimitKey(queueKey)` in `initial-queue-key.ts`
 (`queue:…` → `rate_limit:…`); cleanup/repo option stays `concurrencyRateLimitKey`.
 
-**Next:** Unit **5.4** — `sendOne` + post-send PUSH|PULL queue moves.
+**Next:** Unit **5.4** — `sendOne` + post-send PUSH|PULL queue moves
+(message → `initialQueueKey` → `buildConcurrencyRateLimitKey` for retry/cleanup when
+admission is concurrency; prefer `createBase` when touching `base.ts`).
 

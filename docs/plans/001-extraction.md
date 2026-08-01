@@ -143,8 +143,11 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
         (timer wiring deferred to 5.6; exercise via stubs + one tick; no public route).
         **D1 (18b):** `buildInitialQueueKey` → `queue:{pluginId}:{kind}:{id}`.
         **D3 (19):** named spacing/concurrency/custom; enqueue fire-and-forget kick;
-        stop before `sendOne`.
-      - [ ] **5.4** sendOne + post-send PUSH|PULL moves — same (internal; stubs + observe)
+        concurrency rate-limit key derived via `buildConcurrencyRateLimitKey` (no SPI
+        builder); stop before `sendOne`.
+      - [ ] **5.4** sendOne + post-send PUSH|PULL moves — same (internal; stubs + observe);
+        wire `retryOrFail` with `concurrencyRateLimitKey` when admission is concurrency
+        (message → `initialQueueKey` → `buildConcurrencyRateLimitKey`).
       - [ ] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke
       - [ ] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`)
       `@Injectable`/`@Module` removed; timers gated on `engine.enabled` (ADR-002 §7).

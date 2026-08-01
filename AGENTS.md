@@ -51,11 +51,11 @@ Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` b
 (`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
-lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey`, catalog, registry,
-`stub/`), `src/http/` (lean enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac),
-`src/engine/base.ts` (5.1) + `outgoing.ts` (enqueue/get/cancel/
-`distributeToNetworkServers` + named admission; `UnknownPluginError` → HTTP 400).
-**Stops before `sendOne` (Unit 5.4).**
+lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey` /
+`buildConcurrencyRateLimitKey`, catalog, registry, `stub/`), `src/http/` (lean
+enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts` (5.1) +
+`outgoing.ts` (enqueue/get/cancel/`distributeToNetworkServers` + named admission;
+`UnknownPluginError` → HTTP 400). **Stops before `sendOne` (Unit 5.4).**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
