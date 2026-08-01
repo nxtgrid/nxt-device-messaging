@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking distribute; D1 locked — `pluginId` in key, session 18b)* | — |
+| — | *(none blocking 5.4; distribute + D3 landed — session 19)* | — |
 
 ### Deferred with locked criteria
 
@@ -26,7 +26,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 |---|---|---|---|---|
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.3+ / cleanup paths | Parameterized options on the Redis repo (Unit 2); no gateway key invention | 006 |
-| D3 | Wire named admission strategies into `distribute` | Unit 5.3 | None (D1: parse `pluginId` from key) | 006 |
+| ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `Outgoing.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
@@ -41,7 +41,7 @@ ADR-003 command/ingress surfaces land thin HTTP with the engine chunk; timer-onl
 use stub plugins + enqueue/get. See sessions 12–17 and plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **5.2** is **done**. Intermezzo closed.
-Unit **5.3** D1 done (session 18b); next is **distribute + D3**. Also outstanding on
+Unit **5.3** done (sessions 18b + 19); next is **5.4** (`sendOne`). Also outstanding on
 `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -789,6 +789,37 @@ distribute parses that segment for `registry.get`. No kind registry, no Redis ow
 **Landed:** helper + SPI + stubs (`queue:stub-push:network:…` /
 `queue:stub-pull:gateway:…`) + engine call sites + ADR-006 rewrite of §1/D1 + plan/AGENTS.
 
-**Next:** Unit 5.3 continue — `createDistribute` + D3 admission (still stop before
+**Next:** Unit 5.3 continue — distribute + D3 on outgoing (still stop before
 `sendOne` unless maintainer widens scope).
+
+### 2026-08-01 — session 19: Unit 5.3 — distributeToNetworkServers + D3
+
+**Decided:**
+
+- **Composition:** `distributeToNetworkServers` lives on `createOutgoing` (legacy shape),
+  not a separate `createDistribute` factory. Prior carry-over naming was a process
+  artifact, not an ADR.
+- **Method name:** keep legacy `distributeToNetworkServers` (not shortened `distribute`).
+- **Enqueue kick:** restore fire-and-forget call after Redis enqueue (legacy parity);
+  not a deferred ADR item. Tests that need `QUEUED` to stick use
+  `kickDistributeOnEnqueue: false`.
+- **Cron / `engine.enabled`:** still deferred to Unit 5.6; tests invoke one tick.
+- **`createBase`:** not this chunk — `emitDeliveryEvent` stays a free export from
+  `base.ts` for now.
+
+**Landed:**
+
+- `createOutgoing({ registry, delivery, kickDistributeOnEnqueue? })` — admit
+  (spacing / concurrency / custom) → `pickNextAndMoveToNs` → concurrency/`onClaim` →
+  `emitDeliveryEvent` if `!retryCount`. **Stops before `sendOne`.**
+- Opt-in smoke: `test/integration/outgoing-distribute.smoke.spec.ts`.
+- Docs: ADR-006 D3; plan Unit 5.3; AGENTS; ADR-001 factory example.
+
+**Review polish (same session):** factory-local helpers `_`-prefixed; `switch` on admission
+strategy; lean skip on bad queueKey / missing plugin; method-scoped log tags; drop
+“legacy” / `[DEVICE MESSAGING]` wording in outgoing. Concurrency Redis key: no SPI
+`rateLimitKey` — `buildConcurrencyRateLimitKey(queueKey)` in `initial-queue-key.ts`
+(`queue:…` → `rate_limit:…`); cleanup/repo option stays `concurrencyRateLimitKey`.
+
+**Next:** Unit **5.4** — `sendOne` + post-send PUSH|PULL queue moves.
 

@@ -93,9 +93,9 @@ inject the vendor adapters that the plugin registry supersedes, and the fourth i
 **Preferred composition shape (locked 2026-07-31):** when a module needs dependencies, prefer a
 **factory function** that takes them as arguments, defines private helpers in that factory’s
 scope (closures over the deps), and returns a **plain object literal** as the public interface.
-Reference: `createOutgoing(registry)` in `src/engine/outgoing.ts`. This is explicit DI without a
-container — testable, no classes, no framework. Use it when practical; thin pure helpers and
-module-level Redis/Lua remain fine outside this shape.
+Reference: `createOutgoing({ registry, delivery })` in `src/engine/outgoing.ts`. This is
+explicit DI without a container — testable, no classes, no framework. Use it when practical;
+thin pure helpers and module-level Redis/Lua remain fine outside this shape.
 
 ### 3. Zod is the single source of truth for validation and OpenAPI
 

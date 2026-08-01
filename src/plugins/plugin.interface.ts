@@ -2,7 +2,8 @@
  * @fileoverview Minimal plugin SPI (pre–Unit 5).
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
- * Admission declaration lives here (ADR-006); execution of named strategies is Unit 5 (D3).
+ * Admission declaration lives here (ADR-006); execution is
+ * `Outgoing.distributeToNetworkServers` (Unit 5.3 / D3).
  * Initial queues: {@link DeviceMessagingPlugin.initialQueueKey} + `buildInitialQueueKey`
  * (ADR-006 D1). Stage-timeout relocation (D5) is not here.
  *
@@ -48,8 +49,6 @@ export type Admission =
   | {
     readonly strategy: 'concurrency';
     readonly maxInFlight: number;
-    /** Redis set of in-flight message ids; parsing stays in the plugin if needed. */
-    readonly trackKey?: (queueKey: string) => string;
   }
   | {
     readonly strategy: 'custom';

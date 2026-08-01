@@ -1,5 +1,5 @@
 /**
- * @fileoverview Initial-queue Redis key helper (ADR-006).
+ * @fileoverview Initial-queue Redis key helpers (ADR-006).
  *
  * Shape: `queue:{pluginId}:{kind}:{id}`
  * - `pluginId` — owning plugin; distribute parses this for lookup only
@@ -7,6 +7,8 @@
  * - `id` — instance of that node (`42`, `unassigned`, …)
  *
  * Admission policy is **not** inferred from `kind` — that lives on `plugin.admission`.
+ * Concurrency rate-limit keys reuse the same `{pluginId}:{kind}:{id}` identity
+ * ({@link buildConcurrencyRateLimitKey}).
  */
 
 /**
@@ -36,4 +38,23 @@ export function getPluginIdFromInitialQueueKey(queueKey: string): string | undef
     return undefined;
   }
   return parts[1];
+}
+
+/**
+ * Derive the concurrency strategy's rate-limit Redis key from an initial-queue key.
+ *
+ * The admission node is already identified by the queue partition, so plugins do not
+ * supply a separate key builder. Shape:
+ * `queue:{pluginId}:{kind}:{id}` → `rate_limit:{pluginId}:{kind}:{id}`.
+ *
+ * Pass the result to Redis helpers / cleanup as `concurrencyRateLimitKey`.
+ *
+ * @returns The rate-limit key, or `undefined` if `queueKey` is not a valid initial-queue key
+ */
+export function buildConcurrencyRateLimitKey(queueKey: string): string | undefined {
+  const parts = queueKey.split(':');
+  if (parts.length < 4 || parts[0] !== 'queue' || parts[1] === '') {
+    return undefined;
+  }
+  return `rate_limit:${ parts.slice(1).join(':') }`;
 }

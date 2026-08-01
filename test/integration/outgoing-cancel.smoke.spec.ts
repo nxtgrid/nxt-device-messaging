@@ -37,7 +37,14 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
-    const outgoing = createOutgoing(registry);
+    const { deviceMessagingConfigSchema } = await import('../../src/config/schema.js');
+    const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
+    // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
+    const outgoing = createOutgoing({
+      registry,
+      delivery,
+      kickDistributeOnEnqueue: false,
+    });
 
     const correlationId = `cancel-smoke-${ Date.now() }`;
     const networkId = 42;

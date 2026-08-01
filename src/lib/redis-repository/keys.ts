@@ -13,8 +13,8 @@ import { PhaseEnum } from '../device-message/types.js';
  *   is owned by plugins via `initialQueueKey` → `buildInitialQueueKey`.
  * - Queue key shape: `queue:{pluginId}:{kind}:{id}` (ADR-006).
  *   Core must not parse queue keys for policy.
- * - Concurrency rate-limit set keys are plugin vocabulary (ADR-006 `trackKey`); core
- *   helpers take the opaque key string — no `gateway` / `unassigned` builders here.
+ * - Concurrency rate-limit keys are derived from the initial-queue key
+ *   (`buildConcurrencyRateLimitKey`); Redis helpers take the opaque resolved string.
  */
 
 export const redisKeys = {

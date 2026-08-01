@@ -38,7 +38,7 @@ Real constraints (why two admission policies exist):
 | Admission node | Example plugin | Constraint | Queue bucket | Admission today |
 |---|---|---|---|---|
 | Radio network (any GW) | `calin-chirpstack` | Don’t flood the network | Per `networkId` (or `unassigned`) | Spacing / flood lock (~2s) |
-| Meter pinned to one DCU | `calin-api-v1` / `v2` | Don’t overload the DCU / vendor API | Per DCU (`gateway.id` in legacy) | Concurrency cap (e.g. 5) + track set |
+| Meter pinned to one DCU | `calin-api-v1` / `v2` | Don’t overload the DCU / vendor API | Per DCU (`gateway.id` in legacy) | Concurrency cap (e.g. 5) + rate-limit key |
 
 Hard cutover (no dual-write Redis) lets us change key ownership and distributor shape without
 migrating live queues.
@@ -89,12 +89,7 @@ defaults, overridable via ADR-002 config.
 ```ts
 type Admission =
   | { strategy: 'spacing'; minIntervalMs: number }
-  | {
-      strategy: 'concurrency';
-      maxInFlight: number;
-      /** Redis set of in-flight message ids; default may derive from queueKey inside the plugin. */
-      trackKey?: (queueKey: string) => string;
-    }
+  | { strategy: 'concurrency'; maxInFlight: number }
   | {
       strategy: 'custom';
       canDistribute: (ctx: DistributeCtx) => Promise<boolean>;
@@ -106,14 +101,17 @@ type Admission =
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
 | `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
-| `concurrency` | SCARD/SADD rate-limit set; validate+clean when at cap; claim after pick; release on cleanup/retry/fail | DCU / API concurrency (CALIN API-like) |
+| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim after pick; release on cleanup/retry/fail (`concurrencyRateLimitKey`) | DCU / API concurrency (CALIN API-like) |
 | `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
 then shared `pickNextAndMoveToNs`. **No** `if (kind === 'network')` in core.
 
-Any key parsing needed for `trackKey` lives in the **plugin** (or a helper the plugin opts
-into), not in the distributor’s topology switch.
+**Concurrency rate-limit key (session 19):** the admission node is already the initial-queue
+partition. Core derives
+`queue:{pluginId}:{kind}:{id}` → `rate_limit:{pluginId}:{kind}:{id}` via
+`buildConcurrencyRateLimitKey` — plugins do **not** supply a key builder. A different grain
+than the queue partition is `custom` admission.
 
 ### 3. `deliveryPattern` stays separate
 
@@ -175,18 +173,20 @@ runs.
    set (success cleanup, retry, final fail).
 
 **Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys?, concurrencyRateLimitKey? })`.
-Defaults cover known stage keys + `queue_awaiting_task:{pluginId}`; concurrency set is **only**
-cleared when the caller passes `concurrencyRateLimitKey` (plugin `trackKey` — core does not
-invent gateway keys). Callers in Unit 5+ must pass the full scrub set; registry may build it
-later. Full exit-path audit (retry queue, initial queues, cancel) is still D2 work.
+Defaults cover known stage keys + `queue_awaiting_task:{pluginId}`; concurrency membership is
+**only** cleared when the caller passes `concurrencyRateLimitKey` (from
+`buildConcurrencyRateLimitKey(initialQueueKey)`). Callers in Unit 5+ must pass the full scrub
+set; registry may build it later. Full exit-path audit (retry queue, initial queues, cancel)
+is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 
-**When:** Unit 5 (engine) + Unit 6 (plugin interface/registry).
-
-**Criteria:** implement named strategies as core primitives; plugins only declare; config tunes
-`minIntervalMs` / `maxInFlight` (ADR-002). Replace string-split policy in
-`distributeToNetworkServers` entirely. Resolve plugin via D1-C (`pluginId` in key).
+**Decided / landed (2026-08-01, session 19):** `Outgoing.distributeToNetworkServers` on
+`createOutgoing({ registry, delivery })` runs named strategies (`spacing` /
+`concurrency` / `custom`); resolve plugin via D1-C. Concurrency rate-limit keys are derived
+by core (`buildConcurrencyRateLimitKey`) — no SPI `rateLimitKey`. Stops before `sendOne`
+(Unit 5.4). Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests).
+Cron / `engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics
 
@@ -215,6 +215,8 @@ No uniqueness constraint across plugins (unlike the reverted D1-B kind registry)
   global kind uniqueness; superseded by embedding `pluginId` in the key.
 - **Every plugin must hand-write `canDistribute` / `onClaim`** — duplicates the two known
   primitives; named strategies are the default, `custom` is the escape hatch.
+- **SPI `rateLimitKey` / `trackKey` on concurrency admission** — the initial-queue key already
+  identifies the admission node; `buildConcurrencyRateLimitKey` derives the Redis key.
 - **Infer admission or PUSH/PULL from the human `kind` segment** — same smell as legacy.
 - **Core `BUNDLED_PLUGIN_IDS` / `PULL_PATTERN_IMPLEMENTATIONS`** — already rejected in Unit 1;
   reinforced here.
@@ -239,17 +241,12 @@ import { buildInitialQueueKey } from './initial-queue-key.js';
   admission: { strategy: 'spacing', minIntervalMs: 2_000 },
 }
 
-// calin-api-v1
+// calin-api-v1 — concurrency rate-limit key is derived from the initial queue key
 {
   id: 'calin-api-v1',
   deliveryPattern: 'PULL',
   initialQueueKey: (m) =>
     buildInitialQueueKey('calin-api-v1', 'gateway', String(m.device.gateway!.id)),
-  admission: {
-    strategy: 'concurrency',
-    maxInFlight: 5,
-    trackKey: (queueKey) =>
-      `rate_limit:calin-api-v1:gateway:${queueKey.split(':')[3]}`,
-  },
+  admission: { strategy: 'concurrency', maxInFlight: 5 },
 }
 ```

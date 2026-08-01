@@ -116,8 +116,8 @@ export const moveQueue = {
    * Cleans up the external delivery ID index (will get a new one on retry).
    *
    * Concurrency admission slot cleanup is opt-in via `concurrencyRateLimitKey`
-   * (ADR-006 `trackKey`) — same seam as `messageFullCleanup`. Callers that omit
-   * it (PUSH, or before Unit 5/6 wires admission) are a no-op for that step.
+   * (`buildConcurrencyRateLimitKey`) — same seam as `messageFullCleanup`.
+   * Callers that omit it (PUSH, or spacing admission) are a no-op for that step.
    */
   async fromAnyToRetry(
     messageId: string,
@@ -166,7 +166,7 @@ export const moveQueue = {
       pipeline.del(redisKeys.indexExternalDeliveryId(currentDeliveryQueueId));
     }
 
-    // 4. Concurrency slot (PULL / concurrency admission) — caller supplies trackKey
+    // 4. Concurrency rate-limit membership — caller supplies concurrencyRateLimitKey
     if (options?.concurrencyRateLimitKey) {
       pipeline.srem(options.concurrencyRateLimitKey, messageId);
     }

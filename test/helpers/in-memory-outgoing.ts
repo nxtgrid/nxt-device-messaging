@@ -65,5 +65,9 @@ export function createInMemoryOutgoing(options: InMemoryOutgoingOptions = {}): O
     async cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]> {
       return Promise.all(correlationIds.map(id => cancelOne(id)));
     },
+
+    async distributeToNetworkServers(): Promise<void> {
+      // no-op — HTTP unit tests do not exercise distribute
+    },
   };
 }

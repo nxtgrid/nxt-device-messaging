@@ -252,8 +252,8 @@ export const redisRepo = {
    *
    * Unit 2 interim (ADR-006 D2):
    * - `inFlightQueueKeys` — queues to ZREM (defaults to known stage keys + awaiting-task).
-   * - `concurrencyRateLimitKey` — optional set to SREM (caller/plugin `trackKey`; no
-   *   gateway default — core does not invent concurrency keys).
+   * - `concurrencyRateLimitKey` — optional Redis key to SREM (from
+   *   `buildConcurrencyRateLimitKey(initialQueueKey)` when releasing a concurrency slot).
    */
   async messageFullCleanup(
     message: DeviceMessage,
@@ -301,19 +301,21 @@ export const redisRepo = {
 
   // ------------------------------------
   // Concurrency admission strategy — Redis primitives (ADR-006)
-  // Opaque `trackKey` comes from the plugin; core does not build gateway keys.
+  // Key from `buildConcurrencyRateLimitKey(initialQueueKey)`; opaque string here.
   // ------------------------------------
 
-  addToConcurrencyRateLimit(trackKey: string, messageId: string) {
-    return _client.sadd(trackKey, messageId);
+  addToConcurrencyRateLimit(concurrencyRateLimitKey: string, messageId: string) {
+    return _client.sadd(concurrencyRateLimitKey, messageId);
   },
 
-  getConcurrencyRateLimitCount(trackKey: string) {
-    return _client.scard(trackKey);
+  getConcurrencyRateLimitCount(concurrencyRateLimitKey: string) {
+    return _client.scard(concurrencyRateLimitKey);
   },
 
-  async validateAndCleanConcurrencyRateLimit(trackKey: string): Promise<number> {
-    const members = await _client.smembers(trackKey);
+  async validateAndCleanConcurrencyRateLimit(
+    concurrencyRateLimitKey: string,
+  ): Promise<number> {
+    const members = await _client.smembers(concurrencyRateLimitKey);
     if (members.length === 0) return 0;
 
     const existsPipeline = _client.pipeline();
@@ -329,8 +331,10 @@ export const redisRepo = {
     });
 
     if (deadMembers.length > 0) {
-      await _client.srem(trackKey, ...deadMembers);
-      console.warn(`[REDIS] Cleaned ${ deadMembers.length } dead entries from ${ trackKey }`);
+      await _client.srem(concurrencyRateLimitKey, ...deadMembers);
+      console.warn(
+        `[validateAndCleanConcurrencyRateLimit] Cleaned ${ deadMembers.length } dead entries from ${ concurrencyRateLimitKey }`,
+      );
     }
 
     return members.length - deadMembers.length;
