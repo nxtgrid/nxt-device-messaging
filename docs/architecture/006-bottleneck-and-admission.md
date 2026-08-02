@@ -181,12 +181,14 @@ is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 
-**Decided / landed (2026-08-01, session 19):** `Outgoing.distributeToNetworkServers` on
-`createOutgoing({ registry, delivery })` runs named strategies (`spacing` /
-`concurrency` / `custom`); resolve plugin via D1-C. Concurrency rate-limit keys are derived
-by core (`buildConcurrencyRateLimitKey`) — no SPI `rateLimitKey`. Stops before `sendOne`
-(Unit 5.4). Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests).
-Cron / `engine.enabled` still Unit 5.6.
+**Decided / landed (2026-08-01, session 19; sendOne 2026-08-02 session 20):**
+`Outgoing.distributeToNetworkServers` on `createOutgoing({ registry, delivery, base })`
+runs named strategies (`spacing` / `concurrency` / `custom`); resolve plugin via D1-C.
+Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`) — no
+SPI `rateLimitKey`. After pick: fire-and-forget `sendOne` + PUSH|PULL post-send moves;
+send-fail passes `concurrencyRateLimitKey` when admission is concurrency. Enqueue
+fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests). Cron /
+`engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics
 

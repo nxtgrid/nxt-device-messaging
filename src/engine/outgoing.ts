@@ -78,12 +78,7 @@ export type CreateOutgoingOptions = {
  * @param options - Registry, delivery, base, and optional enqueue-kick flag
  */
 export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
-  const {
-    registry,
-    delivery,
-    base,
-    kickDistributeOnEnqueue = true,
-  } = options;
+  const { registry, delivery, base, kickDistributeOnEnqueue = true } = options;
 
   /**
    * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
@@ -93,20 +88,14 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
     message: DeviceMessage,
   ): string | undefined {
     if (plugin.admission.strategy !== 'concurrency') return undefined;
-    const queueKey = plugin.initialQueueKey({
-      networkId: message.networkId,
-      device: message.device,
-    });
+    const queueKey = plugin.initialQueueKey({ networkId: message.networkId, device: message.device });
     return buildConcurrencyRateLimitKey(queueKey);
   }
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
    */
-  async function _canAdmit(
-    plugin: DeviceMessagingPlugin,
-    queueKey: string,
-  ): Promise<boolean> {
+  async function _canAdmit(plugin: DeviceMessagingPlugin, queueKey: string): Promise<boolean> {
     const { admission } = plugin;
     const ctx: DistributeCtx = { queueKey, pluginId: plugin.id };
 
@@ -124,8 +113,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
         if (!rateLimitKey) return false;
         const tracked = await redisRepo.getConcurrencyRateLimitCount(rateLimitKey);
         if (tracked >= admission.maxInFlight) {
-          const liveCount =
-            await redisRepo.validateAndCleanConcurrencyRateLimit(rateLimitKey);
+          const liveCount = await redisRepo.validateAndCleanConcurrencyRateLimit(rateLimitKey);
           if (liveCount >= admission.maxInFlight) return false;
         }
         return true;
@@ -138,11 +126,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
   /**
    * Post-pick admission hook (concurrency claim / custom `onClaim`).
    */
-  async function _onClaimAfterPick(
-    plugin: DeviceMessagingPlugin,
-    queueKey: string,
-    messageId: string,
-  ): Promise<void> {
+  async function _onClaimAfterPick(plugin: DeviceMessagingPlugin, queueKey: string, messageId: string): Promise<void> {
     const { admission } = plugin;
 
     switch (admission.strategy) {
@@ -166,10 +150,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
    * Send one message via the plugin; on success move NS → GW (PUSH) or awaiting-task (PULL).
    * On failure, {@link Base.retryOrFail} from the NS queue (with concurrency key when needed).
    */
-  async function _sendOneToNetworkServer(
-    plugin: DeviceMessagingPlugin,
-    message: DeviceMessage,
-  ): Promise<void> {
+  async function _sendOneToNetworkServer(plugin: DeviceMessagingPlugin, message: DeviceMessage): Promise<void> {
     let deliveryQueueId: string;
 
     try {
@@ -197,11 +178,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
       return;
     }
 
-    await moveQueuePush.fromNsToGw({
-      id: message.id,
-      deliveryQueueId,
-      deliveryConfig: delivery,
-    });
+    await moveQueuePush.fromNsToGw({ id: message.id, deliveryQueueId, deliveryConfig: delivery });
   }
 
   /**

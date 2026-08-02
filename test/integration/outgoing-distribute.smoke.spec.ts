@@ -1,6 +1,6 @@
 /**
- * Real {@link createOutgoing} smoke: enqueue → distribute tick → SENT_TO_NS (Unit 5.3).
- * Stops before sendOne (Unit 5.4).
+ * Real {@link createOutgoing} smoke: enqueue → distribute tick → sendOne → post-send
+ * queue (Unit 5.4). Fire-and-forget send — poll for DELIVERED_TO_NS.
  *
  * Opt-in (needs Valkey):
  *
@@ -11,8 +11,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
 import { createBase } from '../../src/engine/base.js';
-import { createOutgoing } from '../../src/engine/outgoing.js';
+import { createOutgoing, type Outgoing } from '../../src/engine/outgoing.js';
+import type { DeviceMessage } from '../../src/lib/device-message/types.js';
 import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
+import { QUEUE_GW_KEY } from '../../src/lib/queue-moving.push.js';
+import { sleep } from '../../src/lib/utilities.js';
 import {
   STUB_PULL_ID,
   STUB_PUSH_ID,
@@ -22,7 +25,29 @@ import { createPluginRegistry } from '../../src/plugins/registry.js';
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
-describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', () => {
+const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
+const STUB_DELIVERY_ID = 'stub-ext-id';
+
+/**
+ * Poll until fire-and-forget sendOne has moved the message past SENT_TO_NS.
+ */
+async function waitForPostSend(
+  outgoing: Outgoing,
+  correlationId: string,
+  timeoutMs = 2_000,
+): Promise<DeviceMessage> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const message = await outgoing.getByCorrelationId(correlationId);
+    if (message?.deliveryStatus === POST_SEND_STATUS) return message;
+    await sleep(20);
+  }
+  throw new Error(
+    `Timed out waiting for ${ POST_SEND_STATUS } (correlationId=${ correlationId })`,
+  );
+}
+
+describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
@@ -32,7 +57,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     }
   });
 
-  it('stub-push: spacing admit + pick moves message to NS queue', async () => {
+  it('stub-push: spacing admit → NS → GW (PUSH post-send)', async () => {
     ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
@@ -63,16 +88,15 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     expect(enqueued.deliveryStatus).toBe('QUEUED');
 
     await outgoing.distributeToNetworkServers();
+    const after = await waitForPostSend(outgoing, correlationId);
 
-    const after = await outgoing.getByCorrelationId(correlationId);
-    expect(after?.deliveryStatus).toBe('SENT_TO_NS');
+    expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
+    expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
     expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
+    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redisRepo.client.zscore(QUEUE_GW_KEY, enqueued.id)).not.toBeNull();
 
-    // Spacing lock held — second tick must not pick (queue empty anyway after pick).
-    await outgoing.distributeToNetworkServers();
-
-    await redisRepo.messageFullCleanup(after!);
+    await redisRepo.messageFullCleanup(after);
     await redisRepo.client.srem(
       redisKeys.listOfInitialQueuesToDistributeFrom(),
       queueKey,
@@ -80,7 +104,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
   });
 
-  it('stub-pull: concurrency admit + claim writes derived rate-limit membership', async () => {
+  it('stub-pull: concurrency claim → NS → awaiting-task (PULL post-send)', async () => {
     ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
@@ -96,6 +120,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     const gatewayId = 7;
     const queueKey = `queue:stub-pull:gateway:${ gatewayId }`;
     const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
+    const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
     const enqueued = await outgoing.enqueue({
       commandType: 'READ',
@@ -111,13 +136,15 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     });
 
     await outgoing.distributeToNetworkServers();
+    const after = await waitForPostSend(outgoing, correlationId);
 
-    const after = await outgoing.getByCorrelationId(correlationId);
-    expect(after?.deliveryStatus).toBe('SENT_TO_NS');
+    expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
+    expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
     expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(1);
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
+    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
-    await redisRepo.messageFullCleanup(after!, { concurrencyRateLimitKey: rateLimitKey });
+    await redisRepo.messageFullCleanup(after, { concurrencyRateLimitKey: rateLimitKey });
     await redisRepo.client.srem(
       redisKeys.listOfInitialQueuesToDistributeFrom(),
       queueKey,

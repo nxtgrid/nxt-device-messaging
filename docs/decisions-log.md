@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking 5.4; distribute + D3 landed — session 19)* | — |
+| — | *(none blocking 5.5; sendOne + post-send landed — session 20)* | — |
 
 ### Deferred with locked criteria
 
@@ -25,7 +25,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.4+ / cleanup paths | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey` | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.5+ / cleanup paths | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency | 006 |
 | ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `Outgoing.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
@@ -40,8 +40,8 @@ End-to-end rule (session 16): ADR-003 command/ingress surfaces land thin HTTP wi
 engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12–19 and
 plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 through Unit **5.3** is **done**. Intermezzo closed.
-Next is **5.4** (`sendOne` + post-send moves). Also outstanding on `nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **5.4** is **done**. Intermezzo closed.
+Next is **5.5** (incoming + thin ingress). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -823,4 +823,31 @@ strategy; lean skip on bad queueKey / missing plugin; method-scoped log tags; dr
 **Next:** Unit **5.4** — `sendOne` + post-send PUSH|PULL queue moves
 (message → `initialQueueKey` → `buildConcurrencyRateLimitKey` for retry/cleanup when
 admission is concurrency; prefer `createBase` when touching `base.ts`).
+
+### 2026-08-02 — session 20: Unit 5.4 — sendOne + post-send moves
+
+**Decided:**
+
+- **Fire-and-forget `sendOne`:** legacy parity — distribute tick completes at handoff;
+  outer `.catch` kept (inner try/catch only covers plugin `sendOne`; moves/`retryOrFail`
+  can still reject).
+- **Peer factories at composition root:** `createBase` and `createOutgoing` are siblings
+  wired in `main.ts` (and tests). Outgoing does **not** construct base internally —
+  incoming (and later peers) will share the same `base` instance.
+- **`emitDeliveryEvent`:** remains a free export from `base.ts` (webhook later).
+
+**Landed:**
+
+- `createBase({ registry, delivery })` — `retryOrFail` / `requeueMessage`; dropped
+  `runtime` import.
+- `createOutgoing({ registry, delivery, base, kickDistributeOnEnqueue? })` — after pick /
+  claim / emit, fire-and-forget `_sendOneToNetworkServer`:
+  - success + delivery id → PULL `fromNsToAwaitingTask` / PUSH `fromNsToGw`
+  - failure → `base.retryOrFail` from `QUEUE_NS_KEY` with
+    `_concurrencyRateLimitKeyFor` when `admission.strategy === 'concurrency'`
+- Opt-in smoke updated: enqueue → distribute → poll `DELIVERED_TO_NS` (GW vs
+  awaiting-task).
+- Docs: plan Unit 5.4; AGENTS.
+
+**Next:** Unit **5.5** — incoming + thin `POST /ingress/:pluginId` + smoke.
 

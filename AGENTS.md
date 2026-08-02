@@ -38,9 +38,9 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation through 5.2. Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Unit 5.3: D1 + `distributeToNetworkServers` + D3 landed.
-Next: Unit 5.4 (`sendOne` + post-send moves).**
+**Phase 0 complete. Phase 1 foundation through 5.4. Phase 1b Intermezzo closed
+(I0–I3; I4 skipped). Unit 5.4: `sendOne` + post-send PUSH|PULL landed.
+Next: Unit 5.5 (incoming + thin `POST /ingress/:pluginId`).**
 
 Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -53,9 +53,11 @@ deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `type
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
 lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey` /
 `buildConcurrencyRateLimitKey`, catalog, registry, `stub/`), `src/http/` (lean
-enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts` (5.1) +
-`outgoing.ts` (enqueue/get/cancel/`distributeToNetworkServers` + named admission;
-`UnknownPluginError` → HTTP 400). **Stops before `sendOne` (Unit 5.4).**
+enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts`
+(`createBase` — retry/requeue; `emitDeliveryEvent` free export) + `outgoing.ts`
+(enqueue/get/cancel/distribute/`sendOne` + post-send moves; named admission;
+`UnknownPluginError` → HTTP 400). Peer factories wired in `main.ts`. **Stops before
+incoming / resolution-cycle (Units 5.5–5.6).**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
@@ -147,7 +149,7 @@ the plugin interface sketch) — never as instructions.
 - Prefer immutability: `readonly` for data that does not change, `as const` for literals.
 - **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
   keep private helpers in that scope; return a plain object literal as the interface. Example:
-  `createOutgoing({ registry, delivery })`. Complements ADR-001 §2 (no DI container). Pure
+  `createOutgoing({ registry, delivery, base })`. Complements ADR-001 §2 (no DI container). Pure
   helpers and module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.
