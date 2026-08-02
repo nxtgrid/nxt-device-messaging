@@ -1,12 +1,14 @@
 /**
- * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel, distribute.
+ * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel, distribute, send.
  *
- * Unit 5.3 — `distributeToNetworkServers` + named admission (ADR-006 D3).
- * Stops before `sendOne` / post-send PUSH|PULL moves (Unit 5.4).
+ * Unit 5.4 — fire-and-forget `sendOne` + post-send PUSH|PULL queue moves after distribute pick.
+ * Timer / resolution-cycle wiring lands in Unit 5.6.
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
-import { QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
+import { moveQueuePull } from '../lib/queue-moving.pull.js';
+import { moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
@@ -24,7 +26,7 @@ import type {
   DistributeCtx,
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
-import { emitDeliveryEvent } from './base.js';
+import { emitDeliveryEvent, type Base } from './base.js';
 
 /**
  * Thrown when enqueue names a plugin that is not registered / enabled.
@@ -50,7 +52,7 @@ export type Outgoing = {
   cancelOne(correlationId: string): Promise<CancelMessageResult>;
   cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]>;
   /**
-   * One distribute tick: admit + pick into NS queue. Does not call `sendOne` (Unit 5.4).
+   * One distribute tick: admit + pick into NS + fire-and-forget `sendOne`.
    * Timer wiring lands in Unit 5.6; tests may invoke this directly.
    */
   distributeToNetworkServers(): Promise<void>;
@@ -60,6 +62,8 @@ export type Outgoing = {
 export type CreateOutgoingOptions = {
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
+  /** Shared retry/requeue helpers — constructed at the composition root with peers. */
+  readonly base: Base;
   /**
    * When true (default), fire-and-forget {@link Outgoing.distributeToNetworkServers}
    * after a successful enqueue. Set false in tests that need the message to remain
@@ -71,14 +75,30 @@ export type CreateOutgoingOptions = {
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery knobs, and optional enqueue-kick flag
+ * @param options - Registry, delivery, base, and optional enqueue-kick flag
  */
 export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
   const {
     registry,
     delivery,
+    base,
     kickDistributeOnEnqueue = true,
   } = options;
+
+  /**
+   * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
+   */
+  function _concurrencyRateLimitKeyFor(
+    plugin: DeviceMessagingPlugin,
+    message: DeviceMessage,
+  ): string | undefined {
+    if (plugin.admission.strategy !== 'concurrency') return undefined;
+    const queueKey = plugin.initialQueueKey({
+      networkId: message.networkId,
+      device: message.device,
+    });
+    return buildConcurrencyRateLimitKey(queueKey);
+  }
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -143,15 +163,53 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
   }
 
   /**
-   * Process all initial queues that have work: admit, pick into NS, emit first-send event.
+   * Send one message via the plugin; on success move NS → GW (PUSH) or awaiting-task (PULL).
+   * On failure, {@link Base.retryOrFail} from the NS queue (with concurrency key when needed).
+   */
+  async function _sendOneToNetworkServer(
+    plugin: DeviceMessagingPlugin,
+    message: DeviceMessage,
+  ): Promise<void> {
+    let deliveryQueueId: string;
+
+    try {
+      deliveryQueueId = await plugin.outgoing.sendOne(message);
+    }
+    catch (err) {
+      await base.retryOrFail(
+        message.id,
+        QUEUE_NS_KEY,
+        plugin.outgoing.parseError(err),
+        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
+      );
+      return;
+    }
+
+    if (!deliveryQueueId) return;
+
+    if (plugin.deliveryPattern === 'PULL') {
+      await moveQueuePull.fromNsToAwaitingTask({
+        id: message.id,
+        deliveryQueueId,
+        pluginId: plugin.id,
+        deliveryConfig: delivery,
+      });
+      return;
+    }
+
+    await moveQueuePush.fromNsToGw({
+      id: message.id,
+      deliveryQueueId,
+      deliveryConfig: delivery,
+    });
+  }
+
+  /**
+   * Process all initial queues that have work: admit, pick into NS, emit first-send event,
+   * then fire-and-forget plugin `sendOne` (legacy parity — tick completes at handoff).
    *
    * Distribution strategy is plugin-declared (ADR-006): spacing lock, concurrency cap,
    * or custom hooks — never inferred from the human `kind` segment of the queue key.
-   *
-   * Uses distributed locking (spacing) / concurrency rate-limit keys so concurrent ticks
-   * do not over-admit the same bottleneck.
-   *
-   * Does **not** call `sendOne` — that is Unit 5.4.
    */
   async function distributeToNetworkServers(): Promise<void> {
     const activeQueues = await redisRepo.fetchQueuesWithMessages();
@@ -177,7 +235,10 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
         emitDeliveryEvent(messageToSend);
       }
 
-      // Unit 5.4: sendOneToNetworkServer(messageToSend) — stop before send.
+      // Fire-and-forget: distribute considers the handoff done once picked.
+      void _sendOneToNetworkServer(plugin, messageToSend).catch(err => {
+        console.error('[distributeToNetworkServers] sendOne failed', err);
+      });
     }));
   }
 

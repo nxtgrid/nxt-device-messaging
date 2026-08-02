@@ -14,6 +14,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { createBase } from '../../src/engine/base.js';
 import { createOutgoing } from '../../src/engine/outgoing.js';
 import { STUB_PUSH_ID } from '../../src/plugins/stub/index.js';
 import { createPluginRegistry } from '../../src/plugins/registry.js';
@@ -43,6 +44,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const outgoing = createOutgoing({
       registry,
       delivery,
+      base: createBase({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 

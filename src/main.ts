@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { createBase } from './engine/base.js';
 import { createOutgoing } from './engine/outgoing.js';
 import { config, pluginRegistry } from './runtime.js';
 
@@ -18,13 +19,20 @@ function resolvePort(): number {
 }
 
 /**
- * Composition root — runtime already booted; build Fastify shell and listen.
+ * Composition root — runtime already booted; wire peer services, then Fastify.
  */
+const base = createBase({
+  registry: pluginRegistry,
+  delivery: config.delivery,
+});
+const outgoing = createOutgoing({
+  registry: pluginRegistry,
+  delivery: config.delivery,
+  base,
+});
+
 const app = await buildApp({
-  outgoing: createOutgoing({
-    registry: pluginRegistry,
-    delivery: config.delivery,
-  }),
+  outgoing,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
 const port = resolvePort();

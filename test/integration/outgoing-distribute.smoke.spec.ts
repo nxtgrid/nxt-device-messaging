@@ -10,6 +10,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
+import { createBase } from '../../src/engine/base.js';
 import { createOutgoing } from '../../src/engine/outgoing.js';
 import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
 import {
@@ -39,6 +40,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     const outgoing = createOutgoing({
       registry,
       delivery,
+      base: createBase({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 
@@ -86,6 +88,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distributeToNetworkServers', (
     const outgoing = createOutgoing({
       registry,
       delivery,
+      base: createBase({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 
