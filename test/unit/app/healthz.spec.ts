@@ -1,19 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../../src/app.js';
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
-import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
-import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
-import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 
 describe('GET /healthz', () => {
-  it('returns 200 with ok: true', async () => {
-    const app = await buildApp({
-      outgoingService: createInMemoryOutgoingService(),
-      incomingService: createInMemoryIncomingService(),
-      tokenService: createInMemoryTokenService(),
-      registry: createPluginRegistry([]),
-    });
+  it('returns 200 with ok: true without engine services', async () => {
+    const app = await buildApp();
 
     const response = await app.inject({
       method: 'GET',

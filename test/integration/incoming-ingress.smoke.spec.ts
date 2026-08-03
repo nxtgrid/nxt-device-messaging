@@ -14,7 +14,6 @@ import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
 import { createBaseService } from '../../src/engine/base.js';
 import { createIncomingService } from '../../src/engine/incoming.js';
 import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
-import { createTokenService } from '../../src/engine/token.js';
 import type { DeviceMessage } from '../../src/lib/device-message/types.js';
 import { QUEUE_DEVICE_KEY } from '../../src/lib/queue-moving.push.js';
 import { sleep } from '../../src/lib/utilities.js';
@@ -66,8 +65,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       kickDistributeOnEnqueue: false,
     });
     const incomingService = createIncomingService({ registry, delivery, baseService });
-    const tokenService = createTokenService({ registry });
-    const app = await buildApp({ outgoingService, incomingService, tokenService, registry });
+    const app = await buildApp({ incomingService, registry });
 
     const correlationId = `ingress-push-${ Date.now() }`;
     const networkId = 92;

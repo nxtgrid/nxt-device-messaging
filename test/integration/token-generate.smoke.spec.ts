@@ -14,8 +14,6 @@ import {
   STUB_PUSH_ID,
   STUB_TOKEN_VALUE,
 } from '../../src/plugins/stub/index.js';
-import { createInMemoryIncomingService } from '../helpers/in-memory-incoming.js';
-import { createInMemoryOutgoingService } from '../helpers/in-memory-outgoing.js';
 
 describe('token generate (stub-push)', () => {
   it('POST /token/generate → { token: stub-token }', async () => {
@@ -24,12 +22,7 @@ describe('token generate (stub-push)', () => {
       { id: STUB_PULL_ID },
     ]);
     const tokenService = createTokenService({ registry });
-    const app = await buildApp({
-      outgoingService: createInMemoryOutgoingService(),
-      incomingService: createInMemoryIncomingService(),
-      tokenService,
-      registry,
-    });
+    const app = await buildApp({ tokenService });
 
     const ok = await app.inject({
       method: 'POST',

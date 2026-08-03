@@ -13,14 +13,23 @@ import {
   type TokenRoutesOpts,
 } from './http/token-routes.js';
 
-/** Composition-root deps for HTTP — command routes + vendor ingress. */
-export type BuildAppOptions = MessageRoutesOpts & IngressRoutesOpts & TokenRoutesOpts;
+/**
+ * HTTP composition deps. Services are optional so probes (e.g. `/healthz`) can
+ * boot without fakes; each route plugin registers only when its deps are present.
+ * Production `main.ts` supplies all of them.
+ */
+export type BuildAppOptions = {
+  readonly apiKey?: string;
+  readonly outgoingService?: MessageRoutesOpts['outgoingService'];
+  readonly tokenService?: TokenRoutesOpts['tokenService'];
+  readonly incomingService?: IngressRoutesOpts['incomingService'];
+  readonly registry?: IngressRoutesOpts['registry'];
+};
 
 /**
  * Builds the HTTP application (ADR-001). Ops probes stay unauthenticated (ADR-005 §5).
- * Callers (composition root / tests) supply outgoing/incoming/token services and registry.
  */
-export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
   });
@@ -29,20 +38,26 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { ok: true as const };
   });
 
-  await app.register(messageRoutes, {
-    outgoingService: options.outgoingService,
-    apiKey: options.apiKey,
-  });
+  if (options.outgoingService) {
+    await app.register(messageRoutes, {
+      outgoingService: options.outgoingService,
+      apiKey: options.apiKey,
+    });
+  }
 
-  await app.register(tokenRoutes, {
-    tokenService: options.tokenService,
-    apiKey: options.apiKey,
-  });
+  if (options.tokenService) {
+    await app.register(tokenRoutes, {
+      tokenService: options.tokenService,
+      apiKey: options.apiKey,
+    });
+  }
 
-  await app.register(ingressRoutes, {
-    incomingService: options.incomingService,
-    registry: options.registry,
-  });
+  if (options.incomingService && options.registry) {
+    await app.register(ingressRoutes, {
+      incomingService: options.incomingService,
+      registry: options.registry,
+    });
+  }
 
   return app;
 }
