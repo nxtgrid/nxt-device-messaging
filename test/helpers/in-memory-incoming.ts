@@ -19,5 +19,8 @@ export function createInMemoryIncoming(options: InMemoryIncomingOptions = {}): I
     async handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void> {
       await options.onHandle?.(event, plugin);
     },
+    async pollPullPlugins(): Promise<void> {
+      // no-op — HTTP unit tests do not exercise poll
+    },
   };
 }

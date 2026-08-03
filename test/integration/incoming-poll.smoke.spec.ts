@@ -1,0 +1,136 @@
+/**
+ * Real createIncoming.pollPullPlugins smoke (Unit 5.5 Step B):
+ * enqueue → distribute → sendOne → awaiting-task → poll tick → cleanup.
+ *
+ * Opt-in (needs Valkey):
+ *
+ *   docker compose up -d valkey
+ *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/incoming-poll.smoke.spec.ts
+ */
+import { afterAll, describe, expect, it } from 'vitest';
+
+import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
+import { createBase } from '../../src/engine/base.js';
+import { createIncoming } from '../../src/engine/incoming.js';
+import { createOutgoing, type Outgoing } from '../../src/engine/outgoing.js';
+import type { DeviceMessage, ParsedIncomingEvent } from '../../src/lib/device-message/types.js';
+import { sleep } from '../../src/lib/utilities.js';
+import type { DeviceMessagingPlugin } from '../../src/plugins/plugin.interface.js';
+import type { PluginRegistry } from '../../src/plugins/registry.js';
+import { createStubPullPlugin, STUB_PULL_ID } from '../../src/plugins/stub/index.js';
+
+const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
+
+/** Short first-poll delay so the smoke need not wait 10s. */
+const delivery = deviceMessagingConfigSchema.parse({
+  $schemaVersion: '1',
+  delivery: { initialPollDelayMs: 1 },
+}).delivery;
+
+const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
+const STUB_DELIVERY_ID = 'stub-ext-id';
+
+/**
+ * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
+ * completes the message (same shared `_processIncomingEvent` as ingress).
+ */
+function createPullRegistryWithSuccessFetch(): PluginRegistry {
+  const base = createStubPullPlugin({ id: STUB_PULL_ID });
+  const plugin: DeviceMessagingPlugin = {
+    ...base,
+    incoming: {
+      fetchStatus: async (message: DeviceMessage): Promise<ParsedIncomingEvent | null> => ({
+        deliveryQueueId: message.deliveryQueueId,
+        deliveryStatus: 'DELIVERY_SUCCESSFUL',
+        device: message.device,
+        response: { status: 'EXECUTION_SUCCESS' },
+      }),
+    },
+  };
+
+  return {
+    get: id => (id === plugin.id ? plugin : undefined),
+    getAll: () => [ plugin ],
+    getByDeliveryPattern: pattern => (pattern === 'PULL' ? [ plugin ] : []),
+  };
+}
+
+async function waitForPostSend(
+  outgoing: Outgoing,
+  correlationId: string,
+  timeoutMs = 2_000,
+): Promise<DeviceMessage> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const message = await outgoing.getByCorrelationId(correlationId);
+    if (message?.deliveryStatus === POST_SEND_STATUS) return message;
+    await sleep(20);
+  }
+  throw new Error(
+    `Timed out waiting for ${ POST_SEND_STATUS } (correlationId=${ correlationId })`,
+  );
+}
+
+describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
+  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
+
+  afterAll(async () => {
+    if (redisRepo) {
+      await redisRepo.client.quit();
+    }
+  });
+
+  it('stub-pull: awaiting-task → poll success → message cleaned up', async () => {
+    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
+
+    const registry = createPullRegistryWithSuccessFetch();
+    const base = createBase({ registry, delivery });
+    const outgoing = createOutgoing({
+      registry,
+      delivery,
+      base,
+      kickDistributeOnEnqueue: false,
+    });
+    const incoming = createIncoming({ registry, delivery, base });
+
+    const correlationId = `poll-pull-${ Date.now() }`;
+    const gatewayId = 8;
+    const queueKey = `queue:stub-pull:gateway:${ gatewayId }`;
+    const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
+    const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
+
+    const enqueued = await outgoing.enqueue({
+      commandType: 'READ',
+      priority: 1,
+      pluginId: STUB_PULL_ID,
+      networkId: null,
+      correlationId,
+      device: {
+        type: 'ELECTRICITY_METER',
+        externalReference: 'poll-pull-meter',
+        gateway: { id: gatewayId },
+      },
+    });
+
+    await outgoing.distributeToNetworkServers();
+    const afterSend = await waitForPostSend(outgoing, correlationId);
+    expect(afterSend.deliveryQueueId).toBe(STUB_DELIVERY_ID);
+    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
+
+    // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
+    await sleep(5);
+    await incoming.pollPullPlugins();
+
+    const afterPoll = await outgoing.getByCorrelationId(correlationId);
+    expect(afterPoll).toBeNull();
+    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+
+    await redisRepo.client.srem(rateLimitKey, enqueued.id);
+    await redisRepo.client.srem(
+      redisKeys.listOfInitialQueuesToDistributeFrom(),
+      queueKey,
+    );
+  });
+});

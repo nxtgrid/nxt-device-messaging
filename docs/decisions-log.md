@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking 5.5; sendOne + post-send landed — session 20)* | — |
+| — | *(none blocking 5.6; incoming + ingress + poll landed — session 21)* | — |
 
 ### Deferred with locked criteria
 
@@ -25,7 +25,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | # | Topic | Revisit at | Interim until then | ADR |
 |---|---|---|---|---|
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
-| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Unit 5.5+ / cleanup paths | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency | 006 |
+| D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
 | ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `Outgoing.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
@@ -40,8 +40,8 @@ End-to-end rule (session 16): ADR-003 command/ingress surfaces land thin HTTP wi
 engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12–19 and
 plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 through Unit **5.4** is **done**. Intermezzo closed.
-Next is **5.5** (incoming + thin ingress). Also outstanding on `nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **5.5** is **done**. Intermezzo closed.
+Next is **5.6** (token + thin generate + interval timers). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -850,4 +850,31 @@ admission is concurrency; prefer `createBase` when touching `base.ts`).
 - Docs: plan Unit 5.4; AGENTS.
 
 **Next:** Unit **5.5** — incoming + thin `POST /ingress/:pluginId` + smoke.
+
+### 2026-08-03 — session 21: Unit 5.5 — incoming + thin ingress + poll
+
+**Decided:**
+
+- **Peer `createIncoming` shares `base`** from the composition root (same instance as
+  outgoing) — no internal `createBase`.
+- **HTTP resolves the plugin once** (enablement, PUSH `handle`, optional
+  `verifySignature`); `incoming.handle(event, plugin)` does not re-look up.
+- **Poll method rename:** legacy `pollPullImplementations` → `pollPullPlugins`
+  (registry / SPI vocabulary). Callable tick only; cron stays 5.6.
+- **Step order:** A = `handle` + thin ingress + PUSH smoke; B = `pollPullPlugins` +
+  PULL smoke (separate review).
+
+**Landed:**
+
+- `createIncoming({ registry, delivery, base })` — shared `_processIncomingEvent`
+  (unsolicited / GW ACK / fail / success → `emitDeliveryEvent`); `handle`;
+  `pollPullPlugins` via `pollAwaitingTasksFor`.
+- Thin `POST /ingress/:pluginId` — no Bearer; raw JSON buffer; signature → 401;
+  unknown / non-PUSH → 400; accept → 204.
+- Stub PUSH `handle` accepts a pre-normalized `ParsedIncomingEvent` body.
+- Smokes: `incoming-ingress.smoke.spec.ts`, `incoming-poll.smoke.spec.ts`.
+- Docs: plan Unit 5.5; AGENTS.
+
+**Next:** Unit **5.6** — token + thin `POST /token/generate` + interval timers
+(`engine.enabled`).
 

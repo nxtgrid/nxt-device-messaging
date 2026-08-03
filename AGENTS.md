@@ -38,9 +38,9 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation through 5.4. Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Unit 5.4: `sendOne` + post-send PUSH|PULL landed.
-Next: Unit 5.5 (incoming + thin `POST /ingress/:pluginId`).**
+**Phase 0 complete. Phase 1 foundation through 5.5. Phase 1b Intermezzo closed
+(I0–I3; I4 skipped). Unit 5.5: incoming + thin ingress + `pollPullPlugins` landed.
+Next: Unit 5.6 (token + thin `POST /token/generate` + interval timers).**
 
 Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -53,11 +53,12 @@ deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `type
 camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
 lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey` /
 `buildConcurrencyRateLimitKey`, catalog, registry, `stub/`), `src/http/` (lean
-enqueue/get/cancel; `message-params.ts`; `smoke/` httpYac), `src/engine/base.ts`
-(`createBase` — retry/requeue; `emitDeliveryEvent` free export) + `outgoing.ts`
-(enqueue/get/cancel/distribute/`sendOne` + post-send moves; named admission;
-`UnknownPluginError` → HTTP 400). Peer factories wired in `main.ts`. **Stops before
-incoming / resolution-cycle (Units 5.5–5.6).**
+enqueue/get/cancel; thin `POST /ingress/:pluginId`; `message-params.ts`; `smoke/`
+httpYac), `src/engine/base.ts` (`createBase` — retry/requeue; `emitDeliveryEvent` free
+export) + `outgoing.ts` (enqueue/get/cancel/distribute/`sendOne` + post-send moves;
+named admission; `UnknownPluginError` → HTTP 400) + `incoming.ts` (`handle` /
+`pollPullPlugins` + shared process). Peer factories wired in `main.ts`. **Stops before
+token / resolution-cycle timers (Unit 5.6).**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)

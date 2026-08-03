@@ -1,11 +1,12 @@
 /**
- * @fileoverview Incoming delivery surface: PUSH ingress handle + shared event processing.
+ * @fileoverview Incoming delivery surface: PUSH ingress + PULL poll + shared processing.
  *
- * Unit 5.5 Step A — `handle` + thin HTTP. `pollPullPlugins` lands in Step B.
+ * Unit 5.5 — `handle` / thin HTTP (Step A) + `pollPullPlugins` (Step B).
  * Timer / resolution-cycle wiring lands in Unit 5.6.
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
+import { pollAwaitingTasksFor } from '../lib/lifecycle.pull.js';
 import { QUEUE_DEVICE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '../lib/device-message/types.js';
@@ -24,11 +25,15 @@ export type Incoming = {
    * No-op when the plugin returns null (ignore event).
    */
   handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void>;
+  /**
+   * One PULL poll tick: `fetchStatus` for due awaiting-task messages, then process.
+   * Timer wiring lands in Unit 5.6; tests may invoke this directly.
+   */
+  pollPullPlugins(): Promise<void>;
 };
 
 /** Dependencies for {@link createIncoming}. */
 export type CreateIncomingOptions = {
-  /** Kept for Step B (`pollPullPlugins`); unused by `handle`. */
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
@@ -36,12 +41,12 @@ export type CreateIncomingOptions = {
 };
 
 /**
- * Factory for PUSH ingress + shared incoming-event processing.
+ * Factory for PUSH ingress, PULL poll, and shared incoming-event processing.
  *
- * @param options - Registry (Step B), delivery knobs, and peer {@link Base}
+ * @param options - Registry, delivery knobs, and peer {@link Base}
  */
 export function createIncoming(options: CreateIncomingOptions): Incoming {
-  const { delivery, base } = options;
+  const { registry, delivery, base } = options;
 
   /**
    * Process a parsed incoming event from PUSH (or later PULL poll).
@@ -128,5 +133,20 @@ export function createIncoming(options: CreateIncomingOptions): Incoming {
     await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY);
   }
 
-  return { handle };
+  /**
+   * PULL pattern entry: poll each PULL plugin's awaiting-task queue for due messages.
+   */
+  async function pollPullPlugins(): Promise<void> {
+    for (const plugin of registry.getByDeliveryPattern('PULL')) {
+      const fetchStatus = plugin.incoming.fetchStatus;
+      if (!fetchStatus) continue;
+
+      const results = await pollAwaitingTasksFor(plugin.id, { fetchStatus });
+      for (const { parsedEvent, queueKey } of results) {
+        await _processIncomingEvent(parsedEvent, queueKey);
+      }
+    }
+  }
+
+  return { handle, pollPullPlugins };
 }
