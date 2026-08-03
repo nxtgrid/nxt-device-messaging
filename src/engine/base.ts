@@ -1,10 +1,8 @@
 /**
  * @fileoverview Shared engine helpers for delivery outcomes and retry.
  *
- * Ported from frozen `device-messages.service.ts` (baseline db5c2ac), Nest-stripped.
- *
- * In-process `subscribe` / `publish` are **not** ported — ADR-003 replaces them with an
- * outbound result webhook. Call sites use {@link emitDeliveryEvent} (stub until Phase 3).
+ * Adopter notification goes through {@link emitDeliveryEvent} (stub until Phase 3
+ * lands the outbound webhook — ADR-003).
  */
 
 import { isNotNil } from 'ramda';

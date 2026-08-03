@@ -2,7 +2,7 @@
  * @fileoverview Incoming delivery surface: PUSH ingress + PULL poll + shared processing.
  *
  * Unit 5.5 — `handle` / thin HTTP (Step A) + `pollPullPlugins` (Step B).
- * Timer / resolution-cycle wiring lands in Unit 5.6.
+ * Unit 5.6 — poll interval via `startEngineTimers`.
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
@@ -27,7 +27,7 @@ export type IncomingService = {
   handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void>;
   /**
    * One PULL poll tick: `fetchStatus` for due awaiting-task messages, then process.
-   * Timer wiring lands in Unit 5.6; tests may invoke this directly.
+   * Also driven by `startEngineTimers`; tests may invoke this directly.
    */
   pollPullPlugins(): Promise<void>;
 };

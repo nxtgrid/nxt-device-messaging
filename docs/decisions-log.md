@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking 5.6; incoming + ingress + poll landed — session 21)* | — |
+| — | *(none blocking Unit 6; Unit 5 complete — session 22)* | — |
 
 ### Deferred with locked criteria
 
@@ -26,7 +26,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 |---|---|---|---|---|
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
-| ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `Outgoing.distributeToNetworkServers` (session 19) | — | — | 006 |
+| ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `OutgoingService.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
 | D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
 
@@ -40,8 +40,8 @@ End-to-end rule (session 16): ADR-003 command/ingress surfaces land thin HTTP wi
 engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12–19 and
 plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 through Unit **5.5** is **done**. Intermezzo closed.
-Next is **5.6** (token + thin generate + interval timers). Also outstanding on `nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **5** is **done**. Intermezzo closed.
+Next is **Unit 6** (plugin SPI polish + config wiring / D5). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -877,4 +877,36 @@ admission is concurrency; prefer `createBase` when touching `base.ts`).
 
 **Next:** Unit **5.6** — token + thin `POST /token/generate` + interval timers
 (`engine.enabled`).
+
+### 2026-08-03 — session 22: Unit 5.6 — token + timers; `*Service` naming
+
+**Decided:**
+
+- **Step order:** A = token + thin HTTP + smoke; B = resolution cycle + timers;
+  then naming/optional-`buildApp` cleanup before docs.
+- **Token wire:** body = SPI `GenerateTokenInput` + `pluginId`; response `{ token }`;
+  `stub-push` exposes `token.generate` → `'stub-token'`.
+- **Errors:** throwables only from `src/engine/errors.ts` (no service re-exports).
+  Command routes: service owns enablement. Ingress keeps HTTP resolve (signature).
+- **Facade naming:** `BaseService` / `OutgoingService` / `IncomingService` /
+  `TokenService` + matching `create*Service` factories; composition locals
+  `baseService` / `outgoingService` / …
+- **`buildApp` deps optional:** register route plugins only when deps present;
+  `buildApp()` enough for `/healthz`; tests inject only what they exercise.
+- **Timers:** plain `setInterval`, gated on `engine.enabled`; no overlap guard;
+  `stop()` returned for tests/shutdown. Interval defaults on options destructuring.
+- **GW extend:** assume plugin present (`registry.get(pluginId)!`) when message hash
+  exists; keep orphan-message guard only.
+- **Comments:** drop Nest/legacy provenance from engine docs where it does not
+  document an open decision.
+
+**Landed:**
+
+- `createTokenService` + thin `POST /token/generate` + Zod + smokes / httpYac.
+- `OutgoingService.runMessageResolutionCycle` + `startEngineTimers` in `main.ts`.
+- Opt-in `outgoing-resolution.smoke.spec.ts`; unit `timers.spec.ts`.
+- Docs: plan Unit 5 complete; import ledger token/outgoing/DTOs; AGENTS.
+
+**Next:** Unit **6** — plugin SPI polish + config wiring (command-type validation;
+D5 stage timeouts → plugin `tuning`).
 

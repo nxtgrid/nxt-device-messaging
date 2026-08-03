@@ -1,14 +1,20 @@
 /**
- * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel, distribute, send.
+ * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel,
+ * distribute, send, resolution cycle.
  *
- * Unit 5.4 — fire-and-forget `sendOne` + post-send PUSH|PULL queue moves after distribute pick.
- * Timer / resolution-cycle wiring lands in Unit 5.6.
+ * Unit 5.4 — fire-and-forget `sendOne` + post-send PUSH|PULL queue moves.
+ * Unit 5.6 — `runMessageResolutionCycle` (timer wiring in `timers.ts`).
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
+import {
+  getPushTimeouts,
+  maybeExtendMessageInGwQueue,
+} from '../lib/lifecycle.push.js';
+import { getPullTimeouts } from '../lib/lifecycle.pull.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
 import { moveQueuePull } from '../lib/queue-moving.pull.js';
-import { moveQueuePush } from '../lib/queue-moving.push.js';
+import { QUEUE_GW_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
@@ -39,9 +45,15 @@ export type OutgoingService = {
   cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]>;
   /**
    * One distribute tick: admit + pick into NS + fire-and-forget `sendOne`.
-   * Timer wiring lands in Unit 5.6; tests may invoke this directly.
+   * Also invoked at the end of {@link OutgoingService.runMessageResolutionCycle}.
+   * Tests may call this directly.
    */
   distributeToNetworkServers(): Promise<void>;
+  /**
+   * One resolution-cycle tick: NS/PUSH/PULL timeouts, retry requeue, then distribute.
+   * Timer wiring lands in `startEngineTimers`; tests may invoke this directly.
+   */
+  runMessageResolutionCycle(): Promise<void>;
 };
 
 /** Dependencies for {@link createOutgoingService}. */
@@ -165,8 +177,60 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   }
 
   /**
+   * One lifecycle tick:
+   * 1. NS queue timeouts → retryOrFail
+   * 2. PUSH GW/Device timeouts (GW may extend via remote status) → retryOrFail
+   * 3. PULL age timeouts → emitDeliveryEvent (already cleaned up)
+   * 4. Retry queue → requeue ready messages
+   * 5. Distribute (fire-and-forget)
+   */
+  async function runMessageResolutionCycle(): Promise<void> {
+    const now = Date.now();
+
+    // 1. Shared: NS queue timeout (both PUSH and PULL before branching)
+    const nsZombieIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_NS_KEY, now);
+    for (const messageId of nsZombieIds) {
+      await baseService.retryOrFail(messageId, QUEUE_NS_KEY, {
+        reason: 'Timed out waiting for Network Server to accept message',
+      });
+    }
+
+    // 2. PUSH: GW + Device timeouts
+    const pushTimeouts = await getPushTimeouts(now);
+    for (const { messageId, queueKey, reason } of pushTimeouts) {
+      if (queueKey === QUEUE_GW_KEY) {
+        const message = await redisRepo.getMessageById(messageId);
+        if (message) {
+          const plugin = registry.get(message.pluginId)!;
+          const extended = await maybeExtendMessageInGwQueue(messageId, message, plugin.outgoing, delivery);
+          if (extended) continue;
+        }
+      }
+      await baseService.retryOrFail(messageId, queueKey, { reason });
+    }
+
+    // 3. PULL: age-based permanent failure (cleanup already done inside getPullTimeouts)
+    const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
+    const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
+    for (const { message } of pullTimeouts) {
+      emitDeliveryEvent(message);
+    }
+
+    // 4. Requeue messages whose backoff has elapsed
+    const readyToRetryIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_RETRY_KEY, now);
+    for (const messageId of readyToRetryIds) {
+      await baseService.requeueMessage(messageId);
+    }
+
+    // 5. Kick distribution (not awaited — tick completes at handoff)
+    void distributeToNetworkServers().catch(err => {
+      console.error('[runMessageResolutionCycle] distributeToNetworkServers failed', err);
+    });
+  }
+
+  /**
    * Process all initial queues that have work: admit, pick into NS, emit first-send event,
-   * then fire-and-forget plugin `sendOne` (legacy parity — tick completes at handoff).
+   * then fire-and-forget plugin `sendOne` (tick completes at handoff).
    *
    * Distribution strategy is plugin-declared (ADR-006): spacing lock, concurrency cap,
    * or custom hooks — never inferred from the human `kind` segment of the queue key.
@@ -318,5 +382,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     distributeToNetworkServers,
+    runMessageResolutionCycle,
   };
 }

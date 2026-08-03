@@ -5,8 +5,8 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation through **5.5**; **Phase 1b Intermezzo closed
-(I0–I3; I4 skipped). Unit 5.5 done (incoming + ingress + poll); next 5.6 token + timers**
+**Status:** Phase 0 complete; Phase 1 foundation through **Unit 5** (5.1–5.6);
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Next: Unit 6**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -45,16 +45,16 @@ need them (same pattern as Intermezzo enqueue/get).
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5.1–5.5; then 5.6 | Foundation through **5.5**; **next 5.6** |
+| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5 | Foundation through **Unit 5**; **next Unit 6** |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
-| **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; enqueue/get in 1b; cancel/ingress in Unit 5; token in 5.6 |
+| **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 foundation through Unit **5.5** is **done**.
-**Phase 1b is closed.** Next is **5.6** (token + thin generate + timers). Phase 4 still owns
-ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
-already in Phase 0.
+Phase 0 is **done**. Phase 1 foundation through Unit **5** is **done**.
+**Phase 1b is closed.** Next is **Unit 6** (plugin SPI polish + config / D5). Phase 4
+still owns ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) —
+CI/Docker stubs already in Phase 0.
 
 ## Port units
 
@@ -131,7 +131,7 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
 
 ### Phase 1 (engine resumed after 1b)
 
-- [ ] **Unit 5 — Core engine, framework-stripped.** Sliced for review; **command/ingress
+- [x] **Unit 5 — Core engine, framework-stripped.** Sliced for review; **command/ingress
       faces land thin HTTP in the same chunk** (end-to-end rule):
       - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
         `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
@@ -139,24 +139,24 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
         `InitialQueueKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
       - [x] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
         `POST /messages/cancel` + smoke (enqueue/get already from I3)
-      - [x] **5.3** `distributeToNetworkServers` + D3 admission on `createOutgoing`
+      - [x] **5.3** `distributeToNetworkServers` + D3 admission on `createOutgoingService`
         (timer wiring deferred to 5.6; exercise via stubs + one tick; no public route).
         **D1 (18b):** `buildInitialQueueKey` → `queue:{pluginId}:{kind}:{id}`.
         **D3 (19):** named spacing/concurrency/custom; enqueue fire-and-forget kick;
         concurrency rate-limit key derived via `buildConcurrencyRateLimitKey` (no SPI
         builder); stop before `sendOne`.
       - [x] **5.4** sendOne + post-send PUSH|PULL moves (internal; stubs + smoke poll).
-        Fire-and-forget after pick (legacy). `createBase` peer at composition root;
+        Fire-and-forget after pick. `createBaseService` peer at composition root;
         `retryOrFail` gets `concurrencyRateLimitKey` when admission is concurrency
         (message → `initialQueueKey` → `buildConcurrencyRateLimitKey`).
       - [x] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke.
-        `createIncoming` peer shares `base`; HTTP resolves plugin once →
-        `handle(event, plugin)`. `pollPullPlugins` (renamed from legacy
-        `pollPullImplementations`) as callable tick; timers deferred to 5.6.
-      - [ ] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`)
-      `@Injectable`/`@Module` removed; timers gated on `engine.enabled` (ADR-002 §7).
+        `createIncomingService` peer shares `baseService`; HTTP resolves plugin once →
+        `handle(event, plugin)`. `pollPullPlugins` as callable tick; timers deferred to 5.6.
+      - [x] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`).
+        `createTokenService`; `runMessageResolutionCycle` on outgoing; `startEngineTimers`
+        (2s resolution / 5s poll). Engine facades named `*Service`.
       **ADR-006 / deferred:** D1+D3 done in 5.3; send-fail concurrency key in 5.4; D2 on
-      remaining cleanup paths (incoming success not yet); D5 when touching stage-timeout reads.
+      remaining cleanup paths (incoming success not yet); D5 → Unit 6 / plugins.
 - [ ] **Unit 6 — Plugin SPI polish + config wiring.** Formalize anything still open on
       `DeviceMessagingPlugin` (command-type validation ADR-003 §4; optional tightening of
       PUSH/PULL incoming requirements). Construct only plugins present in config (ADR-002 §6) —
@@ -207,11 +207,11 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | *(new)* `plugins/stub.ts` | — | I1 | **ported** → `src/plugins/stub/index.ts` (`stub-push` / `stub-pull`) |
 | *(new)* `plugins/register-from-config.ts` | — | I1 | **dropped** — folded into `createPluginRegistry` |
 | `device-messages.service.ts` | 140 | 5.1 | **ported** → `src/engine/base.ts` (no pub/sub; `emitDeliveryEvent` stub) |
-| `outgoing.service.ts` | 354 | 5 | pending |
+| `outgoing.service.ts` | 354 | 5 | **ported** → `src/engine/outgoing.ts` (+ resolution cycle; timers in `timers.ts`) |
 | `incoming.service.ts` | 163 | 5.5 | **ported** → `src/engine/incoming.ts` (+ thin `src/http/ingress-routes.ts`) |
-| `token.service.ts` | 36 | 5 | pending |
-| `dto/create-device-message.dto.ts` | 25 | 5 | pending |
-| `dto/generate-token.dto.ts` | 17 | 5 | pending |
+| `token.service.ts` | 36 | 5.6 | **ported** → `src/engine/token.ts` (+ thin `src/http/token-routes.ts`) |
+| `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
+| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenBodySchema`) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
 | `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 7 | pending |
 | `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 7 | pending |

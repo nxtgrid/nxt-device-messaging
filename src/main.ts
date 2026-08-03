@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
 import { createIncomingService } from './engine/incoming.js';
 import { createOutgoingService } from './engine/outgoing.js';
+import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
 import { config, pluginRegistry } from './runtime.js';
 
@@ -48,6 +49,13 @@ const app = await buildApp({
   registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
+
+startEngineTimers({
+  enabled: config.engine.enabled,
+  outgoingService,
+  incomingService,
+});
+
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });

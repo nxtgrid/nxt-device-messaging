@@ -7,11 +7,11 @@
  *
  * Functions return data; side effects (publish, retryOrFail) are handled by the caller.
  *
- * PULL concurrency caps (`PULL_MAX_CONCURRENT_PER_GATEWAY` in legacy) are **not** here —
- * they belong to ADR-006 concurrency admission (Units 5–6 / plugin tuning).
+ * PULL concurrency caps are **not** here — they belong to ADR-006 concurrency
+ * admission (plugin `admission` / tuning).
  *
  * Max age and the poll-delay ladder are module defaults for now (D5: end state is plugin
- * `tuning`; do not grow interim `delivery.*` further in Unit 4).
+ * `tuning`; do not grow interim `delivery.*` further).
  */
 
 import { decodeTime } from 'ulid';
