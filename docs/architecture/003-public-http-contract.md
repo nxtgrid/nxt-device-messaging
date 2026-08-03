@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-27
 **Status:** Accepted — amended 2026-07-30 (command API + domain + Redis hash fields =
-camelCase; Redis key paths + Lua locals = snake_case)
+camelCase; Redis key paths + Lua locals = snake_case); amended 2026-08-03 (Unit 6.1:
+service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -96,13 +97,30 @@ Bundled plugin ids (kebab-case, manufacturer + network server where both matter)
 A message or token request for a plugin that is not enabled fails that request clearly
 (ADR-002 decision 6); the process does not crash.
 
-### 4. `commandType` is a string to the core; plugins close the set
+### 4. Service-owned command vocabulary; plugins declare a subset
 
-The engine treats `commandType` as opaque. Each plugin declares the commands it accepts and
-validates on enqueue / token generate (400 on unknown type or invalid payload for that type).
-Bundled plugins keep concrete TypeScript unions locally. This preserves the single-file-plugin
-goal: a third-party plugin is not forced into the CALIN/NXT command vocabulary, and adding a
-command does not require a core change.
+The service owns a closed `CommandType` set (parity with estate
+`meter_interaction_type_enum` — reads / controls / writes / token commands / unsolicited).
+Wire validation:
+
+| Surface | Closed by |
+|---|---|
+| `POST /message/enqueue` `commandType` | `ENQUEUEABLE_COMMAND_TYPES` (excludes unsolicited) |
+| `POST /token/generate` `type` | `GENERATE_TOKEN_TYPES` (no `DELIVER_PREEXISTING_TOKEN`) |
+| Incoming / unsolicited | Full `COMMAND_TYPES` (incl. `READ_REPORT`, `JOIN_NETWORK`) |
+
+Each plugin declares `supportedCommandTypes` (a subset of enqueueable types). Enqueue checks
+enablement, then membership (400 via `UnsupportedCommandTypeError`). Per-type payload Zod
+stays plugin-local when adapters need it.
+
+**Amendment (2026-08-03):** replaces the earlier “opaque string; plugins close the set”
+wording. The product vocabulary is shared; third-party adapters either use it or we reopen
+the wire later. Adding a command is a one-file change in
+`src/lib/device-message/command-types.ts`, not a core engine change.
+
+Deliberate drift from the estate enum: this service uses `TOP_UP_KWH` where Postgres
+still has `TOP_UP` (kWh credit). Cutover maps at the `nxt-backend` boundary; a future
+currency top-up would add a new value rather than overloading the name.
 
 ### 5. Inbound auth on the command API: static API key
 
@@ -142,7 +160,7 @@ do not in v1.
   message: {
     id?: string;         // device-message ULID; may be absent for pure unsolicited
     correlationId?: string; // absent ⇒ unsolicited
-    commandType: string;
+    commandType?: string; // CommandType when present
     deliveryStatus: DeviceMessageDeliveryStatus;
     phase?: 'A' | 'B' | 'C';
     device: {
@@ -206,7 +224,8 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
   signed-opt-in callbacks.
 - Webhook durability is stronger than the stale plan's "single retry then drop," without a
   second queue product.
-- Plugin-scoped command validation keeps core hardware-agnostic.
+- Shared vocabulary + plugin subset keeps enqueue validation explicit without a per-plugin
+  wire dialect.
 - `calin-chirpstack` names the actual network server rather than over-claiming "LoRaWAN."
 
 ### Negative / Risks
@@ -223,8 +242,10 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
 
 - **Terminal-only webhooks** — would change `meter-interactions` PROCESSING behaviour;
   rejected in favour of parity with `publish()`.
-- **Core `commandType` enum** — couples core to CALIN/NXT vocabulary; breaks third-party
-  plugins.
+- ~~**Core `commandType` enum**~~ — **superseded 2026-08-03**: the service now owns
+  `CommandType` / `ENQUEUEABLE_COMMAND_TYPES` / `GENERATE_TOKEN_TYPES`; plugins declare
+  `supportedCommandTypes`. Fully opaque strings rejected for product parity with the estate
+  enum.
 - **Manufacturer + protocol on the wire** — split/rejoin dance; replaced by `pluginId`.
 - **Separate Redis DB for webhook state** — needless second client; many hosts only expose
   DB 0; key prefixes suffice.

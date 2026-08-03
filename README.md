@@ -60,7 +60,7 @@ curl -sS -X POST http://127.0.0.1:3100/message/enqueue \
   -H "Authorization: Bearer dev-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "commandType": "READ",
+    "commandType": "READ_CREDIT",
     "priority": 1,
     "pluginId": "stub-push",
     "networkId": 42,

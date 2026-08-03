@@ -1,5 +1,6 @@
 import { fromPairs, isNotNil, splitEvery } from 'ramda';
 import type {
+  CommandType,
   CreateDeviceMessage,
   DeviceMessage,
   DeviceMessageDevice,
@@ -61,7 +62,7 @@ export const deserializeMessage = (
 
   return {
     id,
-    commandType: raw.commandType,
+    commandType: raw.commandType as CommandType,
     pluginId: raw.pluginId,
     priority: parseInt(raw.priority),
     device,

@@ -35,7 +35,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
 
     const enqueued = await redisRepo.enqueueDeviceMessage(
       {
-        commandType: 'SMOKE_TEST',
+        commandType: 'READ_CREDIT',
         priority: 1,
         pluginId: 'smoke-test',
         networkId: null,
@@ -48,12 +48,12 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       queueKey,
     );
 
-    expect(enqueued.commandType).toBe('SMOKE_TEST');
+    expect(enqueued.commandType).toBe('READ_CREDIT');
     expect(enqueued.deliveryStatus).toBe('QUEUED');
 
     const message = await redisRepo.getMessageFromCorrelationId(correlationId);
     expect(message).not.toBeNull();
-    expect(message?.commandType).toBe('SMOKE_TEST');
+    expect(message?.commandType).toBe('READ_CREDIT');
     expect(message?.pluginId).toBe('smoke-test');
     expect(message?.networkId).toBeNull();
     expect(message?.deliveryStatus).toBe('QUEUED');

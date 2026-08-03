@@ -7,7 +7,7 @@ Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 
 {
-  "commandType": "READ",
+  "commandType": "READ_CREDIT",
   "priority": 1,
   "pluginId": "stub-push",
   "networkId": 42,
@@ -54,7 +54,7 @@ Authorization: Bearer {{apiKey}}
 Content-Type: application/json
 
 {
-  "commandType": "READ",
+  "commandType": "READ_CREDIT",
   "priority": 1,
   "pluginId": "stub-push",
   "networkId": 42,
@@ -99,7 +99,7 @@ Content-Type: application/json
 
 {
   "pluginId": "stub-push",
-  "type": "TOP_UP",
+  "type": "TOP_UP_KWH",
   "issueDateString": "2026-08-03",
   "device": {
     "externalReference": "m-1",

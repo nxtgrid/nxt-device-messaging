@@ -29,7 +29,7 @@ describe('token generate (stub-push)', () => {
       url: '/token/generate',
       payload: {
         pluginId: STUB_PUSH_ID,
-        type: 'TOP_UP',
+        type: 'TOP_UP_KWH',
         issueDateString: '2026-08-03',
         device: {
           externalReference: 'smoke-meter',
@@ -46,7 +46,7 @@ describe('token generate (stub-push)', () => {
       url: '/token/generate',
       payload: {
         pluginId: STUB_PULL_ID,
-        type: 'TOP_UP',
+        type: 'TOP_UP_KWH',
         issueDateString: '2026-08-03',
         device: { externalReference: 'smoke-meter' },
       },

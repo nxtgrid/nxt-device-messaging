@@ -1,5 +1,5 @@
 /**
- * @fileoverview Minimal plugin SPI (pre–Unit 5).
+ * @fileoverview Plugin SPI (Unit 6.1 vocabulary + pre–Unit 5 surface).
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution is
@@ -14,7 +14,9 @@
 import type {
   DeviceMessage,
   DeviceMessageDevice,
+  EnqueueableCommandType,
   FailureContext,
+  GenerateTokenInput,
   ParsedIncomingEvent,
   PluginId,
 } from '../lib/device-message/types.js';
@@ -58,24 +60,6 @@ export type Admission =
   };
 
 /**
- * Token generation input (domain shape). Thin HTTP Zod is `generateTokenBodySchema`
- * (Unit 5.6) — wire adds required `pluginId`.
- * `type` is opaque to core; the plugin closes the set.
- */
-export type GenerateTokenInput = {
-  type: string;
-  issueDateString: string;
-  device: {
-    externalReference: string;
-    decoderKey?: string;
-  };
-  payload?: {
-    kwh?: number;
-    powerLimit?: number;
-  };
-};
-
-/**
  * Hardware integration contract.
  *
  * Convention (not enforced by the type system):
@@ -88,6 +72,12 @@ export type DeviceMessagingPlugin = {
 
   /** Post-send confirmation pattern. */
   readonly deliveryPattern: DeliveryPattern;
+
+  /**
+   * Outbound command types this plugin accepts on enqueue (ADR-003 §4).
+   * Wire vocabulary is {@link EnqueueableCommandType}; this list is the subset gate.
+   */
+  readonly supportedCommandTypes: readonly EnqueueableCommandType[];
 
   /**
    * Redis initial-queue key for a message (ADR-006 §1).

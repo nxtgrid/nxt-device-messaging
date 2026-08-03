@@ -32,7 +32,7 @@ import type {
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { emitDeliveryEvent, type BaseService } from './base.js';
-import { UnknownPluginError } from './errors.js';
+import { UnknownPluginError, UnsupportedCommandTypeError } from './errors.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
@@ -338,6 +338,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     async enqueue(create: CreateDeviceMessage): Promise<DeviceMessage> {
       const plugin = registry.get(create.pluginId);
       if (!plugin) throw new UnknownPluginError(create.pluginId);
+      if (!plugin.supportedCommandTypes.includes(create.commandType)) {
+        throw new UnsupportedCommandTypeError(create.pluginId, create.commandType);
+      }
 
       const queueKey = plugin.initialQueueKey({
         networkId: create.networkId,

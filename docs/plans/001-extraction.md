@@ -211,7 +211,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `incoming.service.ts` | 163 | 5.5 | **ported** → `src/engine/incoming.ts` (+ thin `src/http/ingress-routes.ts`) |
 | `token.service.ts` | 36 | 5.6 | **ported** → `src/engine/token.ts` (+ thin `src/http/token-routes.ts`) |
 | `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
-| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenBodySchema`) |
+| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
 | `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 7 | pending |
 | `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 7 | pending |

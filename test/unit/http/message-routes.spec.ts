@@ -5,7 +5,7 @@ import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 
 const enqueueBody = {
-  commandType: 'READ',
+  commandType: 'READ_CREDIT',
   priority: 1,
   pluginId: STUB_PUSH_ID,
   networkId: 42,
@@ -29,7 +29,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
     expect(enqueue.statusCode).toBe(201);
     const created = enqueue.json();
     expect(created.correlationId).toBe('corr-1');
-    expect(created.commandType).toBe('READ');
+    expect(created.commandType).toBe('READ_CREDIT');
     expect(created.networkId).toBe(42);
     expect(created.device.externalReference).toBe('m-1');
     expect(created.deliveryStatus).toBe('QUEUED');
@@ -58,6 +58,27 @@ describe('message command routes (enqueue / get / cancel)', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
       error: 'Unknown or disabled pluginId: calin-api-v2',
+    });
+
+    await app.close();
+  });
+
+  it('maps UnsupportedCommandTypeError from outgoing to 400', async () => {
+    const app = await buildApp({
+      outgoingService: createInMemoryOutgoingService({
+        knownPluginIds: [ STUB_PUSH_ID ],
+        supportedCommandTypes: [ 'TURN_ON' ],
+      }),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: enqueueBody,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: `Plugin ${ STUB_PUSH_ID } does not support commandType: READ_CREDIT`,
     });
 
     await app.close();

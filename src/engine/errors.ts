@@ -31,3 +31,19 @@ export class TokenNotSupportedError extends Error {
     this.pluginId = pluginId;
   }
 }
+
+/**
+ * Thrown when the plugin is enabled but does not accept `commandType`.
+ * HTTP maps this to 400 (ADR-003 §4).
+ */
+export class UnsupportedCommandTypeError extends Error {
+  readonly pluginId: PluginId;
+  readonly commandType: string;
+
+  constructor(pluginId: PluginId, commandType: string) {
+    super(`Plugin ${ pluginId } does not support commandType: ${ commandType }`);
+    this.name = 'UnsupportedCommandTypeError';
+    this.pluginId = pluginId;
+    this.commandType = commandType;
+  }
+}

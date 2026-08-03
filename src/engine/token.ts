@@ -5,15 +5,9 @@
  * land in Phase 2; stubs exercise the HTTP path.
  */
 
-import type { PluginId } from '../lib/device-message/types.js';
-import type { GenerateTokenInput } from '../plugins/plugin.interface.js';
+import type { GenerateTokenRequest } from '../lib/device-message/types.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { TokenNotSupportedError, UnknownPluginError } from './errors.js';
-
-/** Wire / domain request: SPI input plus required `pluginId` (ADR-003 §3). */
-export type GenerateTokenRequest = GenerateTokenInput & {
-  readonly pluginId: PluginId;
-};
 
 /**
  * Token operations used by HTTP.

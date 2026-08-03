@@ -7,6 +7,12 @@
 
 import { z } from 'zod';
 
+import {
+  asZodEnum,
+  ENQUEUEABLE_COMMAND_TYPES,
+  GENERATE_TOKEN_TYPES,
+} from './command-types.js';
+
 const gatewaySchema = z.object({
   id: z.number().optional(),
   externalReference: z.string().optional(),
@@ -42,10 +48,10 @@ export const phaseSchema = z.enum([ 'A', 'B', 'C' ]);
 
 /**
  * Fields supplied when creating / enqueuing a command (ADR-003 §2–§3).
- * Opaque `commandType` / `pluginId` — plugins close the sets (ADR-003 §3–§4).
+ * `commandType` is closed by {@link ENQUEUEABLE_COMMAND_TYPES}; plugins declare a subset.
  */
 export const createDeviceMessageSchema = z.object({
-  commandType: z.string().min(1),
+  commandType: z.enum(asZodEnum(ENQUEUEABLE_COMMAND_TYPES)),
   priority: z.number(),
   pluginId: z.string().min(1),
   requestData: requestDataSchema.optional(),
@@ -67,12 +73,12 @@ export const cancelManyBodySchema = z.object({
 
 /**
  * `POST /token/generate` body (ADR-003 §1 / §3).
- * Matches SPI `GenerateTokenInput` plus required `pluginId`.
- * Opaque `type` — plugins close the set (ADR-003 §4).
+ * Single wire schema (includes `pluginId`); SPI omits routing at the call site.
+ * `type` is closed by {@link GENERATE_TOKEN_TYPES}.
  */
-export const generateTokenBodySchema = z.object({
+export const generateTokenSchema = z.object({
   pluginId: z.string().min(1),
-  type: z.string().min(1),
+  type: z.enum(asZodEnum(GENERATE_TOKEN_TYPES)),
   issueDateString: z.string().min(1),
   device: z.object({
     externalReference: z.string().min(1),

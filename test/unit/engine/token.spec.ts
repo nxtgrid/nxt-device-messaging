@@ -10,7 +10,7 @@ import {
 
 const request = {
   pluginId: STUB_PUSH_ID,
-  type: 'TOP_UP',
+  type: 'TOP_UP_KWH' as const,
   issueDateString: '2026-08-03',
   device: { externalReference: 'm-1' },
 };

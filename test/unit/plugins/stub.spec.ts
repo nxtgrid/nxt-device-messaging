@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { InitialQueueKeyInput } from '../../../src/plugins/plugin.interface.js';
+import { ENQUEUEABLE_COMMAND_TYPES } from '../../../src/lib/device-message/command-types.js';
 import type { DeviceMessage } from '../../../src/lib/device-message/types.js';
 import {
   createStubPlugin,
@@ -20,7 +21,7 @@ const deviceOnly: InitialQueueKeyInput = {
 
 const sampleMessage = {
   id: 'msg-1',
-  commandType: 'READ',
+  commandType: 'READ_CREDIT',
   pluginId: STUB_PUSH_ID,
   networkId: 42,
   device: deviceOnly.device,
@@ -33,6 +34,7 @@ describe('stub plugins', () => {
     const plugin = createStubPushPlugin({ id: STUB_PUSH_ID });
     expect(plugin.id).toBe(STUB_PUSH_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
+    expect(plugin.supportedCommandTypes).toEqual(ENQUEUEABLE_COMMAND_TYPES);
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
     expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-push:network:42');
     expect(plugin.initialQueueKey({ ...deviceOnly, networkId: null })).toBe(

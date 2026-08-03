@@ -53,7 +53,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
     const enqueued = await outgoingService.enqueue({
-      commandType: 'READ',
+      commandType: 'READ_CREDIT',
       priority: 1,
       pluginId: STUB_PUSH_ID,
       networkId,

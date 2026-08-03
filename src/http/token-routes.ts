@@ -9,7 +9,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { TokenNotSupportedError, UnknownPluginError } from '../engine/errors.js';
 import type { TokenService } from '../engine/token.js';
-import { generateTokenBodySchema } from '../lib/device-message/schemas.js';
+import { generateTokenSchema } from '../lib/device-message/schemas.js';
 import { createApiKeyHook } from './auth.js';
 
 export type TokenRoutesOpts = {
@@ -25,7 +25,7 @@ export const tokenRoutes: FastifyPluginAsync<TokenRoutesOpts> = async (app, opts
   app.addHook('onRequest', createApiKeyHook(opts.apiKey));
 
   app.post('/token/generate', async (request, reply) => {
-    const parsed = generateTokenBodySchema.safeParse(request.body);
+    const parsed = generateTokenSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'Invalid request body' });
     }

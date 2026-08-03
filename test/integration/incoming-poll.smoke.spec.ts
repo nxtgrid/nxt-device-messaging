@@ -102,7 +102,7 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
     const enqueued = await outgoingService.enqueue({
-      commandType: 'READ',
+      commandType: 'READ_CREDIT',
       priority: 1,
       pluginId: STUB_PULL_ID,
       networkId: null,

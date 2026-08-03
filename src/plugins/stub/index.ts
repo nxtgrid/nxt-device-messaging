@@ -9,14 +9,16 @@ import type {
   Admission,
   DeliveryPattern,
   DeviceMessagingPlugin,
-  GenerateTokenInput,
   InitialQueueKeyInput,
 } from '../plugin.interface.js';
 import { buildInitialQueueKey } from '../initial-queue-key.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
+import { ENQUEUEABLE_COMMAND_TYPES } from '../../lib/device-message/command-types.js';
 import type {
   DeviceMessage,
+  EnqueueableCommandType,
   FailureContext,
+  GenerateTokenInput,
   ParsedIncomingEvent,
   PluginId,
 } from '../../lib/device-message/types.js';
@@ -77,8 +79,16 @@ export function createStubPlugin(options: {
   readonly deliveryPattern: DeliveryPattern;
   readonly nodeKind: string;
   readonly admission: Admission;
+  /** Defaults to all enqueueable command types. */
+  readonly supportedCommandTypes?: readonly EnqueueableCommandType[];
 }): DeviceMessagingPlugin {
-  const { id, deliveryPattern, nodeKind, admission } = options;
+  const {
+    id,
+    deliveryPattern,
+    nodeKind,
+    admission,
+    supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
+  } = options;
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
     if (deliveryPattern === 'PUSH') {
@@ -121,6 +131,7 @@ export function createStubPlugin(options: {
   return {
     id,
     deliveryPattern,
+    supportedCommandTypes,
     admission,
     initialQueueKey,
     outgoing,
