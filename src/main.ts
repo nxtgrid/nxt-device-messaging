@@ -1,5 +1,6 @@
 import { buildApp } from './app.js';
 import { createBase } from './engine/base.js';
+import { createIncoming } from './engine/incoming.js';
 import { createOutgoing } from './engine/outgoing.js';
 import { config, pluginRegistry } from './runtime.js';
 
@@ -30,9 +31,16 @@ const outgoing = createOutgoing({
   delivery: config.delivery,
   base,
 });
+const incoming = createIncoming({
+  registry: pluginRegistry,
+  delivery: config.delivery,
+  base,
+});
 
 const app = await buildApp({
   outgoing,
+  incoming,
+  registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
 const port = resolvePort();

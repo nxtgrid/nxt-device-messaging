@@ -1,16 +1,20 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import {
+  ingressRoutes,
+  type IngressRoutesOpts,
+} from './http/ingress-routes.js';
+import {
   messageRoutes,
   type MessageRoutesOpts,
 } from './http/message-routes.js';
 
-/** Same surface as the message plugin — `buildApp` does not invent defaults. */
-export type BuildAppOptions = MessageRoutesOpts;
+/** Composition-root deps for HTTP — command routes + vendor ingress. */
+export type BuildAppOptions = MessageRoutesOpts & IngressRoutesOpts;
 
 /**
  * Builds the HTTP application (ADR-001). Ops probes stay unauthenticated (ADR-005 §5).
- * Callers (composition root / tests) supply {@link MessageRoutesOpts.outgoing}.
+ * Callers (composition root / tests) supply outgoing, incoming, and registry.
  */
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
@@ -21,7 +25,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { ok: true as const };
   });
 
-  await app.register(messageRoutes, options);
+  await app.register(messageRoutes, {
+    outgoing: options.outgoing,
+    apiKey: options.apiKey,
+  });
+
+  await app.register(ingressRoutes, {
+    incoming: options.incoming,
+    registry: options.registry,
+  });
 
   return app;
 }

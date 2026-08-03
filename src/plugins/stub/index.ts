@@ -13,7 +13,12 @@ import type {
 } from '../plugin.interface.js';
 import { buildInitialQueueKey } from '../initial-queue-key.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
-import type { DeviceMessage, FailureContext, PluginId } from '../../lib/device-message/types.js';
+import type {
+  DeviceMessage,
+  FailureContext,
+  ParsedIncomingEvent,
+  PluginId,
+} from '../../lib/device-message/types.js';
 
 /** Config / registry id for the PUSH stub. */
 export const STUB_PUSH_ID = 'stub-push' as const;
@@ -45,10 +50,22 @@ function parseStubError(err: unknown): FailureContext {
 }
 
 /**
+ * True when `event` already looks like a {@link ParsedIncomingEvent}.
+ * Stub PUSH ingress accepts the normalized shape so smokes need no vendor framing.
+ */
+function isStubParsedIncomingEvent(event: unknown): event is ParsedIncomingEvent {
+  if (event === null || typeof event !== 'object') return false;
+  const candidate = event as Partial<ParsedIncomingEvent>;
+  return typeof candidate.deliveryStatus === 'string'
+    && candidate.device !== undefined
+    && typeof candidate.device === 'object';
+}
+
+/**
  * Build a no-op {@link DeviceMessagingPlugin} for skeleton / tests.
  *
- * PULL stubs expose `incoming.fetchStatus` → `null`; PUSH stubs expose
- * `incoming.handle` → `null`.
+ * PULL stubs expose `incoming.fetchStatus` → `null`. PUSH stubs accept a
+ * pre-normalized {@link ParsedIncomingEvent} body (or return null).
  */
 export function createStubPlugin(options: {
   readonly id: PluginId;
@@ -80,7 +97,11 @@ export function createStubPlugin(options: {
 
   const incoming: DeviceMessagingPlugin['incoming'] =
     deliveryPattern === 'PUSH'
-      ? { handle: (_event: unknown) => null }
+      ? {
+        handle: (event: unknown): ParsedIncomingEvent | null => {
+          return isStubParsedIncomingEvent(event) ? event : null;
+        },
+      }
       : { fetchStatus: async (_message: DeviceMessage) => null };
 
   return {

@@ -41,6 +41,15 @@ describe('stub plugins', () => {
     expect(plugin.incoming.handle).toBeTypeOf('function');
     expect(plugin.incoming.fetchStatus).toBeUndefined();
     expect(plugin.incoming.handle?.({})).toBeNull();
+    expect(plugin.incoming.handle?.({
+      deliveryStatus: 'DELIVERY_SUCCESSFUL',
+      device: deviceOnly.device,
+      deliveryQueueId: 'stub-ext-id',
+    })).toEqual({
+      deliveryStatus: 'DELIVERY_SUCCESSFUL',
+      device: deviceOnly.device,
+      deliveryQueueId: 'stub-ext-id',
+    });
   });
 
   it('createStubPullPlugin uses PULL + concurrency and queue:stub-pull:gateway:…', async () => {

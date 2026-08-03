@@ -74,3 +74,20 @@ Content-Type: application/json
 {
   "correlationIds": ["{{enqueueForBatch.correlationId}}", "httpyac-missing"]
 }
+
+### Ingress stub-push (no Bearer — body is stub ParsedIncomingEvent shape)
+# After distribute/sendOne the stub deliveryQueueId is "stub-ext-id".
+POST {{baseUrl}}/ingress/stub-push
+Content-Type: application/json
+
+{
+  "deliveryQueueId": "stub-ext-id",
+  "deliveryStatus": "DELIVERY_SUCCESSFUL",
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-1"
+  },
+  "response": {
+    "status": "EXECUTION_SUCCESS"
+  }
+}

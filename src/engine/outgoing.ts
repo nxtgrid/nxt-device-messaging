@@ -83,10 +83,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
   /**
    * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
    */
-  function _concurrencyRateLimitKeyFor(
-    plugin: DeviceMessagingPlugin,
-    message: DeviceMessage,
-  ): string | undefined {
+  function _concurrencyRateLimitKeyFor(plugin: DeviceMessagingPlugin, message: DeviceMessage): string | undefined {
     if (plugin.admission.strategy !== 'concurrency') return undefined;
     const queueKey = plugin.initialQueueKey({ networkId: message.networkId, device: message.device });
     return buildConcurrencyRateLimitKey(queueKey);

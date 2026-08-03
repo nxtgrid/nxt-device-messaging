@@ -12,3 +12,10 @@ export const correlationIdParamsSchema = z.object({
 }).strict();
 
 export type CorrelationIdParams = z.infer<typeof correlationIdParamsSchema>;
+
+/** `POST /ingress/:pluginId` path params. */
+export const pluginIdParamsSchema = z.object({
+  pluginId: z.string().min(1),
+}).strict();
+
+export type PluginIdParams = z.infer<typeof pluginIdParamsSchema>;
