@@ -3,7 +3,7 @@
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution is
- * `Outgoing.distributeToNetworkServers` (Unit 5.3 / D3).
+ * `OutgoingService.distributeToNetworkServers` (Unit 5.3 / D3).
  * Initial queues: {@link DeviceMessagingPlugin.initialQueueKey} + `buildInitialQueueKey`
  * (ADR-006 D1). Stage-timeout relocation (D5) is not here.
  *
@@ -58,7 +58,8 @@ export type Admission =
   };
 
 /**
- * Token generation input (domain shape). HTTP Zod lands in Phase 3 (ADR-003).
+ * Token generation input (domain shape). Thin HTTP Zod is `generateTokenBodySchema`
+ * (Unit 5.6) — wire adds required `pluginId`.
  * `type` is opaque to core; the plugin closes the set.
  */
 export type GenerateTokenInput = {

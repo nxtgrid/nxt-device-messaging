@@ -3,15 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../../src/app.js';
 import { createPluginRegistry } from '../../../src/plugins/registry.js';
 import { STUB_PULL_ID, STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
-import { createInMemoryIncoming } from '../../helpers/in-memory-incoming.js';
-import { createInMemoryOutgoing } from '../../helpers/in-memory-outgoing.js';
+import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
+import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 
 describe('POST /ingress/:pluginId', () => {
   it('forwards body to incoming.handle without Bearer auth', async () => {
     const onHandle = vi.fn();
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing(),
-      incoming: createInMemoryIncoming({ onHandle }),
+      outgoingService: createInMemoryOutgoingService(),
+      incomingService: createInMemoryIncomingService({ onHandle }),
+      tokenService: createInMemoryTokenService(),
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       apiKey: 'secret',
     });
@@ -35,8 +37,9 @@ describe('POST /ingress/:pluginId', () => {
 
   it('returns 400 for unknown pluginId', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing(),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService(),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: createPluginRegistry([]),
     });
 
@@ -57,8 +60,9 @@ describe('POST /ingress/:pluginId', () => {
 
   it('returns 400 when plugin has no PUSH handle', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing(),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService(),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: createPluginRegistry([ { id: STUB_PULL_ID } ]),
     });
 

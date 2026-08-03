@@ -1,5 +1,5 @@
 /**
- * Real {@link createOutgoing} smoke: enqueue → distribute tick → sendOne → post-send
+ * Real {@link createOutgoingService} smoke: enqueue → distribute tick → sendOne → post-send
  * queue (Unit 5.4). Fire-and-forget send — poll for DELIVERED_TO_NS.
  *
  * Opt-in (needs Valkey):
@@ -10,8 +10,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
-import { createBase } from '../../src/engine/base.js';
-import { createOutgoing, type Outgoing } from '../../src/engine/outgoing.js';
+import { createBaseService } from '../../src/engine/base.js';
+import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
 import type { DeviceMessage } from '../../src/lib/device-message/types.js';
 import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
 import { QUEUE_GW_KEY } from '../../src/lib/queue-moving.push.js';
@@ -32,13 +32,13 @@ const STUB_DELIVERY_ID = 'stub-ext-id';
  * Poll until fire-and-forget sendOne has moved the message past SENT_TO_NS.
  */
 async function waitForPostSend(
-  outgoing: Outgoing,
+  outgoingService: OutgoingService,
   correlationId: string,
   timeoutMs = 2_000,
 ): Promise<DeviceMessage> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const message = await outgoing.getByCorrelationId(correlationId);
+    const message = await outgoingService.getByCorrelationId(correlationId);
     if (message?.deliveryStatus === POST_SEND_STATUS) return message;
     await sleep(20);
   }
@@ -62,10 +62,10 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
-    const outgoing = createOutgoing({
+    const outgoingService = createOutgoingService({
       registry,
       delivery,
-      base: createBase({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 
@@ -73,7 +73,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const networkId = 91;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoing.enqueue({
+    const enqueued = await outgoingService.enqueue({
       commandType: 'READ',
       priority: 1,
       pluginId: STUB_PUSH_ID,
@@ -87,8 +87,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
 
     expect(enqueued.deliveryStatus).toBe('QUEUED');
 
-    await outgoing.distributeToNetworkServers();
-    const after = await waitForPostSend(outgoing, correlationId);
+    await outgoingService.distributeToNetworkServers();
+    const after = await waitForPostSend(outgoingService, correlationId);
 
     expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
     expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
@@ -109,10 +109,10 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PULL_ID } ]);
-    const outgoing = createOutgoing({
+    const outgoingService = createOutgoingService({
       registry,
       delivery,
-      base: createBase({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 
@@ -122,7 +122,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
-    const enqueued = await outgoing.enqueue({
+    const enqueued = await outgoingService.enqueue({
       commandType: 'READ',
       priority: 1,
       pluginId: STUB_PULL_ID,
@@ -135,8 +135,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       },
     });
 
-    await outgoing.distributeToNetworkServers();
-    const after = await waitForPostSend(outgoing, correlationId);
+    await outgoingService.distributeToNetworkServers();
+    const after = await waitForPostSend(outgoingService, correlationId);
 
     expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
     expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);

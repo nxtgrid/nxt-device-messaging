@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '../../../src/app.js';
 import { createPluginRegistry } from '../../../src/plugins/registry.js';
 import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
-import { createInMemoryIncoming } from '../../helpers/in-memory-incoming.js';
-import { createInMemoryOutgoing } from '../../helpers/in-memory-outgoing.js';
+import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
+import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 
 const emptyRegistry = () => createPluginRegistry([]);
 
@@ -22,10 +23,11 @@ const enqueueBody = {
 
 describe('message command routes (enqueue / get / cancel)', () => {
   it('enqueues via outgoing and returns via get (camelCase)', async () => {
-    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
     const app = await buildApp({
-      outgoing,
-      incoming: createInMemoryIncoming(),
+      outgoingService,
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 
@@ -55,8 +57,9 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('maps UnknownPluginError from outgoing to 400', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 
@@ -75,8 +78,9 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('returns 404 when correlation id is missing', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing(),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService(),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 
@@ -91,8 +95,9 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('requires Bearer when apiKey is configured', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
       apiKey: 'secret',
     });
@@ -120,8 +125,9 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('rejects invalid bodies', async () => {
     const app = await buildApp({
-      outgoing: createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] }),
-      incoming: createInMemoryIncoming(),
+      outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 
@@ -137,10 +143,11 @@ describe('message command routes (enqueue / get / cancel)', () => {
   });
 
   it('cancels one via POST /message/cancel', async () => {
-    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
     const app = await buildApp({
-      outgoing,
-      incoming: createInMemoryIncoming(),
+      outgoingService,
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 
@@ -179,10 +186,11 @@ describe('message command routes (enqueue / get / cancel)', () => {
   });
 
   it('cancels many via POST /messages/cancel', async () => {
-    const outgoing = createInMemoryOutgoing({ knownPluginIds: [ STUB_PUSH_ID ] });
+    const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
     const app = await buildApp({
-      outgoing,
-      incoming: createInMemoryIncoming(),
+      outgoingService,
+      incomingService: createInMemoryIncomingService(),
+      tokenService: createInMemoryTokenService(),
       registry: emptyRegistry(),
     });
 

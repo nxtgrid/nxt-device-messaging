@@ -91,3 +91,21 @@ Content-Type: application/json
     "status": "EXECUTION_SUCCESS"
   }
 }
+
+### Generate token (stub-push)
+POST {{baseUrl}}/token/generate
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "pluginId": "stub-push",
+  "type": "TOP_UP",
+  "issueDateString": "2026-08-03",
+  "device": {
+    "externalReference": "m-1",
+    "decoderKey": "deadbeef"
+  },
+  "payload": {
+    "kwh": 10
+  }
+}

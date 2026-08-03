@@ -9,6 +9,7 @@ import type {
   Admission,
   DeliveryPattern,
   DeviceMessagingPlugin,
+  GenerateTokenInput,
   InitialQueueKeyInput,
 } from '../plugin.interface.js';
 import { buildInitialQueueKey } from '../initial-queue-key.js';
@@ -19,6 +20,9 @@ import type {
   ParsedIncomingEvent,
   PluginId,
 } from '../../lib/device-message/types.js';
+
+/** Fixed token string returned by the PUSH stub's `token.generate`. */
+export const STUB_TOKEN_VALUE = 'stub-token' as const;
 
 /** Config / registry id for the PUSH stub. */
 export const STUB_PUSH_ID = 'stub-push' as const;
@@ -65,7 +69,8 @@ function isStubParsedIncomingEvent(event: unknown): event is ParsedIncomingEvent
  * Build a no-op {@link DeviceMessagingPlugin} for skeleton / tests.
  *
  * PULL stubs expose `incoming.fetchStatus` → `null`. PUSH stubs accept a
- * pre-normalized {@link ParsedIncomingEvent} body (or return null).
+ * pre-normalized {@link ParsedIncomingEvent} body (or return null) and expose
+ * `token.generate` → {@link STUB_TOKEN_VALUE}.
  */
 export function createStubPlugin(options: {
   readonly id: PluginId;
@@ -104,6 +109,15 @@ export function createStubPlugin(options: {
       }
       : { fetchStatus: async (_message: DeviceMessage) => null };
 
+  const token: DeviceMessagingPlugin['token'] | undefined =
+    deliveryPattern === 'PUSH'
+      ? {
+        async generate(_input: GenerateTokenInput): Promise<string> {
+          return STUB_TOKEN_VALUE;
+        },
+      }
+      : undefined;
+
   return {
     id,
     deliveryPattern,
@@ -111,6 +125,7 @@ export function createStubPlugin(options: {
     initialQueueKey,
     outgoing,
     incoming,
+    ...(token !== undefined ? { token } : {}),
   };
 }
 

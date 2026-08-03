@@ -1,7 +1,8 @@
 import { buildApp } from './app.js';
-import { createBase } from './engine/base.js';
-import { createIncoming } from './engine/incoming.js';
-import { createOutgoing } from './engine/outgoing.js';
+import { createBaseService } from './engine/base.js';
+import { createIncomingService } from './engine/incoming.js';
+import { createOutgoingService } from './engine/outgoing.js';
+import { createTokenService } from './engine/token.js';
 import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -22,24 +23,28 @@ function resolvePort(): number {
 /**
  * Composition root — runtime already booted; wire peer services, then Fastify.
  */
-const base = createBase({
+const baseService = createBaseService({
   registry: pluginRegistry,
   delivery: config.delivery,
 });
-const outgoing = createOutgoing({
+const outgoingService = createOutgoingService({
   registry: pluginRegistry,
   delivery: config.delivery,
-  base,
+  baseService,
 });
-const incoming = createIncoming({
+const incomingService = createIncomingService({
   registry: pluginRegistry,
   delivery: config.delivery,
-  base,
+  baseService,
+});
+const tokenService = createTokenService({
+  registry: pluginRegistry,
 });
 
 const app = await buildApp({
-  outgoing,
-  incoming,
+  outgoingService,
+  incomingService,
+  tokenService,
   registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });

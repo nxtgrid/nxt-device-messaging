@@ -5,18 +5,20 @@
  * HMAC/OpenAPI polish stays Phase 3.
  *
  * HTTP resolves the plugin once (enablement, PUSH support, signature), then
- * hands it to {@link Incoming.handle} — no second registry lookup in the engine.
+ * hands it to {@link IncomingService.handle} — no second registry lookup in the
+ * engine. Command routes leave enablement to their services; ingress is the
+ * exception because signature verification needs the plugin before `handle`.
  */
 
 import type { FastifyPluginAsync } from 'fastify';
 
-import type { Incoming } from '../engine/incoming.js';
+import type { IncomingService } from '../engine/incoming.js';
 import type { PluginId } from '../lib/device-message/types.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { pluginIdParamsSchema } from './message-params.js';
 
 export type IngressRoutesOpts = {
-  readonly incoming: Incoming;
+  readonly incomingService: IncomingService;
   readonly registry: PluginRegistry;
 };
 
@@ -80,7 +82,7 @@ export const ingressRoutes: FastifyPluginAsync<IngressRoutesOpts> = async (app, 
       }
     }
 
-    await opts.incoming.handle(event, plugin);
+    await opts.incomingService.handle(event, plugin);
     return reply.code(204).send();
   });
 };

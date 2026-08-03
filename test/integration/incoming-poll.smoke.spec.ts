@@ -1,5 +1,5 @@
 /**
- * Real createIncoming.pollPullPlugins smoke (Unit 5.5 Step B):
+ * Real createIncomingService.pollPullPlugins smoke (Unit 5.5 Step B):
  * enqueue → distribute → sendOne → awaiting-task → poll tick → cleanup.
  *
  * Opt-in (needs Valkey):
@@ -10,9 +10,9 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
-import { createBase } from '../../src/engine/base.js';
-import { createIncoming } from '../../src/engine/incoming.js';
-import { createOutgoing, type Outgoing } from '../../src/engine/outgoing.js';
+import { createBaseService } from '../../src/engine/base.js';
+import { createIncomingService } from '../../src/engine/incoming.js';
+import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '../../src/lib/device-message/types.js';
 import { sleep } from '../../src/lib/utilities.js';
 import type { DeviceMessagingPlugin } from '../../src/plugins/plugin.interface.js';
@@ -56,13 +56,13 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
 }
 
 async function waitForPostSend(
-  outgoing: Outgoing,
+  outgoingService: OutgoingService,
   correlationId: string,
   timeoutMs = 2_000,
 ): Promise<DeviceMessage> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const message = await outgoing.getByCorrelationId(correlationId);
+    const message = await outgoingService.getByCorrelationId(correlationId);
     if (message?.deliveryStatus === POST_SEND_STATUS) return message;
     await sleep(20);
   }
@@ -86,14 +86,14 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPullRegistryWithSuccessFetch();
-    const base = createBase({ registry, delivery });
-    const outgoing = createOutgoing({
+    const baseService = createBaseService({ registry, delivery });
+    const outgoingService = createOutgoingService({
       registry,
       delivery,
-      base,
+      baseService,
       kickDistributeOnEnqueue: false,
     });
-    const incoming = createIncoming({ registry, delivery, base });
+    const incomingService = createIncomingService({ registry, delivery, baseService });
 
     const correlationId = `poll-pull-${ Date.now() }`;
     const gatewayId = 8;
@@ -101,7 +101,7 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
-    const enqueued = await outgoing.enqueue({
+    const enqueued = await outgoingService.enqueue({
       commandType: 'READ',
       priority: 1,
       pluginId: STUB_PULL_ID,
@@ -114,16 +114,16 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
       },
     });
 
-    await outgoing.distributeToNetworkServers();
-    const afterSend = await waitForPostSend(outgoing, correlationId);
+    await outgoingService.distributeToNetworkServers();
+    const afterSend = await waitForPostSend(outgoingService, correlationId);
     expect(afterSend.deliveryQueueId).toBe(STUB_DELIVERY_ID);
     expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
     // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
     await sleep(5);
-    await incoming.pollPullPlugins();
+    await incomingService.pollPullPlugins();
 
-    const afterPoll = await outgoing.getByCorrelationId(correlationId);
+    const afterPoll = await outgoingService.getByCorrelationId(correlationId);
     expect(afterPoll).toBeNull();
     expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
 

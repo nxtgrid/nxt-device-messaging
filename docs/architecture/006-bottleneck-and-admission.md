@@ -182,7 +182,8 @@ is still D2 work.
 ### D3 — Wire `distribute` + admission execution
 
 **Decided / landed (2026-08-01, session 19; sendOne 2026-08-02 session 20):**
-`Outgoing.distributeToNetworkServers` on `createOutgoing({ registry, delivery, base })`
+`OutgoingService.distributeToNetworkServers` on
+`createOutgoingService({ registry, delivery, baseService })`
 runs named strategies (`spacing` / `concurrency` / `custom`); resolve plugin via D1-C.
 Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`) — no
 SPI `rateLimitKey`. After pick: fire-and-forget `sendOne` + PUSH|PULL post-send moves;

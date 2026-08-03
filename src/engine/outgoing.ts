@@ -15,7 +15,6 @@ import type {
   CancelMessageResult,
   CreateDeviceMessage,
   DeviceMessage,
-  PluginId,
 } from '../lib/device-message/types.js';
 import {
   buildConcurrencyRateLimitKey,
@@ -26,27 +25,14 @@ import type {
   DistributeCtx,
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
-import { emitDeliveryEvent, type Base } from './base.js';
-
-/**
- * Thrown when enqueue names a plugin that is not registered / enabled.
- * HTTP maps this to 400.
- */
-export class UnknownPluginError extends Error {
-  readonly pluginId: PluginId;
-
-  constructor(pluginId: PluginId) {
-    super(`Unknown or disabled pluginId: ${ pluginId }`);
-    this.name = 'UnknownPluginError';
-    this.pluginId = pluginId;
-  }
-}
+import { emitDeliveryEvent, type BaseService } from './base.js';
+import { UnknownPluginError } from './errors.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
  * Wired at the composition root (`main.ts`); unit tests inject a fake.
  */
-export type Outgoing = {
+export type OutgoingService = {
   enqueue(create: CreateDeviceMessage): Promise<DeviceMessage>;
   getByCorrelationId(correlationId: string): Promise<DeviceMessage | null>;
   cancelOne(correlationId: string): Promise<CancelMessageResult>;
@@ -58,14 +44,14 @@ export type Outgoing = {
   distributeToNetworkServers(): Promise<void>;
 };
 
-/** Dependencies for {@link createOutgoing}. */
-export type CreateOutgoingOptions = {
+/** Dependencies for {@link createOutgoingService}. */
+export type CreateOutgoingServiceOptions = {
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
-  readonly base: Base;
+  readonly baseService: BaseService;
   /**
-   * When true (default), fire-and-forget {@link Outgoing.distributeToNetworkServers}
+   * When true (default), fire-and-forget {@link OutgoingService.distributeToNetworkServers}
    * after a successful enqueue. Set false in tests that need the message to remain
    * `QUEUED` (e.g. cancel smoke).
    */
@@ -75,10 +61,10 @@ export type CreateOutgoingOptions = {
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, base, and optional enqueue-kick flag
+ * @param options - Registry, delivery, baseService, and optional enqueue-kick flag
  */
-export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
-  const { registry, delivery, base, kickDistributeOnEnqueue = true } = options;
+export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
+  const { registry, delivery, baseService, kickDistributeOnEnqueue = true } = options;
 
   /**
    * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
@@ -154,7 +140,7 @@ export function createOutgoing(options: CreateOutgoingOptions): Outgoing {
       deliveryQueueId = await plugin.outgoing.sendOne(message);
     }
     catch (err) {
-      await base.retryOrFail(
+      await baseService.retryOrFail(
         message.id,
         QUEUE_NS_KEY,
         plugin.outgoing.parseError(err),

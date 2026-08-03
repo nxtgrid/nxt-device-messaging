@@ -1,5 +1,5 @@
 /**
- * Real createIncoming + thin ingress smoke (Unit 5.5 Step A):
+ * Real createIncomingService + thin ingress smoke (Unit 5.5 Step A):
  * enqueue → distribute → sendOne → GW → POST /ingress → cleanup.
  *
  * Opt-in (needs Valkey):
@@ -11,9 +11,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
-import { createBase } from '../../src/engine/base.js';
-import { createIncoming } from '../../src/engine/incoming.js';
-import { createOutgoing, type Outgoing } from '../../src/engine/outgoing.js';
+import { createBaseService } from '../../src/engine/base.js';
+import { createIncomingService } from '../../src/engine/incoming.js';
+import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
+import { createTokenService } from '../../src/engine/token.js';
 import type { DeviceMessage } from '../../src/lib/device-message/types.js';
 import { QUEUE_DEVICE_KEY } from '../../src/lib/queue-moving.push.js';
 import { sleep } from '../../src/lib/utilities.js';
@@ -27,13 +28,13 @@ const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
 const STUB_DELIVERY_ID = 'stub-ext-id';
 
 async function waitForPostSend(
-  outgoing: Outgoing,
+  outgoingService: OutgoingService,
   correlationId: string,
   timeoutMs = 2_000,
 ): Promise<DeviceMessage> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const message = await outgoing.getByCorrelationId(correlationId);
+    const message = await outgoingService.getByCorrelationId(correlationId);
     if (message?.deliveryStatus === POST_SEND_STATUS) return message;
     await sleep(20);
   }
@@ -57,21 +58,22 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
-    const base = createBase({ registry, delivery });
-    const outgoing = createOutgoing({
+    const baseService = createBaseService({ registry, delivery });
+    const outgoingService = createOutgoingService({
       registry,
       delivery,
-      base,
+      baseService,
       kickDistributeOnEnqueue: false,
     });
-    const incoming = createIncoming({ registry, delivery, base });
-    const app = await buildApp({ outgoing, incoming, registry });
+    const incomingService = createIncomingService({ registry, delivery, baseService });
+    const tokenService = createTokenService({ registry });
+    const app = await buildApp({ outgoingService, incomingService, tokenService, registry });
 
     const correlationId = `ingress-push-${ Date.now() }`;
     const networkId = 92;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoing.enqueue({
+    const enqueued = await outgoingService.enqueue({
       commandType: 'READ',
       priority: 1,
       pluginId: STUB_PUSH_ID,
@@ -83,8 +85,8 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       },
     });
 
-    await outgoing.distributeToNetworkServers();
-    const afterSend = await waitForPostSend(outgoing, correlationId);
+    await outgoingService.distributeToNetworkServers();
+    const afterSend = await waitForPostSend(outgoingService, correlationId);
     expect(afterSend.deliveryQueueId).toBe(STUB_DELIVERY_ID);
 
     const ack = await app.inject({
@@ -99,7 +101,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     });
     expect(ack.statusCode).toBe(204);
 
-    const afterAck = await outgoing.getByCorrelationId(correlationId);
+    const afterAck = await outgoingService.getByCorrelationId(correlationId);
     expect(afterAck?.deliveryStatus).toBe('SENT_TO_DEVICE');
     expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).not.toBeNull();
 
@@ -116,7 +118,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     });
     expect(success.statusCode).toBe(204);
 
-    const afterSuccess = await outgoing.getByCorrelationId(correlationId);
+    const afterSuccess = await outgoingService.getByCorrelationId(correlationId);
     expect(afterSuccess).toBeNull();
     expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).toBeNull();
 

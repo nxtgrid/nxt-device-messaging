@@ -1,5 +1,5 @@
 /**
- * Real {@link createOutgoing} smoke: enqueue → cancel → get (Unit 5.2).
+ * Real {@link createOutgoingService} smoke: enqueue → cancel → get (Unit 5.2).
  *
  * Opt-in (needs Valkey), same gate as `redis.smoke.spec.ts`:
  *
@@ -14,8 +14,8 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { createBase } from '../../src/engine/base.js';
-import { createOutgoing } from '../../src/engine/outgoing.js';
+import { createBaseService } from '../../src/engine/base.js';
+import { createOutgoingService } from '../../src/engine/outgoing.js';
 import { STUB_PUSH_ID } from '../../src/plugins/stub/index.js';
 import { createPluginRegistry } from '../../src/plugins/registry.js';
 import { sleep } from '../../src/lib/utilities.js';
@@ -41,10 +41,10 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const { deviceMessagingConfigSchema } = await import('../../src/config/schema.js');
     const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
     // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
-    const outgoing = createOutgoing({
+    const outgoingService = createOutgoingService({
       registry,
       delivery,
-      base: createBase({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery }),
       kickDistributeOnEnqueue: false,
     });
 
@@ -52,7 +52,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const networkId = 42;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoing.enqueue({
+    const enqueued = await outgoingService.enqueue({
       commandType: 'READ',
       priority: 1,
       pluginId: STUB_PUSH_ID,
@@ -65,15 +65,15 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     });
 
     expect(enqueued.deliveryStatus).toBe('QUEUED');
-    expect(await outgoing.getByCorrelationId(correlationId)).not.toBeNull();
+    expect(await outgoingService.getByCorrelationId(correlationId)).not.toBeNull();
     expect(await redisRepo.client.zscore(queueKey, enqueued.id)).not.toBeNull();
 
     if(goSlow) await sleep(4000);
 
-    const cancel = await outgoing.cancelOne(correlationId);
+    const cancel = await outgoingService.cancelOne(correlationId);
     expect(cancel).toEqual({ correlationId, result: 'CANCELLED' });
 
-    expect(await outgoing.getByCorrelationId(correlationId)).toBeNull();
+    expect(await outgoingService.getByCorrelationId(correlationId)).toBeNull();
     expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
     expect(await redisRepo.client.exists(redisKeys.message(enqueued.id))).toBe(0);
 

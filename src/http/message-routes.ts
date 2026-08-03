@@ -1,12 +1,14 @@
 /**
  * @fileoverview Thin command routes: enqueue, get-by-correlation, cancel (Unit 5.2).
  *
- * Lean HTTP: Zod + auth + map domain errors. Plugin enablement lives in {@link Outgoing}.
+ * Lean HTTP: Zod + auth + map domain errors. Plugin enablement lives in
+ * {@link OutgoingService}.
  */
 
 import type { FastifyPluginAsync } from 'fastify';
 
-import { UnknownPluginError, type Outgoing } from '../engine/outgoing.js';
+import { UnknownPluginError } from '../engine/errors.js';
+import type { OutgoingService } from '../engine/outgoing.js';
 import {
   cancelManyBodySchema,
   cancelOneBodySchema,
@@ -16,7 +18,7 @@ import { createApiKeyHook } from './auth.js';
 import { correlationIdParamsSchema } from './message-params.js';
 
 export type MessageRoutesOpts = {
-  readonly outgoing: Outgoing;
+  readonly outgoingService: OutgoingService;
   /** When set, command routes require Bearer auth. */
   readonly apiKey?: string;
 };
@@ -34,7 +36,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
     }
 
     try {
-      const message = await opts.outgoing.enqueue(parsed.data);
+      const message = await opts.outgoingService.enqueue(parsed.data);
       return reply.code(201).send(message);
     }
     catch (err) {
@@ -51,7 +53,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(400).send({ error: 'Invalid correlationId' });
     }
 
-    const message = await opts.outgoing.getByCorrelationId(parsed.data.correlationId);
+    const message = await opts.outgoingService.getByCorrelationId(parsed.data.correlationId);
     if (message === null) {
       return reply.code(404).send({ error: 'Not found' });
     }
@@ -65,7 +67,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(400).send({ error: 'Invalid request body' });
     }
 
-    const result = await opts.outgoing.cancelOne(parsed.data.correlationId);
+    const result = await opts.outgoingService.cancelOne(parsed.data.correlationId);
     return reply.code(200).send(result);
   });
 
@@ -75,7 +77,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(400).send({ error: 'Invalid request body' });
     }
 
-    const results = await opts.outgoing.cancelMany(parsed.data.correlationIds);
+    const results = await opts.outgoingService.cancelMany(parsed.data.correlationIds);
     return reply.code(200).send(results);
   });
 };

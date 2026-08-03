@@ -1,10 +1,11 @@
 /**
- * @fileoverview In-memory {@link Outgoing} for HTTP unit tests (no Valkey).
+ * @fileoverview In-memory {@link OutgoingService} for HTTP unit tests (no Valkey).
  */
 
 import { ulid } from 'ulid';
 
-import { UnknownPluginError, type Outgoing } from '../../src/engine/outgoing.js';
+import { UnknownPluginError } from '../../src/engine/errors.js';
+import type { OutgoingService } from '../../src/engine/outgoing.js';
 import type {
   CancelMessageResult,
   CreateDeviceMessage,
@@ -12,13 +13,15 @@ import type {
   PluginId,
 } from '../../src/lib/device-message/types.js';
 
-export type InMemoryOutgoingOptions = {
+export type InMemoryOutgoingServiceOptions = {
   /** When set, enqueue throws {@link UnknownPluginError} for other ids. */
   readonly knownPluginIds?: readonly PluginId[];
 };
 
 /** Process-local Map-backed outgoing for route / app unit tests. */
-export function createInMemoryOutgoing(options: InMemoryOutgoingOptions = {}): Outgoing {
+export function createInMemoryOutgoingService(
+  options: InMemoryOutgoingServiceOptions = {},
+): OutgoingService {
   const known = options.knownPluginIds !== undefined
     ? new Set(options.knownPluginIds)
     : undefined;

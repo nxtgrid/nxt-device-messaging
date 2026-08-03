@@ -64,3 +64,22 @@ export const cancelOneBodySchema = z.object({
 export const cancelManyBodySchema = z.object({
   correlationIds: z.array(z.string().min(1)).min(1),
 }).strict();
+
+/**
+ * `POST /token/generate` body (ADR-003 §1 / §3).
+ * Matches SPI `GenerateTokenInput` plus required `pluginId`.
+ * Opaque `type` — plugins close the set (ADR-003 §4).
+ */
+export const generateTokenBodySchema = z.object({
+  pluginId: z.string().min(1),
+  type: z.string().min(1),
+  issueDateString: z.string().min(1),
+  device: z.object({
+    externalReference: z.string().min(1),
+    decoderKey: z.string().optional(),
+  }).strict(),
+  payload: z.object({
+    kwh: z.number().optional(),
+    powerLimit: z.number().optional(),
+  }).strict().optional(),
+}).strict();

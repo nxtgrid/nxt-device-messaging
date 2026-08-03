@@ -54,11 +54,13 @@ camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue prim
 lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey` /
 `buildConcurrencyRateLimitKey`, catalog, registry, `stub/`), `src/http/` (lean
 enqueue/get/cancel; thin `POST /ingress/:pluginId`; `message-params.ts`; `smoke/`
-httpYac), `src/engine/base.ts` (`createBase` — retry/requeue; `emitDeliveryEvent` free
-export) + `outgoing.ts` (enqueue/get/cancel/distribute/`sendOne` + post-send moves;
-named admission; `UnknownPluginError` → HTTP 400) + `incoming.ts` (`handle` /
-`pollPullPlugins` + shared process). Peer factories wired in `main.ts`. **Stops before
-token / resolution-cycle timers (Unit 5.6).**
+httpYac), `src/engine/base.ts` (`createBaseService` — retry/requeue;
+`emitDeliveryEvent` free export) + `outgoing.ts` (`createOutgoingService` —
+enqueue/get/cancel/distribute/`sendOne` + post-send moves; named admission) +
+`incoming.ts` (`createIncomingService` — `handle` / `pollPullPlugins`) +
+`token.ts` (`createTokenService` + thin `POST /token/generate`). Errors from
+`engine/errors.ts`. Peer factories wired in `main.ts`. **Stops before
+resolution-cycle timers (Unit 5.6 Step B).**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
@@ -150,7 +152,8 @@ the plugin interface sketch) — never as instructions.
 - Prefer immutability: `readonly` for data that does not change, `as const` for literals.
 - **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
   keep private helpers in that scope; return a plain object literal as the interface. Example:
-  `createOutgoing({ registry, delivery, base })`. Complements ADR-001 §2 (no DI container). Pure
+  `createOutgoingService({ registry, delivery, baseService })`. Complements ADR-001 §2
+  (no DI container). Pure
   helpers and module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.

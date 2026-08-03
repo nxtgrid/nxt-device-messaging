@@ -12,13 +12,13 @@ import { redisRepo } from '../lib/redis-repository/index.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '../lib/device-message/types.js';
 import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
-import { emitDeliveryEvent, type Base } from './base.js';
+import { emitDeliveryEvent, type BaseService } from './base.js';
 
 /**
  * Incoming operations used by HTTP (and later by the poll loop).
  * Wired at the composition root (`main.ts`); unit tests inject a fake.
  */
-export type Incoming = {
+export type IncomingService = {
   /**
    * PUSH ingress: parse via `plugin.incoming.handle`, then process.
    * Caller (HTTP) already resolved an enabled PUSH plugin — no registry lookup here.
@@ -32,21 +32,21 @@ export type Incoming = {
   pollPullPlugins(): Promise<void>;
 };
 
-/** Dependencies for {@link createIncoming}. */
-export type CreateIncomingOptions = {
+/** Dependencies for {@link createIncomingService}. */
+export type CreateIncomingServiceOptions = {
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
-  readonly base: Base;
+  readonly baseService: BaseService;
 };
 
 /**
  * Factory for PUSH ingress, PULL poll, and shared incoming-event processing.
  *
- * @param options - Registry, delivery knobs, and peer {@link Base}
+ * @param options - Registry, delivery knobs, and peer {@link BaseService}
  */
-export function createIncoming(options: CreateIncomingOptions): Incoming {
-  const { registry, delivery, base } = options;
+export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
+  const { registry, delivery, baseService } = options;
 
   /**
    * Process a parsed incoming event from PUSH (or later PULL poll).
@@ -82,7 +82,7 @@ export function createIncoming(options: CreateIncomingOptions): Incoming {
 
     if (deliveryStatus === 'DELIVERY_FAILED') {
       const context = failureContext ?? { reason: 'Unable to deliver message after negative remote response' };
-      await base.retryOrFail(messageId, currentQueueKey, context);
+      await baseService.retryOrFail(messageId, currentQueueKey, context);
       return;
     }
 

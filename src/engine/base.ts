@@ -31,8 +31,8 @@ export function emitDeliveryEvent(_message: Partial<DeviceMessage>): void {
   // no-op
 }
 
-/** Shared retry / requeue operations used by outgoing and (later) the resolution cycle. */
-export type Base = {
+/** Shared retry / requeue operations used by peers and (later) the resolution cycle. */
+export type BaseService = {
   retryOrFail(
     messageId: string,
     currentQueueKey: string,
@@ -44,8 +44,8 @@ export type Base = {
   requeueMessage(messageId: string): Promise<void>;
 };
 
-/** Dependencies for {@link createBase}. */
-export type CreateBaseOptions = {
+/** Dependencies for {@link createBaseService}. */
+export type CreateBaseServiceOptions = {
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
 };
@@ -55,7 +55,7 @@ export type CreateBaseOptions = {
  *
  * @param options - Registry (requeue → `initialQueueKey`) and delivery knobs (retries / backoff)
  */
-export function createBase(options: CreateBaseOptions): Base {
+export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { registry, delivery } = options;
 
   /**
