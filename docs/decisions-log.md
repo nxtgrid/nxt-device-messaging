@@ -27,8 +27,9 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | ~~D1~~ | ~~`queueKey → pluginId`~~ → **C embed `pluginId` in key** (session 18b; reverts 18/B) | — | — | 006 |
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
 | ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `OutgoingService.distributeToNetworkServers` (session 19) | — | — | 006 |
-| D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant | 006 |
-| D5 | Stage timeouts / poll delays leave shared `delivery.*` → plugin `tuning` | Unit 5 / plugins | Unit 3 globals on `delivery` (legacy defaults); do not treat as end state | 002 |
+| D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant. Wire parent is `relayNode` (D6); `kind` segment may still say `dcu` / `gateway` | 006 |
+| ~~D5~~ | ~~Stage timeouts → plugin `tuning`~~ → **locked names** (session 23b); implement in Unit 6.2 | Unit 6.2 (in progress) | — | 002 |
+| ~~D6~~ | ~~Wire parent-node name~~ → **`device.relayNode`** (session 23b); implement with 6.2 | Unit 6.2 (in progress) | — | 003 |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
 **8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
@@ -909,4 +910,72 @@ admission is concurrency; prefer `createBase` when touching `base.ts`).
 
 **Next:** Unit **6** — plugin SPI polish + config wiring (command-type validation;
 D5 stage timeouts → plugin `tuning`).
+
+### 2026-08-04 — session 23: Unit 6.1 vocabulary; defer wire parent-node naming (D6)
+
+**Unit 6.1 (landed earlier this session / prior turns):** service-owned `CommandType` /
+`ENQUEUEABLE_COMMAND_TYPES` / `GENERATE_TOKEN_TYPES` (`TOP_UP_KWH`); plugin
+`supportedCommandTypes`; token body Zod-inferred; Unit 4 interim lifecycle facets
+deleted; PUSH/PULL discriminant / boot-assert **skipped** (does not remove downstream
+checks). ADR-003 §4 amended.
+
+**D6 — wire `device` parent node (documented, not decided):**
+
+Legacy packed both LoRaWAN gateway and CALIN DCU into `device.gateway`. Admission
+`kind` in queue keys is already plugin-local (D4). The remaining smell is the **shared
+create/webhook field name**.
+
+Options to revisit before Units 7–9:
+
+| Option | Idea | Trade-off |
+|---|---|---|
+| A | Keep `device.gateway`; plugins interpret as DCU when needed | Simple; wrong name for CALIN adopters |
+| B | Dual optional `gateway` + `dcu` on the wire | Honest names; core schema knows both; plugins must pick; webhook noisier |
+| C | One generic field (e.g. `accessNode` / `relay`) | Core topology-agnostic; docs map gateway/DCU; LoRaWAN-only `snr`/`rssi` still awkward on a generic object |
+| D | Opaque plugin-shaped device extras | Maximum flexibility; weak shared validation / OpenAPI |
+
+**Finding:** business reads of parent id already belong in plugins (`initialQueueKey`).
+Core today only *declares* the Zod shape — it does not branch on `gateway` for
+admission. So “checks inside plugins only” is already true for routing; what remains
+is whether the **wire vocabulary** stays gateway-flavoured. Dual fields are possible
+but tedious (two slots, mutual exclusivity, ingress normalisation). A single generic
+name is the usual fix if we rename at all.
+
+**Not in this note:** D5 stage-timeout *SPI names* (still open when locking 6.2 shape —
+avoid baking `gw*` into plugin `tuning` if we rename).
+
+**Next:** lock 6.2 `tuning` shape + names, then implement D5.
+
+### 2026-08-04 — session 23b: lock D5 names + D6 `relayNode` (implement stepwise)
+
+**Locked — D6:** wire field **`device.relayNode`** (replaces `device.gateway`). Generic I/O
+parent for LoRaWAN gateway, CALIN DCU, or mesh hop. Core still does not branch on it for
+admission (D4 `kind` remains plugin-local and may say `dcu` / `gateway` / `relayNode`).
+
+**Locked — D5 tuning + PUSH mid-stage Redis (one vocabulary):**
+
+| Tuning (`plugin.tuning`) | Scores / meaning |
+|---|---|
+| `nsInFlightTimeoutMs` | `queue_in_flight_to_ns` |
+| `relayNodeInFlightTimeoutMs` | `queue_in_flight_to_relay_node` (was `…_to_gw` / `gwInFlight*`) |
+| `deviceInFlightTimeoutMs` | `queue_in_flight_to_device` (end meter) |
+| `initialPollDelayMs` | first PULL poll |
+
+Shared `delivery` keeps only retry knobs + `messageTtlSeconds`. Helpers rename with the
+key (`fromNsToRelayNode`, `QUEUE_RELAY_NODE_KEY`, …). Rejected for the mid stage:
+`downlink*` (third vocabulary) and keeping `gw*` on the SPI.
+
+**Implement Unit 6.2 in small reviewable steps:**
+
+| Step | Scope |
+|---|---|
+| **A** | Docs lock (this note + ADR-002/003) |
+| **B** | Wire `gateway` → `relayNode` |
+| **C** | Redis/helpers `gw` → `relay_node` |
+| **D** | `plugin.tuning` on SPI + stub defaults |
+| **E** | Queue-moving reads tuning; drop stage keys from `delivery` |
+| **F** | Stub factories merge config `tuning` |
+| **G** | Plan / AGENTS close-out |
+
+**Next:** Step **B** after maintainer accepts Step A.
 

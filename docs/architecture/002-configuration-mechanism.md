@@ -10,11 +10,15 @@
 >
 > **Amendment (2026-07-29):** Stage timeouts on shared `delivery.*` are an **interim** from
 > Phase 1 Unit 3 — see decision **D5** in `docs/decisions-log.md` and §5 below. End state:
-> only cross-plugin knobs stay on `delivery`; NS / GW / device / poll delays live in plugin
-> `tuning` (defaults in code). Do not treat Unit 3’s `nsInFlightTimeoutMs` etc. as permanent.
+> only cross-plugin knobs stay on `delivery`; stage / poll delays live in plugin `tuning`.
 >
 > **Amendment (2026-07-30):** Access is via `src/runtime.ts` boot exports (`config`,
 > `pluginRegistry`), not `getConfig()` / `setConfig()`. See §4.
+>
+> **Amendment (2026-08-04):** D5 **names locked** — `nsInFlightTimeoutMs`,
+> `relayNodeInFlightTimeoutMs`, `deviceInFlightTimeoutMs`, `initialPollDelayMs` on
+> `plugin.tuning`. PUSH mid-stage Redis key → `queue_in_flight_to_relay_node` (was `…_to_gw`).
+> Implement in Unit 6.2.
 
 ---
 
@@ -161,19 +165,21 @@ optional, and an operator who does not care writes nothing.
 This keeps the vendor knowledge (that CALIN needs ~30s and LoRaWAN ~10s) in the plugin that knows
 it, while leaving an operator free to tune for their own network.
 
-**Shared `delivery.*` vs plugin `tuning` (D5, locked 2026-07-29):**
+**Shared `delivery.*` vs plugin `tuning` (D5, locked 2026-07-29; names locked 2026-08-04):**
 
-| Stays on `delivery` (cross-plugin) | Moves to plugin `tuning` (Units 5–6 / plugin units) |
+| Stays on `delivery` (cross-plugin) | On `plugin.tuning` (Unit 6.2) |
 |---|---|
-| `maxRetries`, retry backoff knobs, `messageTtlSeconds` | NS in-flight timeout (`nsTimeoutMs` / equivalent) |
-| | PUSH GW / device stage timeouts (ChirpStack-shaped; not universal) |
-| | PULL `initialPollDelayMs`, max message age, concurrency caps already sketched as tuning |
+| `maxRetries`, retry backoff knobs, `messageTtlSeconds` | `nsInFlightTimeoutMs` → `queue_in_flight_to_ns` |
+| | `relayNodeInFlightTimeoutMs` → `queue_in_flight_to_relay_node` (PUSH mid stage; was `gw*`) |
+| | `deviceInFlightTimeoutMs` → `queue_in_flight_to_device` (end meter) |
+| | `initialPollDelayMs` → first PULL poll |
 
-Unit 3 temporarily put stage timeouts on `delivery` so queue primitives could read
-shared knobs before a registry existed. When `queueKey → pluginId` and the plugin SPI land,
-callers resolve timeouts from the owning plugin’s merged tuning — then remove those keys from
-the core `delivery` schema. Queue helpers take `delivery` (or later plugin tuning) as an
-argument; they do not import `runtime`.
+PULL max-age / poll-delay ladder stay module defaults until a real PULL plugin needs them.
+Concurrency caps stay on `admission` (ADR-006), not `tuning`.
+
+Unit 3 put stage timeouts on `delivery` before a registry existed. Unit 6.2 moves them to
+plugin `tuning` (defaults in code, config override) and drops those keys from core
+`delivery`. Queue helpers take knobs as arguments; they do not import `runtime`.
 
 ### 6. Honesty rules — fail fast, but degrade gracefully at runtime
 

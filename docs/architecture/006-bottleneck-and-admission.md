@@ -196,6 +196,10 @@ fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests). Cron /
 Whether CALIN API keys use `gateway` vs `dcu` as the human `kind` segment is **plugin-local**.
 No uniqueness constraint across plugins (unlike the reverted D1-B kind registry).
 
+Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O parent. That does
+**not** force the Redis `kind` segment to be `relayNode`; plugins still choose `dcu` /
+`gateway` / etc. for admission keys.
+
 ---
 
 ## Consequences for the port plan

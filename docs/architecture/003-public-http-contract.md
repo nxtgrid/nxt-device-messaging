@@ -3,7 +3,8 @@
 **Date:** 2026-07-27
 **Status:** Accepted — amended 2026-07-30 (command API + domain + Redis hash fields =
 camelCase; Redis key paths + Lua locals = snake_case); amended 2026-08-03 (Unit 6.1:
-service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset)
+service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
+amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -83,7 +84,7 @@ on `nxt-backend`.
 `device.manufacturer` + `device.protocol` are dropped from the public contract. The caller
 passes a required `pluginId`. The service routes enqueue, token generation, and ingress by
 that id. `device` on the wire is identity only (`type`, `externalReference`, optional
-`gateway`).
+`relayNode` — generic I/O parent for gateway / DCU / mesh hop; see D6).
 
 Bundled plugin ids (kebab-case, manufacturer + network server where both matter):
 
@@ -166,7 +167,7 @@ do not in v1.
     device: {
       type: string;
       externalReference: string;
-      gateway?: { id?: number; externalReference?: string; snr?: number; rssi?: number };
+      relayNode?: { id?: number; externalReference?: string; snr?: number; rssi?: number };
     };
     response?: {
       status: 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE';
