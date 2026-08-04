@@ -33,17 +33,28 @@ export function buildInitialQueueKey(
 }
 
 /**
+ * Split an initial-queue key and validate the fixed prefix / pluginId segment.
+ *
+ * @param queueKey - Candidate `queue:{pluginId}:{kind}:{id}` (or longer after `id`)
+ * @returns Colon-split parts when valid, otherwise `undefined`
+ */
+function parseInitialQueueKey(queueKey: string): string[] | undefined {
+  const parts = queueKey.split(':');
+  if (parts.length < 4 || parts[0] !== 'queue' || parts[1] === '') {
+    return undefined;
+  }
+  return parts;
+}
+
+/**
  * Extract `pluginId` from an initial-queue key for registry lookup.
  *
  * @param queueKey - Initial-queue Redis key (`queue:{pluginId}:{kind}:{id}`)
  * @returns The plugin id, or `undefined` if the key does not match the convention
  */
 export function getPluginIdFromInitialQueueKey(queueKey: string): string | undefined {
-  const parts = queueKey.split(':');
-  if (parts.length < 4 || parts[0] !== 'queue' || parts[1] === '') {
-    return undefined;
-  }
-  return parts[1];
+  const parts = parseInitialQueueKey(queueKey);
+  return parts?.[1];
 }
 
 /**
@@ -59,9 +70,7 @@ export function getPluginIdFromInitialQueueKey(queueKey: string): string | undef
  * @returns The rate-limit key, or `undefined` if `queueKey` is not a valid initial-queue key
  */
 export function buildConcurrencyRateLimitKey(queueKey: string): string | undefined {
-  const parts = queueKey.split(':');
-  if (parts.length < 4 || parts[0] !== 'queue' || parts[1] === '') {
-    return undefined;
-  }
+  const parts = parseInitialQueueKey(queueKey);
+  if (!parts) return undefined;
   return `rate_limit:${ parts.slice(1).join(':') }`;
 }

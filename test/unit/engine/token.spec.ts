@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createTokenService } from '../../../src/engine/token.js';
+import type { PluginRegistry } from '../../../src/plugins/registry.js';
 import { createPluginRegistry } from '../../../src/plugins/registry.js';
 import {
+  createStubPushPlugin,
   STUB_PULL_ID,
   STUB_PUSH_ID,
   STUB_TOKEN_VALUE,
@@ -21,6 +23,26 @@ describe('createTokenService', () => {
     const tokenService = createTokenService({ registry });
 
     await expect(tokenService.generate(request)).resolves.toBe(STUB_TOKEN_VALUE);
+  });
+
+  it('strips pluginId before calling plugin.token.generate', async () => {
+    const generate = vi.fn(async () => STUB_TOKEN_VALUE);
+    const base = createStubPushPlugin({ id: STUB_PUSH_ID });
+    const plugin = { ...base, token: { generate } };
+    const registry: PluginRegistry = {
+      get: id => (id === STUB_PUSH_ID ? plugin : undefined),
+      getAll: () => [ plugin ],
+      getByDeliveryPattern: () => [],
+    };
+    const tokenService = createTokenService({ registry });
+
+    await tokenService.generate(request);
+
+    expect(generate).toHaveBeenCalledWith({
+      type: request.type,
+      issueDateString: request.issueDateString,
+      device: request.device,
+    });
   });
 
   it('throws UnknownPluginError for disabled plugin', async () => {

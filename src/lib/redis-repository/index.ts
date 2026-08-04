@@ -28,6 +28,13 @@ import type {
  */
 export const MESSAGE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
+/**
+ * Max members returned per timeout / poll scan (`ZRANGEBYSCORE … LIMIT`).
+ * Caps work per engine tick; leftover due members wait for the next tick.
+ * Inherited from legacy — pragmatic batch size, not a measured optimum.
+ */
+const QUEUE_SCAN_BATCH_SIZE = 50;
+
 declare module 'iovalkey' {
   interface Redis {
     /**
@@ -351,10 +358,10 @@ export const redisRepo = {
    *
    * @param queueKey - Queue to scan
    * @param cutoffDate - Unix timestamp; messages with score <= this are expired
-   * @returns Array of message IDs (max 50 per call)
+   * @returns Array of message IDs (max {@link QUEUE_SCAN_BATCH_SIZE} per call)
    */
   getExpiredMessagesInQueue(queueKey: string, cutoffDate: number): Promise<string[]> {
-    return _client.zrangebyscore(queueKey, '-inf', cutoffDate, 'LIMIT', 0, 50);
+    return _client.zrangebyscore(queueKey, '-inf', cutoffDate, 'LIMIT', 0, QUEUE_SCAN_BATCH_SIZE);
   },
 
   /**
@@ -362,10 +369,10 @@ export const redisRepo = {
    * Returns messages whose score (next poll time) is <= now.
    *
    * @param queueKey - Queue to scan
-   * @returns Array of message IDs due for polling (max 50 per call)
+   * @returns Array of message IDs due for polling (max {@link QUEUE_SCAN_BATCH_SIZE} per call)
    */
   getMessagesDueForPolling(queueKey: string): Promise<string[]> {
-    return _client.zrangebyscore(queueKey, '-inf', Date.now(), 'LIMIT', 0, 50);
+    return _client.zrangebyscore(queueKey, '-inf', Date.now(), 'LIMIT', 0, QUEUE_SCAN_BATCH_SIZE);
   },
 
   /**

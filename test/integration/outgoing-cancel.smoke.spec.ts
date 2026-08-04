@@ -52,35 +52,42 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const networkId = 42;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PUSH_ID,
-      networkId,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'cancel-smoke-meter',
-      },
-    });
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PUSH_ID,
+        networkId,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'cancel-smoke-meter',
+        },
+      });
 
-    expect(enqueued.deliveryStatus).toBe('QUEUED');
-    expect(await outgoingService.getByCorrelationId(correlationId)).not.toBeNull();
-    expect(await redisRepo.client.zscore(queueKey, enqueued.id)).not.toBeNull();
+      expect(enqueued.deliveryStatus).toBe('QUEUED');
+      expect(await outgoingService.getByCorrelationId(correlationId)).not.toBeNull();
+      expect(await redisRepo.client.zscore(queueKey, enqueued.id)).not.toBeNull();
 
-    if(goSlow) await sleep(4000);
+      if (goSlow) await sleep(4000);
 
-    const cancel = await outgoingService.cancelOne(correlationId);
-    expect(cancel).toEqual({ correlationId, result: 'CANCELLED' });
+      const cancel = await outgoingService.cancelOne(correlationId);
+      expect(cancel).toEqual({ correlationId, result: 'CANCELLED' });
 
-    expect(await outgoingService.getByCorrelationId(correlationId)).toBeNull();
-    expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.exists(redisKeys.message(enqueued.id))).toBe(0);
-
-    // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
+      expect(await outgoingService.getByCorrelationId(correlationId)).toBeNull();
+      expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.exists(redisKeys.message(enqueued.id))).toBe(0);
+    }
+    finally {
+      // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover, { inFlightQueueKeys: [ queueKey ] });
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+    }
   });
 });

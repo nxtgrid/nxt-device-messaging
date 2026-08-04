@@ -46,41 +46,46 @@ describe.skipIf(!shouldRun)('outgoing runMessageResolutionCycle', () => {
     const networkId = 77;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PUSH_ID,
-      networkId,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'resolution-smoke-meter',
-      },
-    });
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PUSH_ID,
+        networkId,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'resolution-smoke-meter',
+        },
+      });
 
-    // Park in retry with an already-due score (resolution step 4).
-    await redisRepo.client.zrem(queueKey, enqueued.id);
-    await redisRepo.client.hset(redisKeys.message(enqueued.id), {
-      deliveryStatus: 'TO_RETRY',
-    });
-    await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() - 1, enqueued.id);
+      // Park in retry with an already-due score (resolution step 4).
+      await redisRepo.client.zrem(queueKey, enqueued.id);
+      await redisRepo.client.hset(redisKeys.message(enqueued.id), {
+        deliveryStatus: 'TO_RETRY',
+      });
+      await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() - 1, enqueued.id);
 
-    await outgoingService.runMessageResolutionCycle();
+      await outgoingService.runMessageResolutionCycle();
 
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 
-    // Requeue restores QUEUED; fire-and-forget distribute may already have picked it.
-    await sleep(50);
-    const after = await outgoingService.getByCorrelationId(correlationId);
-    expect(after).not.toBeNull();
-    expect([ 'QUEUED', 'SENT_TO_NS', 'DELIVERED_TO_NS' ]).toContain(after?.deliveryStatus);
-
-    // Cleanup leftover stage keys if distribute already moved the message.
-    await redisRepo.messageFullCleanup(after!);
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
+      // Requeue restores QUEUED; fire-and-forget distribute may already have picked it.
+      await sleep(50);
+      const after = await outgoingService.getByCorrelationId(correlationId);
+      expect(after).not.toBeNull();
+      expect([ 'QUEUED', 'SENT_TO_NS', 'DELIVERED_TO_NS' ]).toContain(after?.deliveryStatus);
+    }
+    finally {
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover);
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+    }
   });
 });
 

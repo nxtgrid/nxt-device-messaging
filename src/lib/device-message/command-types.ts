@@ -97,10 +97,13 @@ export function asZodEnum<T extends string>(
   return values as [ T, ...T[] ];
 }
 
-const isTypeIn =
-  <const T extends readonly CommandType[]>(group: T) =>
-    (commandType: string): commandType is T[number] =>
-      (group as readonly string[]).includes(commandType);
+type CommandTypeGuard<T extends readonly CommandType[]> = (
+  commandType: string,
+) => commandType is T[number];
+
+const isTypeIn = <const T extends readonly CommandType[]>(group: T): CommandTypeGuard<T> =>
+  (commandType: string): commandType is T[number] =>
+    (group as readonly string[]).includes(commandType);
 
 export const isPhaseSpecificReadCommand = isTypeIn(PHASE_SPECIFIC_READ_COMMAND_TYPES);
 export const isReadCommand = isTypeIn(READ_COMMAND_TYPES);

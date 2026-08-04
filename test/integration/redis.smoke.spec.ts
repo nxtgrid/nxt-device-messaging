@@ -33,48 +33,63 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
     const correlationId = `smoke-${ Date.now() }`;
     const queueKey = `queue:smoke:${ correlationId }`;
 
-    const enqueued = await redisRepo.enqueueDeviceMessage(
-      {
-        commandType: 'READ_CREDIT',
-        priority: 1,
-        pluginId: 'smoke-test',
-        networkId: null,
-        correlationId,
-        device: {
-          type: 'ELECTRICITY_METER',
-          externalReference: 'smoke-meter',
+    try {
+      const enqueued = await redisRepo.enqueueDeviceMessage(
+        {
+          commandType: 'READ_CREDIT',
+          priority: 1,
+          pluginId: 'smoke-test',
+          networkId: null,
+          correlationId,
+          device: {
+            type: 'ELECTRICITY_METER',
+            externalReference: 'smoke-meter',
+          },
         },
-      },
-      queueKey,
-    );
+        queueKey,
+      );
 
-    expect(enqueued.commandType).toBe('READ_CREDIT');
-    expect(enqueued.deliveryStatus).toBe('QUEUED');
+      expect(enqueued.commandType).toBe('READ_CREDIT');
+      expect(enqueued.deliveryStatus).toBe('QUEUED');
 
-    const message = await redisRepo.getMessageFromCorrelationId(correlationId);
-    expect(message).not.toBeNull();
-    expect(message?.commandType).toBe('READ_CREDIT');
-    expect(message?.pluginId).toBe('smoke-test');
-    expect(message?.networkId).toBeNull();
-    expect(message?.deliveryStatus).toBe('QUEUED');
-    expect(message?.device.externalReference).toBe('smoke-meter');
+      const message = await redisRepo.getMessageFromCorrelationId(correlationId);
+      expect(message).not.toBeNull();
+      expect(message?.commandType).toBe('READ_CREDIT');
+      expect(message?.pluginId).toBe('smoke-test');
+      expect(message?.networkId).toBeNull();
+      expect(message?.deliveryStatus).toBe('QUEUED');
+      expect(message?.device.externalReference).toBe('smoke-meter');
 
-    await redisRepo.messageFullCleanup(message!, {
-      inFlightQueueKeys: [ queueKey ],
-    });
+      await redisRepo.messageFullCleanup(message!, {
+        inFlightQueueKeys: [ queueKey ],
+      });
 
-    // messageFullCleanup does not SREM queues_to_distribute_from — the distributor Lua
-    // GC's that when a queue empties. Smoke has no distribute pass, so tidy explicitly.
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
+      // messageFullCleanup does not SREM queues_to_distribute_from — the distributor Lua
+      // GC's that when a queue empties. Smoke has no distribute pass, so tidy explicitly.
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
 
-    expect(await redisRepo.getMessageFromCorrelationId(correlationId)).toBeNull();
-    expect(await redisRepo.client.zcard(queueKey)).toBe(0);
-    expect(await redisRepo.client.sismember(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    )).toBe(0);
+      expect(await redisRepo.getMessageFromCorrelationId(correlationId)).toBeNull();
+      expect(await redisRepo.client.zcard(queueKey)).toBe(0);
+      expect(await redisRepo.client.sismember(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      )).toBe(0);
+    }
+    finally {
+      const leftover = await redisRepo.getMessageFromCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover, {
+          inFlightQueueKeys: [ queueKey ],
+        });
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+      await redisRepo.client.del(queueKey);
+    }
   });
 });

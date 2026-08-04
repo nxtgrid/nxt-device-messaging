@@ -1022,3 +1022,12 @@ Import ledger unit numbers updated. No code change.
 
 **Next:** Phase 2 **Unit 7** — `calin-api-v1` from `legacy/.../adapters/calin-api-v1/`
 at baseline `db5c2ac`.
+
+### 2026-08-04 — review nits pass (carried)
+
+**Open — PULL `deliveryQueueId` race in `fromAnyToRetry`.** The `@RACE-CONDITION` comment in
+`src/lib/queue-moving.ts` stands: `HDEL deliveryQueueId` can race a concurrent PULL
+`fetchStatus` / vendor poll that still needs the external task id. Not fixed in this pass.
+Preferred direction when tackled: keep `deliveryQueueId` until the retry attempt actually
+starts (or otherwise serialize poll vs retry). Related: thorough `messageFullCleanup` exit-path
+smoke matrix remains deferred (cancel smoke header / D2).

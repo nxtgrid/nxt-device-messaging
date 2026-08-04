@@ -6,11 +6,14 @@
 
 import type { DeliveryConfig } from '../config/schema.js';
 
+/** Max random jitter as a fraction of the capped backoff delay (0–50%). */
+const RETRY_JITTER_FRACTION = 0.5;
+
 /**
  * Calculate the delay before the next retry using exponential backoff.
  *
  * Formula: (backoffMultiplier ^ retryCount) * baseDelayMs, capped at maxDelayMs,
- * plus 0–50% jitter.
+ * plus 0–50% jitter ({@link RETRY_JITTER_FRACTION}).
  *
  * Example delays with defaults (before jitter):
  * - Attempt 0 (first fail): 2^0 * 2000 = 2 seconds
@@ -36,7 +39,7 @@ export const calculateBackoffDelay = (
 
   const delay = retryBaseDelayMs * Math.pow(retryBackoffMultiplier, retryCount);
   const cappedDelay = Math.min(delay, retryMaxDelayMs);
-  const jitter = Math.floor(Math.random() * (cappedDelay * 0.5));
+  const jitter = Math.floor(Math.random() * (cappedDelay * RETRY_JITTER_FRACTION));
 
   return cappedDelay + jitter;
 };

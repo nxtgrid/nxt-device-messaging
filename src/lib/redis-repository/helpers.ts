@@ -77,7 +77,10 @@ export const deserializeMessage = (
     networkId: 'networkId' in raw ? parseInt(raw.networkId) : null,
     ...(raw.correlationId ? { correlationId: raw.correlationId } : {}),
 
-    ...(raw.requestData ? { requestData: JSON.parse(raw.requestData) } : {}),
+    ...(raw.requestData
+      ? { requestData: JSON.parse(raw.requestData) as NonNullable<CreateDeviceMessage['requestData']> }
+      : {}
+    ),
     ...(raw.phase ? { phase: raw.phase as PhaseEnum } : {}),
 
     deliveryQueueId: raw.deliveryQueueId ?? '',

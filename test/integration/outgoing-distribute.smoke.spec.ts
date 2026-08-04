@@ -11,40 +11,21 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
 import { createBaseService } from '../../src/engine/base.js';
-import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
-import type { DeviceMessage } from '../../src/lib/device-message/types.js';
+import { createOutgoingService } from '../../src/engine/outgoing.js';
 import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
 import { QUEUE_RELAY_NODE_KEY } from '../../src/lib/queue-moving.push.js';
-import { sleep } from '../../src/lib/utilities.js';
 import {
   STUB_PULL_ID,
   STUB_PUSH_ID,
 } from '../../src/plugins/stub/index.js';
 import { createPluginRegistry } from '../../src/plugins/registry.js';
+import {
+  POST_SEND_STATUS,
+  waitForPostSend,
+} from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
-
-const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
-
-/**
- * Poll until fire-and-forget sendOne has moved the message past SENT_TO_NS.
- */
-async function waitForPostSend(
-  outgoingService: OutgoingService,
-  correlationId: string,
-  timeoutMs = 2_000,
-): Promise<DeviceMessage> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const message = await outgoingService.getByCorrelationId(correlationId);
-    if (message?.deliveryStatus === POST_SEND_STATUS) return message;
-    await sleep(20);
-  }
-  throw new Error(
-    `Timed out waiting for ${ POST_SEND_STATUS } (correlationId=${ correlationId })`,
-  );
-}
 
 describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
@@ -72,35 +53,41 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const networkId = 91;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PUSH_ID,
-      networkId,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'distribute-push-meter',
-      },
-    });
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PUSH_ID,
+        networkId,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'distribute-push-meter',
+        },
+      });
 
-    expect(enqueued.deliveryStatus).toBe('QUEUED');
+      expect(enqueued.deliveryStatus).toBe('QUEUED');
 
-    await outgoingService.distributeToNetworkServers();
-    const after = await waitForPostSend(outgoingService, correlationId);
+      await outgoingService.distributeToNetworkServers();
+      const after = await waitForPostSend(outgoingService, correlationId);
 
-    expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
-    expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
-    expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).not.toBeNull();
-
-    await redisRepo.messageFullCleanup(after);
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
-    await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
+      expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
+      expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
+      expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).not.toBeNull();
+    }
+    finally {
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover);
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+      await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
+    }
   });
 
   it('stub-pull: concurrency claim → NS → awaiting-task (PULL post-send)', async () => {
@@ -121,32 +108,40 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const rateLimitKey = `rate_limit:stub-pull:relayNode:${ relayNodeId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PULL_ID,
-      networkId: null,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'distribute-pull-meter',
-        relayNode: { id: relayNodeId },
-      },
-    });
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PULL_ID,
+        networkId: null,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'distribute-pull-meter',
+          relayNode: { id: relayNodeId },
+        },
+      });
 
-    await outgoingService.distributeToNetworkServers();
-    const after = await waitForPostSend(outgoingService, correlationId);
+      await outgoingService.distributeToNetworkServers();
+      const after = await waitForPostSend(outgoingService, correlationId);
 
-    expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
-    expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
-    expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(1);
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
-
-    await redisRepo.messageFullCleanup(after, { concurrencyRateLimitKey: rateLimitKey });
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
+      expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
+      expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
+      expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(1);
+      expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
+    }
+    finally {
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover, {
+          concurrencyRateLimitKey: rateLimitKey,
+        });
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+    }
   });
 });

@@ -12,20 +12,19 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
 import { createBaseService } from '../../src/engine/base.js';
 import { createIncomingService } from '../../src/engine/incoming.js';
-import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
+import { createOutgoingService } from '../../src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '../../src/lib/device-message/types.js';
 import { sleep } from '../../src/lib/utilities.js';
 import type { DeviceMessagingPlugin } from '../../src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '../../src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '../../src/plugins/stub/index.js';
+import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 
 const delivery = deviceMessagingConfigSchema.parse({
   $schemaVersion: '1',
 }).delivery;
-
-const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
 
 /**
  * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
@@ -52,22 +51,6 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
     getAll: () => [ plugin ],
     getByDeliveryPattern: pattern => (pattern === 'PULL' ? [ plugin ] : []),
   };
-}
-
-async function waitForPostSend(
-  outgoingService: OutgoingService,
-  correlationId: string,
-  timeoutMs = 2_000,
-): Promise<DeviceMessage> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const message = await outgoingService.getByCorrelationId(correlationId);
-    if (message?.deliveryStatus === POST_SEND_STATUS) return message;
-    await sleep(20);
-  }
-  throw new Error(
-    `Timed out waiting for ${ POST_SEND_STATUS } (correlationId=${ correlationId })`,
-  );
 }
 
 describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
@@ -100,36 +83,49 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     const rateLimitKey = `rate_limit:stub-pull:relayNode:${ relayNodeId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PULL_ID,
-      networkId: null,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'poll-pull-meter',
-        relayNode: { id: relayNodeId },
-      },
-    });
+    let enqueuedId: string | undefined;
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PULL_ID,
+        networkId: null,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'poll-pull-meter',
+          relayNode: { id: relayNodeId },
+        },
+      });
+      enqueuedId = enqueued.id;
 
-    await outgoingService.distributeToNetworkServers();
-    const afterSend = await waitForPostSend(outgoingService, correlationId);
-    expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
-    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
+      await outgoingService.distributeToNetworkServers();
+      const afterSend = await waitForPostSend(outgoingService, correlationId);
+      expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
+      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
-    // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
-    await sleep(5);
-    await incomingService.pollPullPlugins();
+      // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
+      await sleep(5);
+      await incomingService.pollPullPlugins();
 
-    const afterPoll = await outgoingService.getByCorrelationId(correlationId);
-    expect(afterPoll).toBeNull();
-    expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
-
-    await redisRepo.client.srem(rateLimitKey, enqueued.id);
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
+      const afterPoll = await outgoingService.getByCorrelationId(correlationId);
+      expect(afterPoll).toBeNull();
+      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+    }
+    finally {
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover, {
+          concurrencyRateLimitKey: rateLimitKey,
+        });
+      }
+      else if (enqueuedId) {
+        await redisRepo.client.srem(rateLimitKey, enqueuedId);
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+    }
   });
 });

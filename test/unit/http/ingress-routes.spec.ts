@@ -14,19 +14,23 @@ describe('POST /ingress/:pluginId', () => {
       apiKey: 'secret',
     });
 
+    const payload = {
+      deliveryStatus: 'DELIVERY_SUCCESSFUL',
+      device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
+    };
+
     const response = await app.inject({
       method: 'POST',
       url: `/ingress/${ STUB_PUSH_ID }`,
       headers: { 'content-type': 'application/json' },
-      payload: {
-        deliveryStatus: 'DELIVERY_SUCCESSFUL',
-        device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
-      },
+      payload,
     });
 
     expect(response.statusCode).toBe(204);
-    expect(onHandle).toHaveBeenCalledOnce();
-    expect(onHandle.mock.calls[0]?.[1]?.id).toBe(STUB_PUSH_ID);
+    expect(onHandle).toHaveBeenCalledWith(
+      payload,
+      expect.objectContaining({ id: STUB_PUSH_ID }),
+    );
 
     await app.close();
   });

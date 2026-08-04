@@ -13,33 +13,14 @@ import { buildApp } from '../../src/app.js';
 import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
 import { createBaseService } from '../../src/engine/base.js';
 import { createIncomingService } from '../../src/engine/incoming.js';
-import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
-import type { DeviceMessage } from '../../src/lib/device-message/types.js';
+import { createOutgoingService } from '../../src/engine/outgoing.js';
 import { QUEUE_DEVICE_KEY } from '../../src/lib/queue-moving.push.js';
-import { sleep } from '../../src/lib/utilities.js';
 import { createPluginRegistry } from '../../src/plugins/registry.js';
 import { STUB_PUSH_ID } from '../../src/plugins/stub/index.js';
+import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
-
-const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
-
-async function waitForPostSend(
-  outgoingService: OutgoingService,
-  correlationId: string,
-  timeoutMs = 2_000,
-): Promise<DeviceMessage> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const message = await outgoingService.getByCorrelationId(correlationId);
-    if (message?.deliveryStatus === POST_SEND_STATUS) return message;
-    await sleep(20);
-  }
-  throw new Error(
-    `Timed out waiting for ${ POST_SEND_STATUS } (correlationId=${ correlationId })`,
-  );
-}
 
 describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
@@ -70,61 +51,68 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     const networkId = 92;
     const queueKey = `queue:stub-push:network:${ networkId }`;
 
-    const enqueued = await outgoingService.enqueue({
-      commandType: 'READ_CREDIT',
-      priority: 1,
-      pluginId: STUB_PUSH_ID,
-      networkId,
-      correlationId,
-      device: {
-        type: 'ELECTRICITY_METER',
-        externalReference: 'ingress-push-meter',
-      },
-    });
+    try {
+      const enqueued = await outgoingService.enqueue({
+        commandType: 'READ_CREDIT',
+        priority: 1,
+        pluginId: STUB_PUSH_ID,
+        networkId,
+        correlationId,
+        device: {
+          type: 'ELECTRICITY_METER',
+          externalReference: 'ingress-push-meter',
+        },
+      });
 
-    await outgoingService.distributeToNetworkServers();
-    const afterSend = await waitForPostSend(outgoingService, correlationId);
-    expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
-    const deliveryQueueId = afterSend.deliveryQueueId;
+      await outgoingService.distributeToNetworkServers();
+      const afterSend = await waitForPostSend(outgoingService, correlationId);
+      expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
+      const deliveryQueueId = afterSend.deliveryQueueId;
 
-    const ack = await app.inject({
-      method: 'POST',
-      url: `/ingress/${ STUB_PUSH_ID }`,
-      headers: { 'content-type': 'application/json' },
-      payload: {
-        deliveryQueueId,
-        deliveryStatus: 'SENT_TO_DEVICE',
-        device: enqueued.device,
-      },
-    });
-    expect(ack.statusCode).toBe(204);
+      const ack = await app.inject({
+        method: 'POST',
+        url: `/ingress/${ STUB_PUSH_ID }`,
+        headers: { 'content-type': 'application/json' },
+        payload: {
+          deliveryQueueId,
+          deliveryStatus: 'SENT_TO_DEVICE',
+          device: enqueued.device,
+        },
+      });
+      expect(ack.statusCode).toBe(204);
 
-    const afterAck = await outgoingService.getByCorrelationId(correlationId);
-    expect(afterAck?.deliveryStatus).toBe('SENT_TO_DEVICE');
-    expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).not.toBeNull();
+      const afterAck = await outgoingService.getByCorrelationId(correlationId);
+      expect(afterAck?.deliveryStatus).toBe('SENT_TO_DEVICE');
+      expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).not.toBeNull();
 
-    const success = await app.inject({
-      method: 'POST',
-      url: `/ingress/${ STUB_PUSH_ID }`,
-      headers: { 'content-type': 'application/json' },
-      payload: {
-        deliveryQueueId,
-        deliveryStatus: 'DELIVERY_SUCCESSFUL',
-        device: enqueued.device,
-        response: { status: 'EXECUTION_SUCCESS' },
-      },
-    });
-    expect(success.statusCode).toBe(204);
+      const success = await app.inject({
+        method: 'POST',
+        url: `/ingress/${ STUB_PUSH_ID }`,
+        headers: { 'content-type': 'application/json' },
+        payload: {
+          deliveryQueueId,
+          deliveryStatus: 'DELIVERY_SUCCESSFUL',
+          device: enqueued.device,
+          response: { status: 'EXECUTION_SUCCESS' },
+        },
+      });
+      expect(success.statusCode).toBe(204);
 
-    const afterSuccess = await outgoingService.getByCorrelationId(correlationId);
-    expect(afterSuccess).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).toBeNull();
-
-    await redisRepo.client.srem(
-      redisKeys.listOfInitialQueuesToDistributeFrom(),
-      queueKey,
-    );
-    await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
-    await app.close();
+      const afterSuccess = await outgoingService.getByCorrelationId(correlationId);
+      expect(afterSuccess).toBeNull();
+      expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).toBeNull();
+    }
+    finally {
+      const leftover = await outgoingService.getByCorrelationId(correlationId);
+      if (leftover) {
+        await redisRepo.messageFullCleanup(leftover);
+      }
+      await redisRepo.client.srem(
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        queueKey,
+      );
+      await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
+      await app.close();
+    }
   });
 });

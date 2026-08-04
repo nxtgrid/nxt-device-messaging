@@ -44,17 +44,21 @@ describe('startEngineTimers', () => {
     expect(runMessageResolutionCycle).not.toHaveBeenCalled();
     expect(pollPullPlugins).not.toHaveBeenCalled();
 
+    const resolutionTicksAtFirstPoll = Math.floor(
+      POLL_PULL_INTERVAL_MS / RESOLUTION_CYCLE_INTERVAL_MS,
+    );
+
     vi.advanceTimersByTime(RESOLUTION_CYCLE_INTERVAL_MS);
     expect(runMessageResolutionCycle).toHaveBeenCalledTimes(1);
     expect(pollPullPlugins).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(POLL_PULL_INTERVAL_MS - RESOLUTION_CYCLE_INTERVAL_MS);
     expect(pollPullPlugins).toHaveBeenCalledTimes(1);
-    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(2);
+    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(resolutionTicksAtFirstPoll);
 
     timers.stop();
     vi.advanceTimersByTime(POLL_PULL_INTERVAL_MS);
-    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(2);
+    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(resolutionTicksAtFirstPoll);
     expect(pollPullPlugins).toHaveBeenCalledTimes(1);
   });
 });
