@@ -190,7 +190,18 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       return;
     }
 
-    if (!deliveryQueueId) return;
+    if (!deliveryQueueId) {
+      await baseService.retryOrFail(
+        message.id,
+        QUEUE_NS_KEY,
+        {
+          reason: 'Plugin returned an empty deliveryQueueId after sendOne',
+          skipRetry: true,
+        },
+        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
+      );
+      return;
+    }
 
     if (plugin.deliveryPattern === 'PULL') {
       await moveQueuePull.fromNsToAwaitingTask({

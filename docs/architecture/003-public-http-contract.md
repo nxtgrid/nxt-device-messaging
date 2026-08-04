@@ -62,7 +62,7 @@ MGET-optimise lookups for large batches. Message-bus delivery remains **deferred
 |---|---|
 | `meter_interaction_id` | `correlationId` (opaque string, caller-supplied) |
 | `grid_id` | `networkId` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
-| `message_type` | `commandType` (opaque string to the core; see decision 4) |
+| `message_type` | `commandType` (service-owned closed set; see decision 4) |
 
 Aligns with `nxt-backend` ADR-010 decision 4 and with estate vocabulary in ADR-011
 (`command_type` on `meter_command_batches` — that column name stays on the estate DB).

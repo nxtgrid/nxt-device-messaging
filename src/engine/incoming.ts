@@ -5,11 +5,17 @@
  * Unit 5.6 — poll interval via `startEngineTimers`.
  */
 
+import { isNotNil } from 'ramda';
+
 import type { DeliveryConfig } from '../config/schema.js';
 import { pollAwaitingTasksFor } from '../lib/lifecycle.pull.js';
 import { QUEUE_DEVICE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
-import type { DeviceMessage, ParsedIncomingEvent } from '../lib/device-message/types.js';
+import type {
+  DeviceMessage,
+  FailureReason,
+  ParsedIncomingEvent,
+} from '../lib/device-message/types.js';
 import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { emitDeliveryEvent, type BaseService } from './base.js';
@@ -111,16 +117,19 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     const updatedMessage: DeviceMessage = { ...storedMessage, deliveryStatus, response, device };
 
     // Successful delivery can still carry a failed execution — keep failure history.
+    // Pick FailureReason fields only (do not spread FailureContext — it has skipRetry).
     if (failureContext) {
-      const completeFailureContext = {
+      const historyEntry: FailureReason = {
         timestamp: (new Date()).toISOString(),
         status: deliveryStatus,
+        reason: failureContext.reason,
+        ...(isNotNil(failureContext.errorCode) && { errorCode: failureContext.errorCode }),
+        ...(failureContext.details && { details: failureContext.details }),
         isFinal: true,
-        ...failureContext,
       };
       updatedMessage.failureHistory = updatedMessage.failureHistory
-        ? [ completeFailureContext, ...updatedMessage.failureHistory ]
-        : [ completeFailureContext ];
+        ? [ historyEntry, ...updatedMessage.failureHistory ]
+        : [ historyEntry ];
     }
 
     emitDeliveryEvent(updatedMessage);

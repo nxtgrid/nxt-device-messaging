@@ -99,10 +99,10 @@ therefore safe to inline in an environment variable, serve from object storage, 
   "plugins": [
     { "id": "calin-chirpstack",
       "settings": { "chirpstackUrl": "…", "applicationId": "…", "profileId": "…" },
-      "tuning":   { "nsTimeoutMs": 10000, "floodPreventionWindowMs": 2000 } },
+      "tuning":   { "nsInFlightTimeoutMs": 10000 } },
     { "id": "calin-api-v2",
       "settings": { "baseUrl": "…", "companyName": "…", "customerId": "…" },
-      "tuning":   { "nsTimeoutMs": 30000, "maxConcurrentPerGateway": 5 } }
+      "tuning":   { "nsInFlightTimeoutMs": 30000 } }
   ]
 }
 ```

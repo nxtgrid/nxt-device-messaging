@@ -107,8 +107,9 @@ function isStubParsedIncomingEvent(event: unknown): event is ParsedIncomingEvent
   if (event === null || typeof event !== 'object') return false;
   const candidate = event as Partial<ParsedIncomingEvent>;
   return typeof candidate.deliveryStatus === 'string'
-    && candidate.device !== undefined
-    && typeof candidate.device === 'object';
+    && candidate.device !== null
+    && typeof candidate.device === 'object'
+    && !Array.isArray(candidate.device);
 }
 
 /**

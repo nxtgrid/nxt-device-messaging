@@ -34,8 +34,7 @@ export function createPluginRegistry(
   const plugins: Record<string, DeviceMessagingPlugin> = {};
 
   for (const entry of pluginEntries) {
-    const factory = PLUGIN_CATALOG[entry.id];
-    if (!factory) {
+    if (!Object.hasOwn(PLUGIN_CATALOG, entry.id)) {
       const known = Object.keys(PLUGIN_CATALOG).join(', ');
       throw new Error(
         `Unknown plugin id "${ entry.id }". Known factories: ${ known || '(none)' }`,
@@ -44,7 +43,7 @@ export function createPluginRegistry(
     if (Object.hasOwn(plugins, entry.id)) {
       throw new Error(`Duplicate plugin id in config: ${ entry.id }`);
     }
-    plugins[entry.id] = factory(entry);
+    plugins[entry.id] = PLUGIN_CATALOG[entry.id](entry);
   }
 
   return {

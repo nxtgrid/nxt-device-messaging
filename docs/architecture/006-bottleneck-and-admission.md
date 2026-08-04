@@ -159,7 +159,8 @@ runs.
 
 **Agreed direction:** Redis repo does not hardcode `PUSH_QUEUE_KEYS` /
 `PULL_PATTERN_IMPLEMENTATIONS`. Cleanup accepts (or later resolves) the list of queue keys to
-`ZREM`, plus correlation/external indexes and optional concurrency track key from the message.
+`ZREM`, plus correlation/external indexes and optional `concurrencyRateLimitKey` from the
+caller (`buildConcurrencyRateLimitKey(initialQueueKey)` — not a field on the message).
 
 **Design criteria when exploring (Unit 5 with Unit 6 registry):**
 

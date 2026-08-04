@@ -7,10 +7,10 @@ queues the command, dispatches it through whichever network server that device s
 tracks it through each delivery stage, retries with exponential backoff when a stage fails,
 and reports the final outcome back to you over a signed webhook.
 
-Hardware integrations are plugins. Three ship in the box — LoRaWAN via ChirpStack, and the
-CALIN V1 and V2 vendor HTTP APIs — covering both delivery patterns: *push*, where the
-network server calls back, and *pull*, where the service polls for status. Adding a fourth
-is a single file.
+Hardware integrations are plugins. Today the box ships stub PUSH and PULL plugins for local
+end-to-end work; real ChirpStack and CALIN V1/V2 adapters are planned next. Both delivery
+patterns are supported: *push* (network server callbacks) and *pull* (status polling).
+Adding another plugin is a single file.
 
 Redis (or Valkey) is the only infrastructure dependency. There is no relational database.
 
