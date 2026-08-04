@@ -1,15 +1,15 @@
 /**
- * @fileoverview Command-API Bearer auth (ADR-003 §5).
+ * @fileoverview Command-API Bearer auth (ADR-003 §5) — opt-in.
  *
- * When `apiKey` is unset/empty, the hook is a no-op (local skeleton). Production
- * must set `DEVICE_MESSAGING_API_KEY`.
+ * When `apiKey` is set, require `Authorization: Bearer <apiKey>`. When unset/empty,
+ * the hook is a no-op (local / quick-start, or operator choice — private network,
+ * reverse-proxy auth, etc.).
  */
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
- * Returns an `onRequest` hook that requires `Authorization: Bearer <apiKey>`
- * when a key is configured.
+ * Returns an `onRequest` hook that enforces Bearer auth only when `apiKey` is configured.
  */
 export function createApiKeyHook(
   apiKey: string | undefined,

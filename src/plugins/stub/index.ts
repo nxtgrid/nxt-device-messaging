@@ -5,6 +5,7 @@
  * Real CALIN / ChirpStack plugins land in Phase 2; do not reuse those ids here.
  */
 
+import { ulid } from 'ulid';
 import { z } from 'zod';
 
 import type {
@@ -148,7 +149,8 @@ export function createStubPlugin(options: {
 
   const outgoing: DeviceMessagingPlugin['outgoing'] = {
     async sendOne(_message: DeviceMessage): Promise<string> {
-      return 'stub-ext-id';
+      // Unique per send so parallel Redis smokes do not share one external-id index.
+      return `stub-ext-${ ulid() }`;
     },
     getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
       return { deliveryStatus: 'QUEUED' };

@@ -26,7 +26,6 @@ const delivery = deviceMessagingConfigSchema.parse({
 }).delivery;
 
 const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
-const STUB_DELIVERY_ID = 'stub-ext-id';
 
 /**
  * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
@@ -116,7 +115,7 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
 
     await outgoingService.distributeToNetworkServers();
     const afterSend = await waitForPostSend(outgoingService, correlationId);
-    expect(afterSend.deliveryQueueId).toBe(STUB_DELIVERY_ID);
+    expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
     expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
     // firstPollAt = now + initialPollDelayMs (1ms); wait until due.

@@ -76,12 +76,13 @@ Content-Type: application/json
 }
 
 ### Ingress stub-push (no Bearer — body is stub ParsedIncomingEvent shape)
-# After distribute/sendOne the stub deliveryQueueId is "stub-ext-id".
+# After distribute/sendOne, copy deliveryQueueId from GET /message/:correlationId
+# (stub returns a unique stub-ext-<ulid> per send).
 POST {{baseUrl}}/ingress/stub-push
 Content-Type: application/json
 
 {
-  "deliveryQueueId": "stub-ext-id",
+  "deliveryQueueId": "stub-ext-REPLACE_ME",
   "deliveryStatus": "DELIVERY_SUCCESSFUL",
   "device": {
     "type": "ELECTRICITY_METER",

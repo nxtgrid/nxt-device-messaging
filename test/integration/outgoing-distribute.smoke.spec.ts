@@ -26,7 +26,6 @@ const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
-const STUB_DELIVERY_ID = 'stub-ext-id';
 
 /**
  * Poll until fire-and-forget sendOne has moved the message past SENT_TO_NS.
@@ -91,7 +90,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const after = await waitForPostSend(outgoingService, correlationId);
 
     expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
-    expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
+    expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
     expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
     expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
     expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).not.toBeNull();
@@ -139,7 +138,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const after = await waitForPostSend(outgoingService, correlationId);
 
     expect(after.deliveryStatus).toBe(POST_SEND_STATUS);
-    expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
+    expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
     expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(1);
     expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
     expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();

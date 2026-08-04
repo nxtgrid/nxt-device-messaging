@@ -53,7 +53,7 @@ export const QUEUE_RETRY_KEY = 'queue_awaiting_retry';
  * @param updateProps - Properties to update on the message hash
  * @param messageTtlSeconds - Shared message hash TTL (from `delivery.messageTtlSeconds`)
  * @param indexToCreate - Optional index key to create
- * @returns true if the move succeeded, false if the message was not in the source queue
+ * @returns true if the move succeeded, false if not in the source queue or the hash is gone
  */
 export const _moveQueue = async (
   messageId: string,

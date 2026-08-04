@@ -64,7 +64,7 @@ export async function maybeExtendMessageInRelayNodeQueue(
     if (deliveryStatus === 'DELIVERY_FAILED') return false;
   }
   catch (err) {
-    console.error('[DEVICE MESSAGING] Error checking status for message', message, err);
+    console.error('[maybeExtendMessageInRelayNodeQueue] Error checking status for message', message, err);
     return false;
   }
 

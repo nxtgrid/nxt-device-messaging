@@ -53,10 +53,10 @@ export const moveQueuePull = {
     pluginId: string;
     tuning: PluginTuning;
     messageTtlSeconds: number;
-  }): Promise<void> {
+  }): Promise<boolean> {
     const queueKey = redisKeys.queueAwaitingTask(pluginId);
     const firstPollAt = Date.now() + tuning.initialPollDelayMs;
-    await _moveQueue(
+    return _moveQueue(
       id,
       QUEUE_NS_KEY,
       queueKey,

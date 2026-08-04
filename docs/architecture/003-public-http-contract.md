@@ -123,10 +123,16 @@ Deliberate drift from the estate enum: this service uses `TOP_UP_KWH` where Post
 still has `TOP_UP` (kWh credit). Cutover maps at the `nxt-backend` boundary; a future
 currency top-up would add a new value rather than overloading the name.
 
-### 5. Inbound auth on the command API: static API key
+### 5. Inbound auth on the command API: static API key (opt-in)
 
-`POST /message/*`, `GET /message/*`, `POST /messages/*`, and `POST /token/*` require
-`Authorization: Bearer <key>` validated against `DEVICE_MESSAGING_API_KEY`.
+Command routes (`POST /message/*`, `GET /message/*`, `POST /messages/*`, `POST /token/*`)
+authenticate with a static Bearer key when configured:
+
+- **Key set:** require `Authorization: Bearer <key>` validated against
+  `DEVICE_MESSAGING_API_KEY`.
+- **Key unset/empty:** no inbound auth on those routes (local / quick-start, or an
+  operator choice such as private network or reverse-proxy auth). Does not fail boot or
+  skip route registration.
 
 `POST /ingress/:pluginId` does **not** use that key. Each plugin may declare
 `verifySignature`; opt-out is allowed (ChirpStack HTTP integrations typically have no HMAC).

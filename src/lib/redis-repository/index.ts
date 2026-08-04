@@ -51,7 +51,8 @@ declare module 'iovalkey' {
 
     /**
      * Atomically moves a message between queues with a stale-message guard.
-     * Only proceeds if the message is present in the source queue (ZREM gate).
+     * Proceeds only if the id is in the source queue (ZREM) and the hash still
+     * exists (EXISTS) — matches fetch-next orphan handling.
      *
      * @param source_queue - Source sorted set (KEYS[1])
      * @param destination_queue - Destination sorted set (KEYS[2])
@@ -62,7 +63,7 @@ declare module 'iovalkey' {
      * @param deliveryStatus - New delivery status (ARGV[3])
      * @param deliveryQueueId - New delivery queue ID, '' to skip (ARGV[4])
      * @param index_ttl_seconds - TTL for index key (ARGV[5])
-     * @returns 0 if message not in source queue, 1 if moved
+     * @returns 0 if not in source queue or hash missing, 1 if moved
      */
     moveMessageBetweenQueues(
       source_queue: string,
@@ -75,6 +76,28 @@ declare module 'iovalkey' {
       deliveryQueueId: string,
       index_ttl_seconds: number | string,
     ): Promise<MoveMessageResult>;
+  }
+}
+
+/**
+ * Fail if a MULTI/EXEC (or pipeline) reply is missing or any command errored.
+ *
+ * @param results - `exec()` reply (`null` if the transaction was aborted)
+ * @param operation - Label for the error message
+ */
+function assertExecSucceeded(
+  results: [Error | null, unknown][] | null,
+  operation: string,
+): void {
+  if (results === null) {
+    throw new Error(`[REDIS] ${ operation } aborted (MULTI/EXEC returned null)`);
+  }
+  for (const [ err ] of results) {
+    if (err) {
+      throw err instanceof Error
+        ? err
+        : new Error(`[REDIS] ${ operation } failed: ${ String(err) }`);
+    }
   }
 }
 
@@ -145,7 +168,8 @@ export const redisRepo = {
 
   /**
    * Create a new message and add it to the appropriate initial queue.
-   * Atomic operation using Redis pipeline.
+   * Uses Redis MULTI/EXEC so hash, queue membership, distributor set, and
+   * optional correlation index commit as one transaction.
    *
    * @param dto - Message creation parameters
    * @param queueKey - Initial queue to add message to
@@ -159,26 +183,26 @@ export const redisRepo = {
     const messageKey = redisKeys.message(messageId);
     const serializedHash = serializeCreateDeviceMessage(dto);
 
-    const pipeline = _client.pipeline();
+    const multi = _client.multi();
 
     // 1. Store the message hash
-    pipeline.hset(messageKey, serializedHash);
-    pipeline.expire(messageKey, MESSAGE_TTL_SECONDS);
+    multi.hset(messageKey, serializedHash);
+    multi.expire(messageKey, MESSAGE_TTL_SECONDS);
 
     // 2. Add to the appropriate initial queue
     const score = -1 * dto.priority;
-    pipeline.zadd(queueKey, score, messageId);
+    multi.zadd(queueKey, score, messageId);
 
     // 3. Tell the distributor there is work in this queue
-    pipeline.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), queueKey);
+    multi.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), queueKey);
 
     // 4. Create correlation indexes (optionally per phase)
     if (dto.correlationId) {
       const indexKey = redisKeys.indexCorrelationId(dto.correlationId, dto.phase);
-      pipeline.set(indexKey, messageKey, 'EX', MESSAGE_TTL_SECONDS);
+      multi.set(indexKey, messageKey, 'EX', MESSAGE_TTL_SECONDS);
     }
 
-    await pipeline.exec();
+    assertExecSucceeded(await multi.exec(), 'enqueueDeviceMessage');
 
     return deserializeMessage(messageId, {
       ...Object.fromEntries(
@@ -190,6 +214,7 @@ export const redisRepo = {
   /**
    * Move a message from retry queue back to an initial queue.
    * Restores priority-based ordering and marks as QUEUED.
+   * Uses Redis MULTI/EXEC for the queue move + status update.
    *
    * @param messageId - ULID of the message
    * @param fromQueueKey - Source queue (typically retry queue)
@@ -202,15 +227,15 @@ export const redisRepo = {
     toQueueKey: string,
     priority: number,
   ): Promise<void> {
-    const pipeline = _client.pipeline();
+    const multi = _client.multi();
 
-    pipeline.zrem(fromQueueKey, messageId);
+    multi.zrem(fromQueueKey, messageId);
     const score = -1 * priority;
-    pipeline.zadd(toQueueKey, score, messageId);
-    pipeline.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), toQueueKey);
-    pipeline.hset(redisKeys.message(messageId), { deliveryStatus: 'QUEUED' });
+    multi.zadd(toQueueKey, score, messageId);
+    multi.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), toQueueKey);
+    multi.hset(redisKeys.message(messageId), { deliveryStatus: 'QUEUED' });
 
-    await pipeline.exec();
+    assertExecSucceeded(await multi.exec(), 'requeueMessage');
   },
 
   /**

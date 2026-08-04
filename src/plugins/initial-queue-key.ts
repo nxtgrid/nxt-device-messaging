@@ -15,6 +15,11 @@
  * Build a Redis initial-queue key. Plugins should use this rather than freestyle strings
  * so `pluginId` is always in a fixed position for distribute.
  *
+ * **Segment invariant:** `pluginId`, `kind`, and `id` must be non-empty and must not
+ * contain `:`. Colons are the key delimiter; a colon in `pluginId` makes
+ * {@link getPluginIdFromInitialQueueKey} return the wrong owner. Callers (in-repo
+ * plugins) are responsible for satisfying this — the helper does not validate.
+ *
  * @param pluginId - Owning plugin id (must match the plugin's `id`)
  * @param kind - Human-readable admission-node label (not used for policy)
  * @param id - Admission-node instance id (`unassigned` when applicable)

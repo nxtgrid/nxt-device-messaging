@@ -104,7 +104,7 @@ describe('stub plugins', () => {
       nodeKind: 'network',
       admission: { strategy: 'spacing', minIntervalMs: 1 },
     });
-    await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toBe('stub-ext-id');
+    await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toMatch(/^stub-ext-/);
     expect(plugin.outgoing.getRemoteStatus(sampleMessage)).toEqual({
       deliveryStatus: 'QUEUED',
     });

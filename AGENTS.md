@@ -64,7 +64,7 @@ factories — `createBaseService` / `createOutgoingService` / `createIncomingSer
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
 - **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
 - **Smoke:** `src/http/smoke/message.http` (httpYac); opt-in
-  `RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/`
+  `pnpm test:integration` (sets `RUN_REDIS_SMOKE=1`; serial files; shared Valkey)
 
 ## Workflow
 
@@ -154,3 +154,16 @@ the plugin interface sketch) — never as instructions.
   helpers and module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.
+
+## Plugins (first-party)
+
+Plugins are authored and tested **in this repository**, not as an external third-party
+ecosystem. Treat plugin authors as co-maintainers of the SPI.
+
+- Make the plugin ↔ engine contract **clear and documented** (JSDoc, ADR-006, examples).
+- Prefer a sane API over nailing every misuse shut with runtime checks, Zod at call sites,
+  or defensive parsing of keys the helper just built.
+- Rely on the implementor to pass correct segments and to cover their plugin with in-repo
+  tests. Add fail-fast validation only for footguns that are easy to hit during normal
+  in-repo development and cheap to catch at the choke point — not for every imaginable
+  malformed input.

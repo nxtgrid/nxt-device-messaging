@@ -163,7 +163,16 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     }
 
     const priority = parseInt(priorityStr, 10);
-    const device = JSON.parse(deviceStr) as DeviceMessageDevice;
+    let device: DeviceMessageDevice;
+    try {
+      device = JSON.parse(deviceStr) as DeviceMessageDevice;
+    }
+    catch {
+      console.warn(`[requeueMessage] Malformed device JSON for retry id ${ messageId }. Removing.`);
+      await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
+      return;
+    }
+
     // `networkId` is omitted from the hash when null (see serializeCreateDeviceMessage).
     const networkId = networkIdStr !== null ? parseInt(networkIdStr, 10) : null;
 

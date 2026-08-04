@@ -24,7 +24,6 @@ const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
-const STUB_DELIVERY_ID = 'stub-ext-id';
 
 async function waitForPostSend(
   outgoingService: OutgoingService,
@@ -85,14 +84,15 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
     await outgoingService.distributeToNetworkServers();
     const afterSend = await waitForPostSend(outgoingService, correlationId);
-    expect(afterSend.deliveryQueueId).toBe(STUB_DELIVERY_ID);
+    expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
+    const deliveryQueueId = afterSend.deliveryQueueId;
 
     const ack = await app.inject({
       method: 'POST',
       url: `/ingress/${ STUB_PUSH_ID }`,
       headers: { 'content-type': 'application/json' },
       payload: {
-        deliveryQueueId: STUB_DELIVERY_ID,
+        deliveryQueueId,
         deliveryStatus: 'SENT_TO_DEVICE',
         device: enqueued.device,
       },
@@ -108,7 +108,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       url: `/ingress/${ STUB_PUSH_ID }`,
       headers: { 'content-type': 'application/json' },
       payload: {
-        deliveryQueueId: STUB_DELIVERY_ID,
+        deliveryQueueId,
         deliveryStatus: 'DELIVERY_SUCCESSFUL',
         device: enqueued.device,
         response: { status: 'EXECUTION_SUCCESS' },
