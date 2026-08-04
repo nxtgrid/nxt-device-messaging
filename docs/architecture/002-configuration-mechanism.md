@@ -15,10 +15,10 @@
 > **Amendment (2026-07-30):** Access is via `src/runtime.ts` boot exports (`config`,
 > `pluginRegistry`), not `getConfig()` / `setConfig()`. See §4.
 >
-> **Amendment (2026-08-04):** D5 **names locked** — `nsInFlightTimeoutMs`,
-> `relayNodeInFlightTimeoutMs`, `deviceInFlightTimeoutMs`, `initialPollDelayMs` on
-> `plugin.tuning`. PUSH mid-stage Redis key → `queue_in_flight_to_relay_node` (was `…_to_gw`).
-> Implement in Unit 6.2.
+> **Amendment (2026-08-04):** D5 **names locked and implemented** (Unit 6.2) —
+> `nsInFlightTimeoutMs`, `relayNodeInFlightTimeoutMs`, `deviceInFlightTimeoutMs`,
+> `initialPollDelayMs` on `plugin.tuning`. PUSH mid-stage Redis key →
+> `queue_in_flight_to_relay_node` (was `…_to_gw`). Shared `delivery` is retry/TTL only.
 
 ---
 

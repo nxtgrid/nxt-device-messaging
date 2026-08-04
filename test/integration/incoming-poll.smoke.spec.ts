@@ -21,10 +21,8 @@ import { createStubPullPlugin, STUB_PULL_ID } from '../../src/plugins/stub/index
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 
-/** Short first-poll delay so the smoke need not wait 10s. */
 const delivery = deviceMessagingConfigSchema.parse({
   $schemaVersion: '1',
-  delivery: { initialPollDelayMs: 1 },
 }).delivery;
 
 const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;
@@ -33,11 +31,13 @@ const STUB_DELIVERY_ID = 'stub-ext-id';
 /**
  * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
  * completes the message (same shared `_processIncomingEvent` as ingress).
+ * Short `initialPollDelayMs` so the smoke need not wait 10s.
  */
 function createPullRegistryWithSuccessFetch(): PluginRegistry {
   const base = createStubPullPlugin({ id: STUB_PULL_ID });
   const plugin: DeviceMessagingPlugin = {
     ...base,
+    tuning: { ...base.tuning, initialPollDelayMs: 1 },
     incoming: {
       fetchStatus: async (message: DeviceMessage): Promise<ParsedIncomingEvent | null> => ({
         deliveryQueueId: message.deliveryQueueId,
@@ -96,9 +96,9 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     const incomingService = createIncomingService({ registry, delivery, baseService });
 
     const correlationId = `poll-pull-${ Date.now() }`;
-    const gatewayId = 8;
-    const queueKey = `queue:stub-pull:gateway:${ gatewayId }`;
-    const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
+    const relayNodeId = 8;
+    const queueKey = `queue:stub-pull:relayNode:${ relayNodeId }`;
+    const rateLimitKey = `rate_limit:stub-pull:relayNode:${ relayNodeId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
     const enqueued = await outgoingService.enqueue({
@@ -110,7 +110,7 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
       device: {
         type: 'ELECTRICITY_METER',
         externalReference: 'poll-pull-meter',
-        gateway: { id: gatewayId },
+        relayNode: { id: relayNodeId },
       },
     });
 

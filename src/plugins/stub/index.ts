@@ -5,11 +5,14 @@
  * Real CALIN / ChirpStack plugins land in Phase 2; do not reuse those ids here.
  */
 
+import { z } from 'zod';
+
 import type {
   Admission,
   DeliveryPattern,
   DeviceMessagingPlugin,
   InitialQueueKeyInput,
+  PluginTuning,
 } from '../plugin.interface.js';
 import { buildInitialQueueKey } from '../initial-queue-key.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
@@ -23,6 +26,8 @@ import type {
   PluginId,
 } from '../../lib/device-message/types.js';
 
+type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
+
 /** Fixed token string returned by the PUSH stub's `token.generate`. */
 export const STUB_TOKEN_VALUE = 'stub-token' as const;
 
@@ -35,8 +40,46 @@ export const STUB_PULL_ID = 'stub-pull' as const;
 /** Human label in PUSH stub initial-queue keys (`queue:stub-push:network:…`). */
 export const STUB_PUSH_NODE_KIND = 'network' as const;
 
-/** Human label in PULL stub initial-queue keys (`queue:stub-pull:gateway:…`). */
-export const STUB_PULL_NODE_KIND = 'gateway' as const;
+/** Human label in PULL stub initial-queue keys (`queue:stub-pull:relayNode:…`). */
+export const STUB_PULL_NODE_KIND = 'relayNode' as const;
+
+/**
+ * Default stage timeouts / poll delay for stubs (legacy delivery defaults).
+ * Config `plugins[].tuning` overrides via {@link mergeStubTuning}.
+ */
+export const STUB_DEFAULT_TUNING: PluginTuning = {
+  nsInFlightTimeoutMs: 20_000,
+  relayNodeInFlightTimeoutMs: 900_000,
+  deviceInFlightTimeoutMs: 12_000,
+  initialPollDelayMs: 10_000,
+};
+
+/** Partial override shape for stub `plugins[].tuning` (unknown keys rejected). */
+const stubTuningOverrideSchema = z.object({
+  nsInFlightTimeoutMs: z.number().int().positive().optional(),
+  relayNodeInFlightTimeoutMs: z.number().int().positive().optional(),
+  deviceInFlightTimeoutMs: z.number().int().positive().optional(),
+  initialPollDelayMs: z.number().int().positive().optional(),
+}).strict();
+
+/**
+ * Merge config tuning overrides onto {@link STUB_DEFAULT_TUNING}.
+ *
+ * @throws If `entry.tuning` has unknown keys or invalid values
+ */
+export function mergeStubTuning(entry: PluginConfigEntry): PluginTuning {
+  if (entry.tuning === undefined) {
+    return STUB_DEFAULT_TUNING;
+  }
+
+  const parsed = stubTuningOverrideSchema.safeParse(entry.tuning);
+  if (!parsed.success) {
+    const detail = parsed.error.issues.map(issue => issue.message).join('; ');
+    throw new Error(`Invalid tuning for plugin "${ entry.id }": ${ detail }`);
+  }
+
+  return { ...STUB_DEFAULT_TUNING, ...parsed.data };
+}
 
 const STUB_PUSH_ADMISSION: Admission = {
   strategy: 'spacing',
@@ -81,6 +124,8 @@ export function createStubPlugin(options: {
   readonly admission: Admission;
   /** Defaults to all enqueueable command types. */
   readonly supportedCommandTypes?: readonly EnqueueableCommandType[];
+  /** Defaults to {@link STUB_DEFAULT_TUNING}. */
+  readonly tuning?: PluginTuning;
 }): DeviceMessagingPlugin {
   const {
     id,
@@ -88,6 +133,7 @@ export function createStubPlugin(options: {
     nodeKind,
     admission,
     supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
+    tuning = STUB_DEFAULT_TUNING,
   } = options;
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
@@ -95,9 +141,9 @@ export function createStubPlugin(options: {
       const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
       return buildInitialQueueKey(id, nodeKind, networkPart);
     }
-    const gatewayId = input.device.gateway?.id;
-    const gatewayPart = gatewayId == null ? 'unassigned' : String(gatewayId);
-    return buildInitialQueueKey(id, nodeKind, gatewayPart);
+    const relayNodeId = input.device.relayNode?.id;
+    const relayPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+    return buildInitialQueueKey(id, nodeKind, relayPart);
   };
 
   const outgoing: DeviceMessagingPlugin['outgoing'] = {
@@ -133,6 +179,7 @@ export function createStubPlugin(options: {
     deliveryPattern,
     supportedCommandTypes,
     admission,
+    tuning,
     initialQueueKey,
     outgoing,
     incoming,
@@ -140,26 +187,24 @@ export function createStubPlugin(options: {
   };
 }
 
-/** Bundled PUSH stub (no vendor I/O). Config entry reserved for later settings/tuning. */
-export function createStubPushPlugin(
-  _entry: DeviceMessagingConfig['plugins'][number],
-): DeviceMessagingPlugin {
+/** Bundled PUSH stub (no vendor I/O). Merges config `tuning` over defaults. */
+export function createStubPushPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
   return createStubPlugin({
     id: STUB_PUSH_ID,
     deliveryPattern: 'PUSH',
     nodeKind: STUB_PUSH_NODE_KIND,
     admission: STUB_PUSH_ADMISSION,
+    tuning: mergeStubTuning(entry),
   });
 }
 
-/** Bundled PULL stub (no vendor I/O). Config entry reserved for later settings/tuning. */
-export function createStubPullPlugin(
-  _entry: DeviceMessagingConfig['plugins'][number],
-): DeviceMessagingPlugin {
+/** Bundled PULL stub (no vendor I/O). Merges config `tuning` over defaults. */
+export function createStubPullPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
   return createStubPlugin({
     id: STUB_PULL_ID,
     deliveryPattern: 'PULL',
     nodeKind: STUB_PULL_NODE_KIND,
     admission: STUB_PULL_ADMISSION,
+    tuning: mergeStubTuning(entry),
   });
 }

@@ -12,6 +12,8 @@ import type {
 /**
  * Convert a flat array [key1, val1, key2, val2, ...] to an object.
  * Used to parse HGETALL results from Redis Lua scripts / hashes.
+ *
+ * @param raw - Flat key/value string array from Redis
  */
 export const rawHashToObject = (raw: string[]): Record<string, string> => {
   const pairs = splitEvery(2, raw) as Array<[string, string]>;
@@ -25,6 +27,8 @@ export const rawHashToObject = (raw: string[]): Record<string, string> => {
  *
  * `networkId` is omitted when null to avoid Redis coercing it into `""`
  * (which would then deserialize back as `NaN`).
+ *
+ * @param dto - Create DTO to store
  */
 export const serializeCreateDeviceMessage = (dto: CreateDeviceMessage) => ({
   commandType: dto.commandType,
@@ -49,6 +53,9 @@ export const serializeCreateDeviceMessage = (dto: CreateDeviceMessage) => ({
  * NOTE: `deliveryQueueId` is required by the domain type, but it may be
  * absent for early pipeline stages. In that case we deserialize it as `''`
  * (truthy checks in cleanup/release paths treat this as "absent").
+ *
+ * @param id - Message ULID (Redis hash key suffix)
+ * @param raw - Hash field map from Redis
  */
 export const deserializeMessage = (
   id: string,

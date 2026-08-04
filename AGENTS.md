@@ -38,27 +38,26 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation through Unit 5 (5.1–5.6). Phase 1b Intermezzo
-closed (I0–I3; I4 skipped). Unit 5.6: token + thin `POST /token/generate` +
-`runMessageResolutionCycle` + `startEngineTimers` landed. Next: Unit 6 (plugin SPI
-polish + config wiring / D5).**
+**Phase 0 complete. Phase 1 foundation through Unit 6 (SPI polish + D5/D6). Phase 1b
+Intermezzo closed (I0–I3; I4 skipped). Next: Phase 2 Unit 7 (`calin-api-v1`;
+then `nxt-sts` → `calin-chirpstack` → `calin-api-v2`).**
 
-Working rule after Intermezzo (session 16): each Unit 5 slice that has an ADR-003
+Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
 paths (distribute / send / poll / resolution) stay internal — exercise via stub
 plugins + enqueue/get (no public debug trigger for now).
 
 Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
 (`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
-deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts`;
-camelCase domain/hash fields; snake_case Redis key paths), Redis/Lua, queue primitives,
-lifecycle, `src/plugins/` (SPI + `initialQueueKey` / `buildInitialQueueKey` /
-`buildConcurrencyRateLimitKey`, catalog, registry, `stub/`), `src/http/` (lean
-enqueue/get/cancel; thin `POST /ingress/:pluginId`; thin `POST /token/generate`;
-`message-params.ts`; `smoke/` httpYac), `src/engine/` peer factories —
-`createBaseService` / `createOutgoingService` / `createIncomingService` /
+deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts` +
+`command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
+`device.relayNode`), Redis/Lua, queue primitives (`queue_in_flight_to_relay_node`),
+lifecycle (typed on `DeviceMessagingPlugin`), `src/plugins/` (SPI + `PluginTuning` +
+`initialQueueKey` / catalog / registry / `stub/` with `mergeStubTuning`), `src/http/`
+(lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac), `src/engine/` peer
+factories — `createBaseService` / `createOutgoingService` / `createIncomingService` /
 `createTokenService` + `startEngineTimers` (`engine.enabled`). Errors from
-`engine/errors.ts`. Composition root in `main.ts`. **Unit 5 complete.**
+`engine/errors.ts`. Composition root in `main.ts`. **Units 5–6 complete.**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)

@@ -53,8 +53,13 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    *
    * @param parsedEvent - Normalized event from the plugin
    * @param currentQueueKey - Queue for retry/fail (PUSH handle uses device queue)
+   * @param plugin - Owning plugin (tuning for stage moves)
    */
-  async function _processIncomingEvent(parsedEvent: ParsedIncomingEvent, currentQueueKey: string): Promise<void> {
+  async function _processIncomingEvent(
+    parsedEvent: ParsedIncomingEvent,
+    currentQueueKey: string,
+    plugin: DeviceMessagingPlugin,
+  ): Promise<void> {
     const { deliveryQueueId, deliveryStatus, device, commandType, response, unsolicited, failureContext } = parsedEvent;
 
     // Device-initiated uplink with no matching outbound command.
@@ -74,9 +79,13 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    // Gateway ACK (PUSH): move GW → device queue; no adopter event.
+    // Relay-node ACK (PUSH): move relay-node → device queue; no adopter event.
     if (deliveryStatus === 'SENT_TO_DEVICE') {
-      await moveQueuePush.fromGwToDevice({ id: messageId, deliveryConfig: delivery });
+      await moveQueuePush.fromRelayNodeToDevice({
+        id: messageId,
+        tuning: plugin.tuning,
+        messageTtlSeconds: delivery.messageTtlSeconds,
+      });
       return;
     }
 
@@ -130,7 +139,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     const parsedEvent = parse(event);
     if (!parsedEvent) return;
 
-    await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY);
+    await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY, plugin);
   }
 
   /**
@@ -140,7 +149,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     for (const plugin of registry.getByDeliveryPattern('PULL')) {
       const results = await pollAwaitingTasksFor(plugin);
       for (const { parsedEvent, queueKey } of results) {
-        await _processIncomingEvent(parsedEvent, queueKey);
+        await _processIncomingEvent(parsedEvent, queueKey, plugin);
       }
     }
   }

@@ -24,6 +24,8 @@ import type { PluginRegistry } from '../plugins/registry.js';
  *
  * Stub until Phase 3 lands the outbound webhook (ADR-003 §6 / `resultWebhook.url`).
  * Engine call sites must use this seam — do not reintroduce in-process subscribers.
+ *
+ * @param message - The message (or partial) to broadcast
  */
 export function emitDeliveryEvent(_message: Partial<DeviceMessage>): void {
   // no-op

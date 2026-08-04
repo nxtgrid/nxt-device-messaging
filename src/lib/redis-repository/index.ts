@@ -21,6 +21,11 @@ import type {
   MoveMessageResult,
 } from './lua/move-message-between-queues.types.js';
 
+/**
+ * TTL for message hashes and their indexes.
+ * Covers max retry time (~4 hours) with generous buffer.
+ * Acts as safety net if normal cleanup fails.
+ */
 export const MESSAGE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 declare module 'iovalkey' {
@@ -28,6 +33,13 @@ declare module 'iovalkey' {
     /**
      * Atomically fetches the highest priority message from source queue,
      * moves it to destination queue, updates status, and returns message data.
+     *
+     * @param source_queue - Source sorted set to pop message from (KEYS[1])
+     * @param destination_queue - Destination sorted set to move message to (KEYS[2])
+     * @param queues_to_distribute_from - Set tracking which queues have work (KEYS[3])
+     * @param timeout_at - Unix timestamp for timeout in destination queue (ARGV[1])
+     * @param new_status - New delivery status to set on message (ARGV[2])
+     * @returns Promise resolving to [messageId, fields[]] or null if queue empty
      */
     fetchNextMessageInQueueAndMove(
       source_queue: string,
@@ -39,7 +51,18 @@ declare module 'iovalkey' {
 
     /**
      * Atomically moves a message between queues with a stale-message guard.
-     * Returns 0 if the message wasn't moved, 1 if it was moved.
+     * Only proceeds if the message is present in the source queue (ZREM gate).
+     *
+     * @param source_queue - Source sorted set (KEYS[1])
+     * @param destination_queue - Destination sorted set (KEYS[2])
+     * @param message_key - Message hash key (KEYS[3])
+     * @param index_key - Optional index key, '' to skip (KEYS[4])
+     * @param message_id - Message ULID (ARGV[1])
+     * @param destination_score - Score for destination queue (ARGV[2])
+     * @param deliveryStatus - New delivery status (ARGV[3])
+     * @param deliveryQueueId - New delivery queue ID, '' to skip (ARGV[4])
+     * @param index_ttl_seconds - TTL for index key (ARGV[5])
+     * @returns 0 if message not in source queue, 1 if moved
      */
     moveMessageBetweenQueues(
       source_queue: string,
@@ -120,6 +143,14 @@ export const redisRepo = {
   /** Raw Redis client for advanced operations (queue Lua scripts, pipelines). */
   client: _client,
 
+  /**
+   * Create a new message and add it to the appropriate initial queue.
+   * Atomic operation using Redis pipeline.
+   *
+   * @param dto - Message creation parameters
+   * @param queueKey - Initial queue to add message to
+   * @returns The newly created DeviceMessage
+   */
   async enqueueDeviceMessage(
     dto: CreateDeviceMessage,
     queueKey: string,
@@ -156,6 +187,15 @@ export const redisRepo = {
     });
   },
 
+  /**
+   * Move a message from retry queue back to an initial queue.
+   * Restores priority-based ordering and marks as QUEUED.
+   *
+   * @param messageId - ULID of the message
+   * @param fromQueueKey - Source queue (typically retry queue)
+   * @param toQueueKey - Destination initial queue
+   * @param priority - Original message priority
+   */
   async requeueMessage(
     messageId: string,
     fromQueueKey: string,
@@ -173,29 +213,67 @@ export const redisRepo = {
     await pipeline.exec();
   },
 
+  /**
+   * Get all initial queues that have messages waiting to be distributed.
+   * @returns Array of queue keys (e.g. `queue:{pluginId}:{kind}:{id}`)
+   */
   fetchQueuesWithMessages(): Promise<string[]> {
     return _client.smembers(redisKeys.listOfInitialQueuesToDistributeFrom());
   },
 
+  /**
+   * Acquire a time-limited distributed lock on a queue.
+   * Uses SET NX PX for atomic lock with automatic expiry.
+   *
+   * @param queueKey - Lock key for the queue
+   * @param durationMs - Lock duration in milliseconds
+   * @returns 'OK' if lock acquired, null if already locked
+   */
   lockQueueForTimeMs(queueKey: string, durationMs: number) {
     return _client.set(queueKey, 'locked', 'PX', durationMs, 'NX');
   },
 
+  /**
+   * Look up a message ID by its external delivery queue ID (from the network server).
+   *
+   * @param deliveryQueueId - External queue ID
+   * @returns Message ULID or undefined if not found
+   */
   async getMessageIdFromDeliveryQueueId(deliveryQueueId: string): Promise<string | undefined> {
     const messageKey = await _client.get(redisKeys.indexExternalDeliveryId(deliveryQueueId));
     return messageKey?.split(':')[1];
   },
 
+  /**
+   * Retrieve a full message by its ULID.
+   *
+   * @param messageId - Message ULID
+   * @returns Deserialized DeviceMessage or null if not found
+   */
   async getMessageById(messageId: string): Promise<DeviceMessage | null> {
     const raw = await _client.hgetall(redisKeys.message(messageId));
     if (isEmpty(raw)) return null;
     return deserializeMessage(messageId, raw as Record<string, string>);
   },
 
+  /**
+   * Retrieve specific raw properties from a message hash.
+   * More efficient than getMessageById when only a few fields are needed.
+   *
+   * @param messageId - Message ULID
+   * @param props - Array of property names to retrieve
+   * @returns Array of raw string values (null for missing props)
+   */
   getMessageRawPropsById(messageId: string, props: string[]): Promise<Array<string | null>> {
     return _client.hmget(redisKeys.message(messageId), ...props);
   },
 
+  /**
+   * Look up a message by its associated correlation id.
+   *
+   * @param correlationId - Caller-supplied correlation id
+   * @returns DeviceMessage or null if not found
+   */
   async getMessageFromCorrelationId(correlationId: string): Promise<DeviceMessage | null> {
     const messageKey = await _client.get(redisKeys.indexCorrelationId(correlationId));
     const messageId = messageKey?.split(':')[1];
@@ -203,6 +281,13 @@ export const redisRepo = {
     return this.getMessageById(messageId);
   },
 
+  /**
+   * Look up all messages by correlation id (for three-phase aggregation).
+   * Checks base index and all phase-specific indexes.
+   *
+   * @param correlationId - Caller-supplied correlation id
+   * @returns Array of DeviceMessages (1 for single-phase, up to 3 for three-phase)
+   */
   async getAllMessagesForCorrelationId(correlationId: string): Promise<DeviceMessage[]> {
     const phases: Array<PhaseEnum | undefined> = [ undefined, 'A', 'B', 'C' ];
     const indexKeys = phases.map(phase => redisKeys.indexCorrelationId(correlationId, phase));
@@ -225,35 +310,73 @@ export const redisRepo = {
     return messages;
   },
 
+  /**
+   * Get all message IDs from a queue (sorted set).
+   *
+   * @param queueKey - Queue to read from
+   * @returns Array of message IDs
+   */
   getAllMessageIdsInQueue(queueKey: string): Promise<string[]> {
     return _client.zrange(queueKey, 0, '-1');
   },
 
+  /**
+   * Find messages that have exceeded their timeout in a queue.
+   * Uses sorted set scores as timeout timestamps.
+   *
+   * @param queueKey - Queue to scan
+   * @param cutoffDate - Unix timestamp; messages with score <= this are expired
+   * @returns Array of message IDs (max 50 per call)
+   */
   getExpiredMessagesInQueue(queueKey: string, cutoffDate: number): Promise<string[]> {
     return _client.zrangebyscore(queueKey, '-inf', cutoffDate, 'LIMIT', 0, 50);
   },
 
+  /**
+   * Get messages due for polling in a PULL pattern queue.
+   * Returns messages whose score (next poll time) is <= now.
+   *
+   * @param queueKey - Queue to scan
+   * @returns Array of message IDs due for polling (max 50 per call)
+   */
   getMessagesDueForPolling(queueKey: string): Promise<string[]> {
     return _client.zrangebyscore(queueKey, '-inf', Date.now(), 'LIMIT', 0, 50);
   },
 
+  /**
+   * Update the next poll time for a message in a PULL pattern queue.
+   * Uses XX flag to only update if the member exists (prevents race conditions).
+   *
+   * @param queueKey - Queue containing the message
+   * @param messageId - Message ULID
+   * @param nextPollAt - Unix timestamp for next poll
+   */
   updateNextPollTime(queueKey: string, messageId: string, nextPollAt: number) {
     return _client.zadd(queueKey, 'XX', nextPollAt, messageId);
   },
 
+  /**
+   * Remove a message from a specific queue.
+   *
+   * @param queueKey - Queue to remove from
+   * @param messageId - Message ULID to remove
+   */
   removeMessageFromQueue(queueKey: string, messageId: string) {
     return _client.zrem(queueKey, messageId);
   },
 
   /**
    * Complete cleanup of a message from all Redis structures.
-   *
    * Called on successful delivery or permanent failure.
+   * Removes: message hash, in-flight queue entries, indexes, optional concurrency slot.
    *
    * Unit 2 interim (ADR-006 D2):
    * - `inFlightQueueKeys` — queues to ZREM (defaults to known stage keys + awaiting-task).
    * - `concurrencyRateLimitKey` — optional Redis key to SREM (from
    *   `buildConcurrencyRateLimitKey(initialQueueKey)` when releasing a concurrency slot).
+   *
+   * @param message - The message to clean up
+   * @param options - Optional D2 cleanup seams
    */
   async messageFullCleanup(
     message: DeviceMessage,
@@ -271,7 +394,7 @@ export const redisRepo = {
 
     const inFlightQueueKeys = options?.inFlightQueueKeys ?? [
       'queue_in_flight_to_ns',
-      'queue_in_flight_to_gw',
+      'queue_in_flight_to_relay_node',
       'queue_in_flight_to_device',
       redisKeys.queueAwaitingTask(message.pluginId),
     ];
@@ -304,14 +427,36 @@ export const redisRepo = {
   // Key from `buildConcurrencyRateLimitKey(initialQueueKey)`; opaque string here.
   // ------------------------------------
 
+  /**
+   * Add a message to a concurrency rate-limit tracking set.
+   * Called when a message is successfully claimed under the concurrency strategy.
+   *
+   * @param concurrencyRateLimitKey - Opaque rate-limit set key
+   * @param messageId - The message ULID
+   */
   addToConcurrencyRateLimit(concurrencyRateLimitKey: string, messageId: string) {
     return _client.sadd(concurrencyRateLimitKey, messageId);
   },
 
+  /**
+   * Get the count of messages currently tracked in a concurrency rate-limit set.
+   * Used to check if we can admit more messages.
+   *
+   * @param concurrencyRateLimitKey - Opaque rate-limit set key
+   * @returns Number of messages tracked
+   */
   getConcurrencyRateLimitCount(concurrencyRateLimitKey: string) {
     return _client.scard(concurrencyRateLimitKey);
   },
 
+  /**
+   * Validate and clean a concurrency rate-limit set by removing members
+   * whose message hash no longer exists. Only call when the set is at
+   * capacity to avoid unnecessary work.
+   *
+   * @param concurrencyRateLimitKey - Opaque rate-limit set key
+   * @returns Number of live members remaining after cleanup
+   */
   async validateAndCleanConcurrencyRateLimit(
     concurrencyRateLimitKey: string,
   ): Promise<number> {

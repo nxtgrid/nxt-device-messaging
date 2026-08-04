@@ -8,7 +8,7 @@
  * This file contains shared primitives used by both patterns.
  */
 
-import type { DeliveryConfig } from '../config/schema.js';
+import type { PluginTuning } from '../plugins/plugin.interface.js';
 import { redisRepo } from './redis-repository/index.js';
 import { deserializeMessage, rawHashToObject } from './redis-repository/helpers.js';
 import { redisKeys } from './redis-repository/keys.js';
@@ -46,6 +46,13 @@ export const QUEUE_RETRY_KEY = 'queue_awaiting_retry';
  * eliminates the race where a late-arriving API response writes to a
  * message hash that was already cleaned up.
  *
+ * @param messageId - ULID of the message
+ * @param fromQueue - Source queue to remove from
+ * @param toQueue - Destination queue to add to
+ * @param timesOutAt - Unix timestamp when message times out in destination (or next poll time for PULL)
+ * @param updateProps - Properties to update on the message hash
+ * @param messageTtlSeconds - Shared message hash TTL (from `delivery.messageTtlSeconds`)
+ * @param indexToCreate - Optional index key to create
  * @returns true if the move succeeded, false if the message was not in the source queue
  */
 export const _moveQueue = async (
@@ -89,10 +96,11 @@ export const moveQueue = {
    * multiple workers are distributing messages.
    *
    * @param fromQueueKey - Initial queue to pick from (plugin `initialQueueKey`)
+   * @param tuning - Plugin stage timeouts (D5) — uses `nsInFlightTimeoutMs`
    * @returns The message if one was picked, undefined if queue was empty
    */
-  async pickNextAndMoveToNs(fromQueueKey: string, deliveryConfig: DeliveryConfig) {
-    const timesOutAt = Date.now() + deliveryConfig.nsInFlightTimeoutMs;
+  async pickNextAndMoveToNs(fromQueueKey: string, tuning: PluginTuning) {
+    const timesOutAt = Date.now() + tuning.nsInFlightTimeoutMs;
     const initialQueuesList = redisKeys.listOfInitialQueuesToDistributeFrom();
 
     const raw = await redisRepo.client.fetchNextMessageInQueueAndMove(
@@ -118,6 +126,12 @@ export const moveQueue = {
    * Concurrency admission slot cleanup is opt-in via `concurrencyRateLimitKey`
    * (`buildConcurrencyRateLimitKey`) — same seam as `messageFullCleanup`.
    * Callers that omit it (PUSH, or spacing admission) are a no-op for that step.
+   *
+   * @param messageId - ULID of the message
+   * @param currentQueueKey - Queue where the message currently resides
+   * @param nextRetryAt - Unix timestamp when message should be retried
+   * @param updateProps - Updated retry metadata
+   * @param options - Optional D2 seams (e.g. concurrency rate-limit key)
    */
   async fromAnyToRetry(
     messageId: string,

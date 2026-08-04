@@ -5,8 +5,8 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 foundation through **Unit 5** (5.1–5.6);
-**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Next: Unit 6**
+**Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Next: Phase 2 Unit 7**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -45,14 +45,14 @@ need them (same pattern as Intermezzo enqueue/get).
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation: units 1–4, pre–Unit 5 SPI, Unit 5 | Foundation through **Unit 5**; **next Unit 6** |
+| **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
-| **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
+| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-chirpstack`, `calin-api-v2`) | **Next: Unit 7** |
 | **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 foundation through Unit **5** is **done**.
-**Phase 1b is closed.** Next is **Unit 6** (plugin SPI polish + config / D5). Phase 4
+Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
+**Phase 1b is closed.** Next is **Phase 2 Unit 7** (`calin-api-v1`). Phase 4
 still owns ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) —
 CI/Docker stubs already in Phase 0.
 
@@ -88,10 +88,9 @@ end-to-end rule above. Adapters remain one-pass into plugin shape (per-unit revi
       `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
       No distribute admission / `initialQueueKey` wiring here.
 - [x] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
-      PUSH: `getPushTimeouts` / `maybeExtendMessageInGwQueue`. PULL:
-      `pollAwaitingTasksFor(pluginId, plugin)` / `getPullTimeouts(now, pluginIds)` — no
-      hardcoded PULL ids. Interim structural minima (`PushIncoming` / `PushOutgoing` /
-      `PullIncoming`; param `plugin`) — deleted at Unit 6 for `DeviceMessagingPlugin`.
+      PUSH: `getPushTimeouts` / `maybeExtendMessageInRelayNodeQueue`. PULL:
+      `pollAwaitingTasksFor(plugin)` / `getPullTimeouts(now, pluginIds)` — no hardcoded
+      PULL ids. Interim facets deleted in Unit 6 (`DeviceMessagingPlugin`).
       Max age + poll ladder = module defaults (D5). No concurrency export (ADR-006).
       Cleanup options pass-through only (D2).
 - [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** Now under `src/plugins/`
@@ -156,28 +155,38 @@ engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
         `createTokenService`; `runMessageResolutionCycle` on outgoing; `startEngineTimers`
         (2s resolution / 5s poll). Engine facades named `*Service`.
       **ADR-006 / deferred:** D1+D3 done in 5.3; send-fail concurrency key in 5.4; D2 on
-      remaining cleanup paths (incoming success not yet); D5 → Unit 6 / plugins.
-- [ ] **Unit 6 — Plugin SPI polish + config wiring.** Formalize anything still open on
-      `DeviceMessagingPlugin` (command-type validation ADR-003 §4; optional tightening of
-      PUSH/PULL incoming requirements). Construct only plugins present in config (ADR-002 §6) —
-      **stub construction landed in I1**; Unit 6 adds real plugin factories to the same map.
-      **D5 (ADR-002):** plugin `tuning` owns NS / GW / device / poll delays once Unit 5 can
-      resolve via the registry — then drop those keys from core `delivery`. Stale sketch in
-      `nxt-backend` plan 001 task 3.1 is detail only — correct `network_id` to `number | null`.
-      *(Minimal SPI + registry already landed as pre–Unit 5.)*
+      remaining cleanup paths (incoming success not yet); D5 done in Unit 6.
+- [x] **Unit 6 — Plugin SPI polish + config wiring.**
+      - Service-owned `CommandType` / `ENQUEUEABLE_COMMAND_TYPES` / `GENERATE_TOKEN_TYPES`
+        (`TOP_UP_KWH`); plugin `supportedCommandTypes`; enqueue gate + 400.
+      - Token body Zod-inferred (`GenerateTokenRequest`); deleted hand SPI token type.
+      - Unit 4 interim facets deleted (`DeviceMessagingPlugin` in lifecycle).
+      - PUSH/PULL discriminant / boot-assert **skipped** (no downstream-check win).
+      - **D6:** wire `device.relayNode` (was `gateway`); stub PULL `kind` = `relayNode`.
+      - **D5:** `PluginTuning` on SPI; queue-moving reads tuning; `delivery` = retry/TTL only.
+        Redis mid stage `queue_in_flight_to_relay_node`; stubs `mergeStubTuning` from config.
+      - Catalog still stubs-only; Units 7–10 add real factories to the same map
+        (order: v1 → nxt-sts → chirpstack → v2).
 
 ### Phase 2 — adapters as plugins
 
-- [ ] **Unit 7 — `calin-chirpstack`** (~1,200 lines). Source folder is still
+Order amended sessions 24–24b: **PULL first** (`calin-api-v1`) for controllable vendor-API
+testing; **`nxt-sts` before ChirpStack** so token commands are testable before PUSH delivery;
+then `calin-chirpstack`; `calin-api-v2` last.
+
+- [ ] **Unit 7 — `calin-api-v1`** (~726 lines). Actively supported; V1 meters are in the field.
+      First real adapter — validates the plugin SPI (`nxt-backend` ADR-001) under PULL
+      (outgoing create-task + poll). Source: `adapters/calin-api-v1/`
+      (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
+- [ ] **Unit 8 — `nxt-sts` token plugin** (46 lines). `HttpService` → native `fetch`.
+      Needed before ChirpStack so token-generate / deliver-token paths can be exercised.
+- [ ] **Unit 9 — `calin-chirpstack`** (~1,200 lines). Source folder is still
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
       decode-response-data, correlate-request-response, connectivity-helpers}`, plus
       `lib/chirpstack-repository/` moved in as plugin-internal. `initialQueueKey` must handle
       the `unassigned` bucket.
-- [ ] **Unit 8 — calin-api-v1** (~726 lines). Actively supported; V1 meters are in the field.
-      Second real adapter, so this is what validates the plugin SPI (`nxt-backend` ADR-001).
-- [ ] **Unit 9 — calin-api-v2** (~500 lines).
-- [ ] **Unit 10 — nxt-sts token plugin** (46 lines). `HttpService` → native `fetch`.
+- [ ] **Unit 10 — calin-api-v2** (~500 lines).
 
 ## Import ledger
 
@@ -213,24 +222,24 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
 | `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
-| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 7 | pending |
-| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 7 | pending |
-| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 7 | pending |
-| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 7 | pending |
-| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 7 | pending |
-| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 7 | pending |
-| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 7 | pending |
-| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 7 | pending — **see coupling note below** |
+| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | pending |
+| `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | pending |
+| `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | pending |
+| `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | pending |
+| `adapters/nxt-sts/_token.service.ts` | 46 | 8 | pending |
+| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 9 | pending |
+| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 9 | pending |
+| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 9 | pending |
+| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 9 | pending |
+| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 9 | pending |
+| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 9 | pending |
+| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 9 | pending |
+| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 9 | pending — **see coupling note below** |
 | `adapters/calin-lorawan/lib/_UNUSED_EXAMPLE_correlate-request-response.redis.ts` | 138 | — | **dropped** — dead code |
-| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 8 | pending |
-| `adapters/calin-api-v1/_incoming.service.ts` | 274 | 8 | pending |
-| `adapters/calin-api-v1/_token.service.ts` | 97 | 8 | pending |
-| `adapters/calin-api-v1/lib/repo.ts` | 133 | 8 | pending |
-| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 9 | pending |
-| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 9 | pending |
-| `adapters/calin-api-v2/_token.service.ts` | 82 | 9 | pending |
-| `adapters/calin-api-v2/lib/repo.ts` | 212 | 9 | pending — **see coupling note below** |
-| `adapters/nxt-sts/_token.service.ts` | 46 | 10 | pending |
+| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 10 | pending |
+| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 10 | pending |
+| `adapters/calin-api-v2/_token.service.ts` | 82 | 10 | pending |
+| `adapters/calin-api-v2/lib/repo.ts` | 212 | 10 | pending — **see coupling note below** |
 
 ### Coupling note — vendor clients shared with `meter-installs`
 

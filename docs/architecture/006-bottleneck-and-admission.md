@@ -253,7 +253,7 @@ import { buildInitialQueueKey } from './initial-queue-key.js';
   id: 'calin-api-v1',
   deliveryPattern: 'PULL',
   initialQueueKey: (m) =>
-    buildInitialQueueKey('calin-api-v1', 'gateway', String(m.device.gateway!.id)),
+    buildInitialQueueKey('calin-api-v1', 'dcu', String(m.device.relayNode!.id)),
   admission: { strategy: 'concurrency', maxInFlight: 5 },
 }
 ```

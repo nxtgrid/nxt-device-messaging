@@ -13,7 +13,8 @@ import {
   GENERATE_TOKEN_TYPES,
 } from './command-types.js';
 
-const gatewaySchema = z.object({
+/** I/O parent (LoRaWAN gateway / DCU / mesh hop) — D6. */
+const relayNodeSchema = z.object({
   id: z.number().optional(),
   externalReference: z.string().optional(),
   snr: z.number().optional(),
@@ -23,7 +24,7 @@ const gatewaySchema = z.object({
 const deviceSchema = z.object({
   type: z.literal('ELECTRICITY_METER'),
   externalReference: z.string().min(1),
-  gateway: gatewaySchema.optional(),
+  relayNode: relayNodeSchema.optional(),
 }).strict();
 
 export const setDatePayloadSchema = z.object({

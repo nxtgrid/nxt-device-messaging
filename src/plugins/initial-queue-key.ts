@@ -3,7 +3,7 @@
  *
  * Shape: `queue:{pluginId}:{kind}:{id}`
  * - `pluginId` — owning plugin; distribute parses this for lookup only
- * - `kind` — human label for the admission node (network, gateway, dcu, …)
+ * - `kind` — human label for the admission node (network, relayNode (gateway, dcu, ...) …)
  * - `id` — instance of that node (`42`, `unassigned`, …)
  *
  * Admission policy is **not** inferred from `kind` — that lives on `plugin.admission`.
@@ -30,6 +30,7 @@ export function buildInitialQueueKey(
 /**
  * Extract `pluginId` from an initial-queue key for registry lookup.
  *
+ * @param queueKey - Initial-queue Redis key (`queue:{pluginId}:{kind}:{id}`)
  * @returns The plugin id, or `undefined` if the key does not match the convention
  */
 export function getPluginIdFromInitialQueueKey(queueKey: string): string | undefined {
@@ -49,6 +50,7 @@ export function getPluginIdFromInitialQueueKey(queueKey: string): string | undef
  *
  * Pass the result to Redis helpers / cleanup as `concurrencyRateLimitKey`.
  *
+ * @param queueKey - Initial-queue Redis key (`queue:{pluginId}:{kind}:{id}`)
  * @returns The rate-limit key, or `undefined` if `queueKey` is not a valid initial-queue key
  */
 export function buildConcurrencyRateLimitKey(queueKey: string): string | undefined {

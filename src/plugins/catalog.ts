@@ -1,9 +1,9 @@
 /**
  * @fileoverview Known plugin factories (id → construct).
  *
- * Config `plugins[].id` must appear here. I1: stubs only. Phase 2 / Unit 6 adds real
- * adapters. Each factory receives that plugin's config entry (settings/tuning; secrets
- * stay in env). Dynamic import of unused plugins is deferred until those units.
+ * Config `plugins[].id` must appear here. Stubs today; Units 7–10 add real adapters
+ * to this map. Each factory receives that plugin's config entry (settings/tuning;
+ * secrets stay in env) and merges tuning onto code defaults.
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';

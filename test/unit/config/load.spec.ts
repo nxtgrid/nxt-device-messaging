@@ -107,9 +107,8 @@ describe('loadConfig', () => {
 
     expect(config.delivery.maxRetries).toBe(11);
     expect(config.delivery.retryBaseDelayMs).toBe(2000);
-    expect(config.delivery.nsInFlightTimeoutMs).toBe(20_000);
-    expect(config.delivery.gwInFlightTimeoutMs).toBe(900_000);
-    expect(config.delivery.deviceInFlightTimeoutMs).toBe(12_000);
-    expect(config.delivery.initialPollDelayMs).toBe(10_000);
+    expect(config.delivery.retryBackoffMultiplier).toBe(2);
+    expect(config.delivery.retryMaxDelayMs).toBe(3_600_000);
+    expect(config.delivery.messageTtlSeconds).toBe(604_800);
   });
 });

@@ -29,6 +29,8 @@ export type StartEngineTimersOptions = {
 /**
  * Start resolution-cycle + PULL-poll intervals when the engine is enabled.
  * Returns `{ stop }` to clear both intervals (tests / shutdown).
+ *
+ * @param options - Enable flag, peer services, and optional interval overrides
  */
 export function startEngineTimers({
   enabled,

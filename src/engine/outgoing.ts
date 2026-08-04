@@ -9,12 +9,12 @@
 import type { DeliveryConfig } from '../config/schema.js';
 import {
   getPushTimeouts,
-  maybeExtendMessageInGwQueue,
+  maybeExtendMessageInRelayNodeQueue,
 } from '../lib/lifecycle.push.js';
 import { getPullTimeouts } from '../lib/lifecycle.pull.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
 import { moveQueuePull } from '../lib/queue-moving.pull.js';
-import { QUEUE_GW_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
+import { QUEUE_RELAY_NODE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
@@ -39,9 +39,25 @@ import { UnknownPluginError, UnsupportedCommandTypeError } from './errors.js';
  * Wired at the composition root (`main.ts`); unit tests inject a fake.
  */
 export type OutgoingService = {
+  /**
+   * Enqueue a new message for delivery (plugin `initialQueueKey` + Redis).
+   * @param create - Message creation parameters
+   */
   enqueue(create: CreateDeviceMessage): Promise<DeviceMessage>;
+  /**
+   * Look up a message by correlation id.
+   * @param correlationId - Caller-supplied correlation id
+   */
   getByCorrelationId(correlationId: string): Promise<DeviceMessage | null>;
+  /**
+   * Cancel all messages for one correlation id.
+   * @param correlationId - The correlation id to cancel
+   */
   cancelOne(correlationId: string): Promise<CancelMessageResult>;
+  /**
+   * Cancel messages for many correlation ids.
+   * @param correlationIds - Array of correlation ids to cancel
+   */
   cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]>;
   /**
    * One distribute tick: admit + pick into NS + fire-and-forget `sendOne`.
@@ -80,6 +96,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
   /**
    * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
+   *
+   * @param plugin - Owning plugin (`admission.strategy`)
+   * @param message - Message whose initial queue identity drives the key
    */
   function _concurrencyRateLimitKeyFor(plugin: DeviceMessagingPlugin, message: DeviceMessage): string | undefined {
     if (plugin.admission.strategy !== 'concurrency') return undefined;
@@ -89,6 +108,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
+   *
+   * @param plugin - Owning plugin (`admission`)
+   * @param queueKey - Initial-queue Redis key being considered
    */
   async function _canAdmit(plugin: DeviceMessagingPlugin, queueKey: string): Promise<boolean> {
     const { admission } = plugin;
@@ -120,6 +142,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
   /**
    * Post-pick admission hook (concurrency claim / custom `onClaim`).
+   *
+   * @param plugin - Owning plugin (`admission`)
+   * @param queueKey - Initial-queue Redis key the message was picked from
+   * @param messageId - ULID of the claimed message
    */
   async function _onClaimAfterPick(plugin: DeviceMessagingPlugin, queueKey: string, messageId: string): Promise<void> {
     const { admission } = plugin;
@@ -142,8 +168,11 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   }
 
   /**
-   * Send one message via the plugin; on success move NS → GW (PUSH) or awaiting-task (PULL).
-   * On failure, {@link Base.retryOrFail} from the NS queue (with concurrency key when needed).
+   * Send one message via the plugin; on success move NS → relay-node (PUSH) or awaiting-task (PULL).
+   * On failure, {@link BaseService.retryOrFail} from the NS queue (with concurrency key when needed).
+   *
+   * @param plugin - Owning plugin (`outgoing.sendOne` + tuning)
+   * @param message - The message to send (already in NS queue)
    */
   async function _sendOneToNetworkServer(plugin: DeviceMessagingPlugin, message: DeviceMessage): Promise<void> {
     let deliveryQueueId: string;
@@ -168,12 +197,18 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         id: message.id,
         deliveryQueueId,
         pluginId: plugin.id,
-        deliveryConfig: delivery,
+        tuning: plugin.tuning,
+        messageTtlSeconds: delivery.messageTtlSeconds,
       });
       return;
     }
 
-    await moveQueuePush.fromNsToGw({ id: message.id, deliveryQueueId, deliveryConfig: delivery });
+    await moveQueuePush.fromNsToRelayNode({
+      id: message.id,
+      deliveryQueueId,
+      tuning: plugin.tuning,
+      messageTtlSeconds: delivery.messageTtlSeconds,
+    });
   }
 
   /**
@@ -195,14 +230,18 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       });
     }
 
-    // 2. PUSH: GW + Device timeouts
+    // 2. PUSH: relay-node + device timeouts
     const pushTimeouts = await getPushTimeouts(now);
     for (const { messageId, queueKey, reason } of pushTimeouts) {
-      if (queueKey === QUEUE_GW_KEY) {
+      if (queueKey === QUEUE_RELAY_NODE_KEY) {
         const message = await redisRepo.getMessageById(messageId);
         if (message) {
           const plugin = registry.get(message.pluginId)!;
-          const extended = await maybeExtendMessageInGwQueue(messageId, message, plugin, delivery);
+          const extended = await maybeExtendMessageInRelayNodeQueue(
+            messageId,
+            message,
+            plugin,
+          );
           if (extended) continue;
         }
       }
@@ -248,7 +287,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       const admitted = await _canAdmit(plugin, queueKey);
       if (!admitted) return;
 
-      const messageToSend = await moveQueue.pickNextAndMoveToNs(queueKey, delivery);
+      const messageToSend = await moveQueue.pickNextAndMoveToNs(queueKey, plugin.tuning);
       if (!messageToSend) return;
 
       await _onClaimAfterPick(plugin, queueKey, messageToSend.id);

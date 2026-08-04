@@ -15,7 +15,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | # | Decision | Blocked on |
 |---|---|---|
-| — | *(none blocking Unit 6; Unit 5 complete — session 22)* | — |
+| — | *(none blocking Unit 7; order = v1 → nxt-sts → chirpstack → v2 — session 24b)* | — |
 
 ### Deferred with locked criteria
 
@@ -28,8 +28,8 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | D2 | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey` | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
 | ~~D3~~ | ~~Wire named admission into `distribute`~~ → **landed** on `OutgoingService.distributeToNetworkServers` (session 19) | — | — | 006 |
 | D4 | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.) | Plugin units 7–9 | Plugin-owned; no core constant. Wire parent is `relayNode` (D6); `kind` segment may still say `dcu` / `gateway` | 006 |
-| ~~D5~~ | ~~Stage timeouts → plugin `tuning`~~ → **locked names** (session 23b); implement in Unit 6.2 | Unit 6.2 (in progress) | — | 002 |
-| ~~D6~~ | ~~Wire parent-node name~~ → **`device.relayNode`** (session 23b); implement with 6.2 | Unit 6.2 (in progress) | — | 003 |
+| ~~D5~~ | ~~Stage timeouts → plugin `tuning`~~ → **landed** (session 23c) | — | — | 002 |
+| ~~D6~~ | ~~Wire parent-node name~~ → **`device.relayNode` landed** (session 23c) | — | — | 003 |
 
 Decisions 5 (transfer mechanics + phase order), 6 (scope), **7 (tooling → ADR-004)**,
 **8 (public HTTP contract → ADR-003)**, **9 (deployment / OSS hygiene → ADR-005)**, and
@@ -41,8 +41,8 @@ End-to-end rule (session 16): ADR-003 command/ingress surfaces land thin HTTP wi
 engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12–19 and
 plan **Phase 1b** / Unit 5.
 
-Phase 0 scaffold is **done**. Phase 1 through Unit **5** is **done**. Intermezzo closed.
-Next is **Unit 6** (plugin SPI polish + config wiring / D5). Also outstanding on `nxt-backend`:
+Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
+Next is **Phase 2 Unit 7** (`calin-api-v1`). Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
   settled; the re-cut itself may still be outstanding on that side).
@@ -979,3 +979,46 @@ key (`fromNsToRelayNode`, `QUEUE_RELAY_NODE_KEY`, …). Rejected for the mid sta
 
 **Next:** Step **B** after maintainer accepts Step A.
 
+### 2026-08-04 — session 23c: Unit 6 closed (6.1 + 6.2 A–G)
+
+**Landed (Unit 6.1 — earlier this session):** command vocabulary + plugin
+`supportedCommandTypes`; `TOP_UP_KWH`; token Zod-inferred types; lifecycle facets deleted;
+PUSH/PULL tighten skipped.
+
+**Landed (Unit 6.2 steps A–G):**
+
+| Step | Result |
+|---|---|
+| A | Docs lock D5/D6 |
+| B | Wire `device.relayNode`; stub PULL `kind` = `relayNode` |
+| C | Redis/helpers `queue_in_flight_to_relay_node` + API renames; config key `relayNodeInFlightTimeoutMs` |
+| D | `PluginTuning` on SPI + `STUB_DEFAULT_TUNING` |
+| E | Queue-moving / engine read `plugin.tuning`; stage keys dropped from `delivery` |
+| F | `mergeStubTuning` + example config override |
+| G | Plan / AGENTS / this close-out |
+
+**D5 + D6 closed.** Catalog still stubs-only (real factories = Units 7–10). D4 remains for
+plugin-local admission `kind` strings. D2 / thorough cleanup suite unchanged.
+
+**Next:** Phase 2 **Unit 7** — `calin-api-v1` plugin (order amended sessions 24 / 24b).
+
+### 2026-08-04 — session 24: Phase 2 order — V1 before ChirpStack
+
+**Amendment:** Unit **7** = `calin-api-v1` (PULL; controllable vendor API for testing);
+ChirpStack deferred. No code change.
+
+### 2026-08-04 — session 24b: `nxt-sts` before ChirpStack
+
+**Amendment:** final Phase 2 order:
+
+| Unit | Plugin | Why |
+|---|---|---|
+| **7** | `calin-api-v1` | Controllable PULL testing; first real SPI validation |
+| **8** | `nxt-sts` | Token generate needed to exercise token commands |
+| **9** | `calin-chirpstack` | PUSH; harder to drive externally |
+| **10** | `calin-api-v2` | Second HTTP CALIN variant |
+
+Import ledger unit numbers updated. No code change.
+
+**Next:** Phase 2 **Unit 7** — `calin-api-v1` from `legacy/.../adapters/calin-api-v1/`
+at baseline `db5c2ac`.

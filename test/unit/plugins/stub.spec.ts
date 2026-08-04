@@ -7,6 +7,8 @@ import {
   createStubPlugin,
   createStubPullPlugin,
   createStubPushPlugin,
+  mergeStubTuning,
+  STUB_DEFAULT_TUNING,
   STUB_PULL_ID,
   STUB_PUSH_ID,
 } from '../../../src/plugins/stub/index.js';
@@ -35,6 +37,7 @@ describe('stub plugins', () => {
     expect(plugin.id).toBe(STUB_PUSH_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
     expect(plugin.supportedCommandTypes).toEqual(ENQUEUEABLE_COMMAND_TYPES);
+    expect(plugin.tuning).toEqual(STUB_DEFAULT_TUNING);
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
     expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-push:network:42');
     expect(plugin.initialQueueKey({ ...deviceOnly, networkId: null })).toBe(
@@ -54,7 +57,30 @@ describe('stub plugins', () => {
     });
   });
 
-  it('createStubPullPlugin uses PULL + concurrency and queue:stub-pull:gateway:…', async () => {
+  it('merges config tuning over stub defaults', () => {
+    const plugin = createStubPushPlugin({
+      id: STUB_PUSH_ID,
+      tuning: { nsInFlightTimeoutMs: 15_000 },
+    });
+    expect(plugin.tuning).toEqual({
+      ...STUB_DEFAULT_TUNING,
+      nsInFlightTimeoutMs: 15_000,
+    });
+  });
+
+  it('rejects unknown or invalid stub tuning keys', () => {
+    expect(() => mergeStubTuning({
+      id: STUB_PUSH_ID,
+      tuning: { notAKnob: 1 },
+    })).toThrow(/Invalid tuning/);
+
+    expect(() => createStubPullPlugin({
+      id: STUB_PULL_ID,
+      tuning: { initialPollDelayMs: -1 },
+    })).toThrow(/Invalid tuning/);
+  });
+
+  it('createStubPullPlugin uses PULL + concurrency and queue:stub-pull:relayNode:…', async () => {
     const plugin = createStubPullPlugin({ id: STUB_PULL_ID });
     expect(plugin.id).toBe(STUB_PULL_ID);
     expect(plugin.deliveryPattern).toBe('PULL');
@@ -62,10 +88,10 @@ describe('stub plugins', () => {
     expect(
       plugin.initialQueueKey({
         networkId: null,
-        device: { ...deviceOnly.device, gateway: { id: 7 } },
+        device: { ...deviceOnly.device, relayNode: { id: 7 } },
       }),
-    ).toBe('queue:stub-pull:gateway:7');
-    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-pull:gateway:unassigned');
+    ).toBe('queue:stub-pull:relayNode:7');
+    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-pull:relayNode:unassigned');
     expect(plugin.incoming.fetchStatus).toBeTypeOf('function');
     expect(plugin.incoming.handle).toBeUndefined();
     await expect(plugin.incoming.fetchStatus?.(sampleMessage)).resolves.toBeNull();

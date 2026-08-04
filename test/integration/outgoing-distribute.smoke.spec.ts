@@ -14,7 +14,7 @@ import { createBaseService } from '../../src/engine/base.js';
 import { createOutgoingService, type OutgoingService } from '../../src/engine/outgoing.js';
 import type { DeviceMessage } from '../../src/lib/device-message/types.js';
 import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
-import { QUEUE_GW_KEY } from '../../src/lib/queue-moving.push.js';
+import { QUEUE_RELAY_NODE_KEY } from '../../src/lib/queue-moving.push.js';
 import { sleep } from '../../src/lib/utilities.js';
 import {
   STUB_PULL_ID,
@@ -94,7 +94,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     expect(after.deliveryQueueId).toBe(STUB_DELIVERY_ID);
     expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
     expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_GW_KEY, enqueued.id)).not.toBeNull();
+    expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).not.toBeNull();
 
     await redisRepo.messageFullCleanup(after);
     await redisRepo.client.srem(
@@ -117,9 +117,9 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     });
 
     const correlationId = `distribute-pull-${ Date.now() }`;
-    const gatewayId = 7;
-    const queueKey = `queue:stub-pull:gateway:${ gatewayId }`;
-    const rateLimitKey = `rate_limit:stub-pull:gateway:${ gatewayId }`;
+    const relayNodeId = 7;
+    const queueKey = `queue:stub-pull:relayNode:${ relayNodeId }`;
+    const rateLimitKey = `rate_limit:stub-pull:relayNode:${ relayNodeId }`;
     const awaitingKey = redisKeys.queueAwaitingTask(STUB_PULL_ID);
 
     const enqueued = await outgoingService.enqueue({
@@ -131,7 +131,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       device: {
         type: 'ELECTRICITY_METER',
         externalReference: 'distribute-pull-meter',
-        gateway: { id: gatewayId },
+        relayNode: { id: relayNodeId },
       },
     });
 

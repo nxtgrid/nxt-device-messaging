@@ -19,10 +19,10 @@ describe('buildInitialQueueKey', () => {
 
 describe('getPluginIdFromInitialQueueKey', () => {
   it('extracts pluginId for distribute lookup', () => {
-    expect(getPluginIdFromInitialQueueKey('queue:calin-api-v1:gateway:7')).toBe(
+    expect(getPluginIdFromInitialQueueKey('queue:calin-api-v1:dcu:7')).toBe(
       'calin-api-v1',
     );
-    expect(getPluginIdFromInitialQueueKey('queue:stub-pull:gateway:unassigned')).toBe(
+    expect(getPluginIdFromInitialQueueKey('queue:stub-pull:relayNode:unassigned')).toBe(
       'stub-pull',
     );
   });
@@ -37,8 +37,8 @@ describe('getPluginIdFromInitialQueueKey', () => {
 
 describe('buildConcurrencyRateLimitKey', () => {
   it('maps queue:… to rate_limit:… for the same admission node', () => {
-    expect(buildConcurrencyRateLimitKey('queue:stub-pull:gateway:7')).toBe(
-      'rate_limit:stub-pull:gateway:7',
+    expect(buildConcurrencyRateLimitKey('queue:stub-pull:relayNode:7')).toBe(
+      'rate_limit:stub-pull:relayNode:7',
     );
     expect(buildConcurrencyRateLimitKey('queue:calin-api-v1:dcu:unassigned')).toBe(
       'rate_limit:calin-api-v1:dcu:unassigned',
@@ -47,6 +47,6 @@ describe('buildConcurrencyRateLimitKey', () => {
 
   it('returns undefined for malformed keys', () => {
     expect(buildConcurrencyRateLimitKey('queue:only-two')).toBeUndefined();
-    expect(buildConcurrencyRateLimitKey('rate_limit:stub-pull:gateway:7')).toBeUndefined();
+    expect(buildConcurrencyRateLimitKey('rate_limit:stub-pull:relayNode:7')).toBeUndefined();
   });
 });

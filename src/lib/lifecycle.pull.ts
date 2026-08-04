@@ -48,6 +48,9 @@ export type PullTimeoutResult = {
  * Older messages get polled less frequently.
  *
  * Interim hardcoded ladder — D5: end state is plugin `tuning`.
+ *
+ * @param messageAgeMs - Age of the message in milliseconds (from ULID time)
+ * @returns Delay in milliseconds until the next poll
  */
 function getNextPollDelay(messageAgeMs: number): number {
   if (messageAgeMs < 20_000) return 10_000; // 0-20s old: wait 10s
@@ -108,7 +111,7 @@ export async function pollAwaitingTasksFor(
  * @param now - Current timestamp
  * @param pluginIds - PULL plugin ids whose awaiting-task queues to scan
  * @param cleanupOptions - Optional D2 cleanup seams (no key invention here)
- * @returns Array of failed messages to publish
+ * @returns Array of failed messages ready to publish (already cleaned up in Redis)
  */
 export async function getPullTimeouts(
   now: number,

@@ -41,7 +41,8 @@ export type GenerateTokenInput = Omit<GenerateTokenRequest, 'pluginId'>;
 
 export type PhaseEnum = z.infer<typeof phaseSchema>;
 export type DeviceMessageDevice = CreateDeviceMessage['device'];
-export type GatewayInfo = NonNullable<DeviceMessageDevice['gateway']>;
+/** I/O parent on the wire (`device.relayNode`) — D6. */
+export type RelayNodeInfo = NonNullable<DeviceMessageDevice['relayNode']>;
 export type DeviceType = DeviceMessageDevice['type'];
 export type SetDatePayload = z.infer<typeof setDatePayloadSchema>;
 export type SetTimePayload = z.infer<typeof setTimePayloadSchema>;

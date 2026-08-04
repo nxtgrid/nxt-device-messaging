@@ -8,18 +8,17 @@
     "retryBaseDelayMs": 2000,
     "retryBackoffMultiplier": 2,
     "retryMaxDelayMs": 3600000,
-    "messageTtlSeconds": 604800,
-    "nsInFlightTimeoutMs": 20000,
-    "gwInFlightTimeoutMs": 900000,
-    "deviceInFlightTimeoutMs": 12000,
-    "initialPollDelayMs": 10000
+    "messageTtlSeconds": 604800
   },
   "resultWebhook": {
     "url": "https://consumer.example/hooks/device-messages"
   },
   "plugins": [
     {
-      "id": "stub-push"
+      "id": "stub-push",
+      "tuning": {
+        "nsInFlightTimeoutMs": 15000
+      }
     },
     {
       "id": "stub-pull"

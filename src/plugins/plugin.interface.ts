@@ -1,11 +1,11 @@
 /**
- * @fileoverview Plugin SPI (Unit 6.1 vocabulary + pre–Unit 5 surface).
+ * @fileoverview Plugin SPI (Unit 6).
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution is
  * `OutgoingService.distributeToNetworkServers` (Unit 5.3 / D3).
  * Initial queues: {@link DeviceMessagingPlugin.initialQueueKey} + `buildInitialQueueKey`
- * (ADR-006 D1). Stage-timeout relocation (D5) is not here.
+ * (ADR-006 D1). Stage timeouts / poll delay: {@link PluginTuning} (D5).
  */
 
 import type {
@@ -23,7 +23,7 @@ export type DeliveryPattern = 'PUSH' | 'PULL';
 
 /**
  * Inputs for {@link DeviceMessagingPlugin.initialQueueKey}.
- * Not the full create DTO — only network + device (incl. DCU/gateway).
+ * Not the full create DTO — only network + device (incl. optional `relayNode`).
  */
 export type InitialQueueKeyInput = {
   networkId: number | null;
@@ -57,6 +57,22 @@ export type Admission =
   };
 
 /**
+ * Per-plugin stage timeouts / poll delay (D5 / ADR-002 §5).
+ * Defaults live in plugin code; config `plugins[].tuning` overrides (Unit 6.2 Step F).
+ * Shared `delivery` keeps only retry knobs + message TTL.
+ */
+export type PluginTuning = {
+  /** Score timeout on `queue_in_flight_to_ns`. */
+  readonly nsInFlightTimeoutMs: number;
+  /** Score timeout on `queue_in_flight_to_relay_node` (PUSH mid stage). */
+  readonly relayNodeInFlightTimeoutMs: number;
+  /** Score timeout on `queue_in_flight_to_device` (end meter). */
+  readonly deviceInFlightTimeoutMs: number;
+  /** Delay before first PULL status poll. */
+  readonly initialPollDelayMs: number;
+};
+
+/**
  * Hardware integration contract.
  *
  * Convention (not enforced by the type system):
@@ -85,10 +101,13 @@ export type DeviceMessagingPlugin = {
   /** How hard the distributor may hit this plugin's initial queues. */
   readonly admission: Admission;
 
+  /** Stage timeouts / initial poll delay (D5). */
+  readonly tuning: PluginTuning;
+
   outgoing: {
     /** Send to the network server / vendor API. Returns external delivery id. */
     sendOne(message: DeviceMessage): Promise<string>;
-    /** Remote queue status (PUSH GW extension). */
+    /** Remote queue status (PUSH relay-node extension). */
     getRemoteStatus(
       message: DeviceMessage,
     ): Promise<{ deliveryStatus: string }> | { deliveryStatus: string };
