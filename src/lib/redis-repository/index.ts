@@ -431,27 +431,27 @@ export const redisRepo = {
       redisKeys.queueAwaitingTask(message.pluginId),
     ];
 
-    const pipeline = _client.multi();
+    const multi = _client.multi();
 
     // 1. Delete the message
-    pipeline.del(messageKey);
+    multi.del(messageKey);
 
     // 2. Remove from queues (shotgun only over caller-provided / default keys)
     for (const queueKey of inFlightQueueKeys) {
-      pipeline.zrem(queueKey, message.id);
+      multi.zrem(queueKey, message.id);
     }
 
     // 3. Clean up concurrency rate-limit set when the caller supplies the key
     if (options?.concurrencyRateLimitKey) {
-      pipeline.srem(options.concurrencyRateLimitKey, message.id);
+      multi.srem(options.concurrencyRateLimitKey, message.id);
     }
 
     // 4. Delete indexes
     for (const indexKey of indexesToDelete) {
-      pipeline.del(indexKey);
+      multi.del(indexKey);
     }
 
-    await pipeline.exec();
+    assertExecSucceeded(await multi.exec(), 'messageFullCleanup');
   },
 
   // ------------------------------------
