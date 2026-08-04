@@ -1,0 +1,59 @@
+/**
+ * @fileoverview Env secrets for `calin-api-v1` (ADR-002 §2 / §6).
+ *
+ * Names follow the plugin id (`calin-api-v1` → `CALIN_API_V1_*`), not the legacy
+ * `CALIN_V1_*` prefix from frozen tiamat. Reads `process.env` only — tests stub
+ * via Vitest `vi.stubEnv`.
+ */
+
+/** Required environment keys for this plugin. */
+export const CALIN_API_V1_ENV_KEYS = [
+  'CALIN_API_V1_URL',
+  'CALIN_API_V1_COMPANY_NAME',
+  'CALIN_API_V1_ADMIN_USERNAME',
+  'CALIN_API_V1_ADMIN_PASSWORD',
+  'CALIN_API_V1_POS_USERNAME',
+  'CALIN_API_V1_POS_PASSWORD',
+  'CALIN_API_V1_MAINTENANCE_USERNAME',
+  'CALIN_API_V1_MAINTENANCE_PASSWORD',
+] as const;
+
+type CalinApiV1EnvKey = (typeof CALIN_API_V1_ENV_KEYS)[number];
+
+/**
+ * Read and validate {@link CALIN_API_V1_ENV_KEYS} from `process.env`.
+ *
+ * @returns Validated secrets
+ * @throws If any required key is missing or blank (`MISSING …`)
+ */
+export function loadCalinApiV1Secrets() {
+  const values = {} as Record<CalinApiV1EnvKey, string>;
+  const missing: CalinApiV1EnvKey[] = [];
+
+  for (const key of CALIN_API_V1_ENV_KEYS) {
+    const value = process.env[key];
+    if (value === undefined || value.trim() === '') {
+      missing.push(key);
+    }
+    else {
+      values[key] = value;
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `MISSING env for plugin "calin-api-v1": ${ missing.join(', ') }`,
+    );
+  }
+
+  return {
+    apiBaseUrl: values.CALIN_API_V1_URL,
+    companyName: values.CALIN_API_V1_COMPANY_NAME,
+    adminUsername: values.CALIN_API_V1_ADMIN_USERNAME,
+    adminPassword: values.CALIN_API_V1_ADMIN_PASSWORD,
+    posUsername: values.CALIN_API_V1_POS_USERNAME,
+    posPassword: values.CALIN_API_V1_POS_PASSWORD,
+    maintenanceUsername: values.CALIN_API_V1_MAINTENANCE_USERNAME,
+    maintenancePassword: values.CALIN_API_V1_MAINTENANCE_PASSWORD,
+  };
+}

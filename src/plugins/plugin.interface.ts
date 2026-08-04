@@ -76,8 +76,8 @@ export type PluginTuning = {
  * Hardware integration contract.
  *
  * Convention (not enforced by the type system):
- * - `PUSH` plugins implement `incoming.handle`
- * - `PULL` plugins implement `incoming.fetchStatus`
+ * - `PUSH` plugins implement `incoming.handle` and usually `outgoing.getRemoteStatus`
+ * - `PULL` plugins implement `incoming.fetchStatus` (no `getRemoteStatus`)
  */
 export type DeviceMessagingPlugin = {
   /** Unique, URL-safe id (e.g. `calin-chirpstack`). */
@@ -107,8 +107,11 @@ export type DeviceMessagingPlugin = {
   outgoing: {
     /** Send to the network server / vendor API. Returns external delivery id. */
     sendOne(message: DeviceMessage): Promise<string>;
-    /** Remote queue status (PUSH relay-node extension). */
-    getRemoteStatus(
+    /**
+     * Remote queue status (PUSH relay-node timeout extension).
+     * Optional — PULL plugins omit it.
+     */
+    getRemoteStatus?(
       message: DeviceMessage,
     ): Promise<{ deliveryStatus: string }> | { deliveryStatus: string };
     /** Map a thrown error into retry/fail context. */

@@ -37,7 +37,7 @@ The module as inherited is neither.
 | Runtime | `NXT_ENV` |
 | Redis | `HERMES_HOST`, `HERMES_PORT`, `HERMES_USERNAME`, `HERMES_PASSWORD` |
 | calin-lorawan | `CHIRPSTACK_API_URL`, `CHIRPSTACK_API_TOKEN`, `CHIRPSTACK_APPLICATION_ID`, `CHIRPSTACK_PROFILE_ID`, `CHIRPSTACK_APP_KEY` |
-| calin-api-v1 | `CALIN_V1_API`, `CALIN_V1_COMPANY_NAME`, `CALIN_V1_ADMIN_USERNAME`, `CALIN_V1_ADMIN_PASSWORD`, `CALIN_V1_POS_USERNAME`, `CALIN_V1_POS_PASSWORD`, `CALIN_V1_MAINTENANCE_USERNAME`, `CALIN_V1_MAINTENANCE_PASSWORD` |
+| calin-api-v1 | Legacy `CALIN_V1_*` → **this service** `CALIN_API_V1_*` (plugin-id aligned; Unit 7): `CALIN_API_V1_URL`, `CALIN_API_V1_COMPANY_NAME`, `CALIN_API_V1_ADMIN_USERNAME`, `CALIN_API_V1_ADMIN_PASSWORD`, `CALIN_API_V1_POS_USERNAME`, `CALIN_API_V1_POS_PASSWORD`, `CALIN_API_V1_MAINTENANCE_USERNAME`, `CALIN_API_V1_MAINTENANCE_PASSWORD` |
 | calin-api-v2 | `CALIN_V2_API`, `CALIN_V2_COMPANY_NAME`, `CALIN_V2_CUSTOMER_ID`, `CALIN_V2_ADMIN_USERNAME`, `CALIN_V2_PASSWORD`, `CALIN_V2_POS_PASSWORD` |
 | nxt-sts | `STS_GENERATOR_API` |
 
@@ -111,11 +111,12 @@ therefore safe to inline in an environment variable, serve from object storage, 
 
 ### 2. Secrets stay in environment variables, never in the artifact
 
-Credentials, API tokens, and the Redis connection remain environment-supplied, keyed by the
-existing per-plugin naming convention (`CHIRPSTACK_API_TOKEN`, `CALIN_V2_PASSWORD`,
-`CALIN_V1_ADMIN_PASSWORD`, …). Each plugin **declares the environment keys it needs, co-located
-with the plugin**, and validates them at its own registration point — `nxt-backend` ADR-007
-decision 9's two-layer model, unchanged.
+Credentials, API tokens, and the Redis connection remain environment-supplied, keyed by a
+per-plugin naming convention that matches the plugin id when practical
+(`CALIN_API_V1_ADMIN_PASSWORD` for `calin-api-v1`, `CHIRPSTACK_API_TOKEN`, … — legacy tiamat
+used shorter `CALIN_V1_*` / `CALIN_V2_*` prefixes). Each plugin **declares the environment
+keys it needs, co-located with the plugin**, and validates them at its own registration
+point — `nxt-backend` ADR-007 decision 9's two-layer model, unchanged.
 
 The result-webhook signing secret and the inbound API key are secrets and therefore env-supplied,
 while the webhook *URL* is topology and lives in the artifact.

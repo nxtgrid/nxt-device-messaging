@@ -8,11 +8,11 @@ import {
   isGenerateTokenType,
   isUnsolicitedCommand,
   UNSOLICITED_COMMAND_TYPES,
-} from '../../../src/lib/device-message/command-types.js';
+} from '#src/lib/device-message/command-types.js';
 import {
   createDeviceMessageSchema,
   generateTokenSchema,
-} from '../../../src/lib/device-message/schemas.js';
+} from '#src/lib/device-message/schemas.js';
 
 describe('command-types vocabulary', () => {
   it('keeps unsolicited out of enqueueable and generate-token sets', () => {

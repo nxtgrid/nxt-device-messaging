@@ -234,7 +234,7 @@ Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O par
 ## Example declarations (non-normative sketch)
 
 ```ts
-import { buildInitialQueueKey } from './initial-queue-key.js';
+import { buildInitialQueueKey } from './_shared/initial-queue-key.js';
 
 // calin-chirpstack
 {

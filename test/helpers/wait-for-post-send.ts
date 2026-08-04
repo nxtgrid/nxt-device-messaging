@@ -2,9 +2,9 @@
  * @fileoverview Shared poll helper for Redis smokes waiting on post-send status.
  */
 
-import type { OutgoingService } from '../../src/engine/outgoing.js';
-import type { DeviceMessage } from '../../src/lib/device-message/types.js';
-import { sleep } from '../../src/lib/utilities.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
+import type { DeviceMessage } from '#src/lib/device-message/types.js';
+import { sleep } from '#src/lib/utilities.js';
 
 /** Status after successful sendOne + NS → next-stage move. */
 export const POST_SEND_STATUS = 'DELIVERED_TO_NS' as const;

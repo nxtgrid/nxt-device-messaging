@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../../src/app.js';
-import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+import { buildApp } from '#src/app.js';
+import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 
 const enqueueBody = {

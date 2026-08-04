@@ -2,8 +2,8 @@
  * @fileoverview In-memory {@link IncomingService} for HTTP unit tests (no Valkey).
  */
 
-import type { IncomingService } from '../../src/engine/incoming.js';
-import type { DeviceMessagingPlugin } from '../../src/plugins/plugin.interface.js';
+import type { IncomingService } from '#src/engine/incoming.js';
+import type { DeviceMessagingPlugin } from '#src/plugins/plugin.interface.js';
 
 export type InMemoryIncomingServiceOptions = {
   /** Optional spy — called with the resolved plugin from the route. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../../src/app.js';
+import { buildApp } from '#src/app.js';
 
 describe('GET /healthz', () => {
   it('returns 200 with ok: true without engine services', async () => {

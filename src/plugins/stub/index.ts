@@ -6,16 +6,7 @@
  */
 
 import { ulid } from 'ulid';
-import { z } from 'zod';
 
-import type {
-  Admission,
-  DeliveryPattern,
-  DeviceMessagingPlugin,
-  InitialQueueKeyInput,
-  PluginTuning,
-} from '../plugin.interface.js';
-import { buildInitialQueueKey } from '../initial-queue-key.js';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import { ENQUEUEABLE_COMMAND_TYPES } from '../../lib/device-message/command-types.js';
 import type {
@@ -26,6 +17,15 @@ import type {
   ParsedIncomingEvent,
   PluginId,
 } from '../../lib/device-message/types.js';
+import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
+import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
+import type {
+  Admission,
+  DeliveryPattern,
+  DeviceMessagingPlugin,
+  InitialQueueKeyInput,
+  PluginTuning,
+} from '../plugin.interface.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -46,7 +46,7 @@ export const STUB_PULL_NODE_KIND = 'relayNode' as const;
 
 /**
  * Default stage timeouts / poll delay for stubs (legacy delivery defaults).
- * Config `plugins[].tuning` overrides via {@link mergeStubTuning}.
+ * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
  */
 export const STUB_DEFAULT_TUNING: PluginTuning = {
   nsInFlightTimeoutMs: 20_000,
@@ -54,33 +54,6 @@ export const STUB_DEFAULT_TUNING: PluginTuning = {
   deviceInFlightTimeoutMs: 12_000,
   initialPollDelayMs: 10_000,
 };
-
-/** Partial override shape for stub `plugins[].tuning` (unknown keys rejected). */
-const stubTuningOverrideSchema = z.object({
-  nsInFlightTimeoutMs: z.number().int().positive().optional(),
-  relayNodeInFlightTimeoutMs: z.number().int().positive().optional(),
-  deviceInFlightTimeoutMs: z.number().int().positive().optional(),
-  initialPollDelayMs: z.number().int().positive().optional(),
-}).strict();
-
-/**
- * Merge config tuning overrides onto {@link STUB_DEFAULT_TUNING}.
- *
- * @throws If `entry.tuning` has unknown keys or invalid values
- */
-export function mergeStubTuning(entry: PluginConfigEntry): PluginTuning {
-  if (entry.tuning === undefined) {
-    return STUB_DEFAULT_TUNING;
-  }
-
-  const parsed = stubTuningOverrideSchema.safeParse(entry.tuning);
-  if (!parsed.success) {
-    const detail = parsed.error.issues.map(issue => issue.message).join('; ');
-    throw new Error(`Invalid tuning for plugin "${ entry.id }": ${ detail }`);
-  }
-
-  return { ...STUB_DEFAULT_TUNING, ...parsed.data };
-}
 
 const STUB_PUSH_ADMISSION: Admission = {
   strategy: 'spacing',
@@ -153,10 +126,14 @@ export function createStubPlugin(options: {
       // Unique per send so parallel Redis smokes do not share one external-id index.
       return `stub-ext-${ ulid() }`;
     },
-    getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
-      return { deliveryStatus: 'QUEUED' };
-    },
     parseError: parseStubError,
+    ...(deliveryPattern === 'PUSH'
+      ? {
+        getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
+          return { deliveryStatus: 'QUEUED' };
+        },
+      }
+      : {}),
   };
 
   const incoming: DeviceMessagingPlugin['incoming'] =
@@ -197,7 +174,7 @@ export function createStubPushPlugin(entry: PluginConfigEntry): DeviceMessagingP
     deliveryPattern: 'PUSH',
     nodeKind: STUB_PUSH_NODE_KIND,
     admission: STUB_PUSH_ADMISSION,
-    tuning: mergeStubTuning(entry),
+    tuning: mergePluginTuning(STUB_DEFAULT_TUNING, entry),
   });
 }
 
@@ -208,6 +185,6 @@ export function createStubPullPlugin(entry: PluginConfigEntry): DeviceMessagingP
     deliveryPattern: 'PULL',
     nodeKind: STUB_PULL_NODE_KIND,
     admission: STUB_PULL_ADMISSION,
-    tuning: mergeStubTuning(entry),
+    tuning: mergePluginTuning(STUB_DEFAULT_TUNING, entry),
   });
 }

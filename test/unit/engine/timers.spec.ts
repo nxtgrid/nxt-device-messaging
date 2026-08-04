@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { IncomingService } from '../../../src/engine/incoming.js';
-import type { OutgoingService } from '../../../src/engine/outgoing.js';
+import type { IncomingService } from '#src/engine/incoming.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import {
   POLL_PULL_INTERVAL_MS,
   RESOLUTION_CYCLE_INTERVAL_MS,
   startEngineTimers,
-} from '../../../src/engine/timers.js';
+} from '#src/engine/timers.js';
 
 describe('startEngineTimers', () => {
   afterEach(() => {

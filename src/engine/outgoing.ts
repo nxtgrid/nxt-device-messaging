@@ -25,7 +25,7 @@ import type {
 import {
   buildConcurrencyRateLimitKey,
   getPluginIdFromInitialQueueKey,
-} from '../plugins/initial-queue-key.js';
+} from '../plugins/_shared/initial-queue-key.js';
 import type {
   DeviceMessagingPlugin,
   DistributeCtx,

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createTokenService } from '../../../src/engine/token.js';
-import type { PluginRegistry } from '../../../src/plugins/registry.js';
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
+import { createTokenService } from '#src/engine/token.js';
+import type { PluginRegistry } from '#src/plugins/registry.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   createStubPushPlugin,
   STUB_PULL_ID,
   STUB_PUSH_ID,
   STUB_TOKEN_VALUE,
-} from '../../../src/plugins/stub/index.js';
+} from '#src/plugins/stub/index.js';
 
 const request = {
   pluginId: STUB_PUSH_ID,

@@ -4,7 +4,7 @@ import {
   buildConcurrencyRateLimitKey,
   buildInitialQueueKey,
   getPluginIdFromInitialQueueKey,
-} from '../../../src/plugins/initial-queue-key.js';
+} from '#src/plugins/_shared/initial-queue-key.js';
 
 describe('buildInitialQueueKey', () => {
   it('builds queue:{pluginId}:{kind}:{id}', () => {
