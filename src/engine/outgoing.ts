@@ -202,7 +202,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         const message = await redisRepo.getMessageById(messageId);
         if (message) {
           const plugin = registry.get(message.pluginId)!;
-          const extended = await maybeExtendMessageInGwQueue(messageId, message, plugin.outgoing, delivery);
+          const extended = await maybeExtendMessageInGwQueue(messageId, message, plugin, delivery);
           if (extended) continue;
         }
       }

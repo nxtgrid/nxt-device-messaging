@@ -15,6 +15,7 @@
  */
 
 import { decodeTime } from 'ulid';
+import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
 import { redisRepo } from './redis-repository/index.js';
 import { redisKeys } from './redis-repository/keys.js';
 import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.js';
@@ -29,14 +30,6 @@ const PULL_PATTERN_MAX_MESSAGE_AGE_MS = 48 * 60 * 60 * 1000; // 172_800_000
 export type MessageFullCleanupOptions = {
   inFlightQueueKeys?: readonly string[];
   concurrencyRateLimitKey?: string;
-};
-
-/**
- * Interim structural minimum for PULL status polling (Unit 4).
- * Deleted at Unit 6 in favour of `DeviceMessagingPlugin` / `plugin.incoming`.
- */
-export type PullIncoming = {
-  fetchStatus(message: DeviceMessage): Promise<ParsedIncomingEvent | null>;
 };
 
 /** Result of polling: a parsed event tied to its queue. */
@@ -70,15 +63,16 @@ function getNextPollDelay(messageAgeMs: number): number {
  * Returns parsed events for completed messages. Pending messages
  * have their next poll time updated internally.
  *
- * @param pluginId - Opaque plugin id (`queue_awaiting_task:{pluginId}`)
- * @param plugin - Plugin (or structural minimum with `fetchStatus`)
+ * @param plugin - PULL plugin (`incoming.fetchStatus`); no-op if missing
  * @returns Array of poll results to process
  */
 export async function pollAwaitingTasksFor(
-  pluginId: string,
-  plugin: PullIncoming,
+  plugin: DeviceMessagingPlugin,
 ): Promise<PollResult[]> {
-  const queueKey = redisKeys.queueAwaitingTask(pluginId);
+  const fetchStatus = plugin.incoming.fetchStatus;
+  if (!fetchStatus) return [];
+
+  const queueKey = redisKeys.queueAwaitingTask(plugin.id);
   const messageIds = await redisRepo.getMessagesDueForPolling(queueKey);
   const results: PollResult[] = [];
 
@@ -87,7 +81,7 @@ export async function pollAwaitingTasksFor(
     // Guard: message might have been cleaned up or moved by reaper
     if (!message?.deliveryQueueId) continue;
 
-    const parsedEvent = await plugin.fetchStatus(message);
+    const parsedEvent = await fetchStatus(message);
 
     if (!parsedEvent) {
       // Still pending - update next poll time based on message age

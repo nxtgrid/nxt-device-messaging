@@ -6,9 +6,6 @@
  * `OutgoingService.distributeToNetworkServers` (Unit 5.3 / D3).
  * Initial queues: {@link DeviceMessagingPlugin.initialQueueKey} + `buildInitialQueueKey`
  * (ADR-006 D1). Stage-timeout relocation (D5) is not here.
- *
- * Unit 4 interim facets (`PushIncoming` / `PushOutgoing` / `PullIncoming`) are deleted once
- * the engine types against this SPI.
  */
 
 import type {

@@ -9,28 +9,10 @@
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
+import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
 import { redisRepo } from './redis-repository/index.js';
-import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.js';
+import type { DeviceMessage } from './device-message/types.js';
 import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
-
-
-/**
- * Interim structural minimum for PUSH ingress (Unit 4).
- * Deleted at Unit 6 in favour of `DeviceMessagingPlugin` / `plugin.incoming`.
- */
-export type PushIncoming = {
-  handle(event: unknown): ParsedIncomingEvent | null;
-};
-
-/**
- * Interim structural minimum for GW remote-status checks (Unit 4).
- * Deleted at Unit 6 in favour of `DeviceMessagingPlugin` / `plugin.outgoing`.
- */
-export type PushOutgoing = {
-  getRemoteStatus(
-    message: DeviceMessage,
-  ): Promise<{ deliveryStatus: string }> | { deliveryStatus: string };
-};
 
 /** Result of a PUSH pattern timeout: a message that needs retryOrFail. */
 export type PushTimeoutResult = {
@@ -70,18 +52,18 @@ export async function getPushTimeouts(now: number): Promise<PushTimeoutResult[]>
  *
  * @param messageId - ULID of the message
  * @param message - The full message (already fetched by caller)
- * @param plugin - Plugin (or structural minimum with `getRemoteStatus`)
+ * @param plugin - Owning plugin (`outgoing.getRemoteStatus`)
  * @param deliveryConfig - Shared delivery knobs (GW timeout)
  * @returns true if timeout was extended, false if should proceed to retryOrFail
  */
 export async function maybeExtendMessageInGwQueue(
   messageId: string,
   message: DeviceMessage,
-  plugin: PushOutgoing,
+  plugin: DeviceMessagingPlugin,
   deliveryConfig: DeliveryConfig,
 ): Promise<boolean> {
   try {
-    const { deliveryStatus } = await plugin.getRemoteStatus(message);
+    const { deliveryStatus } = await plugin.outgoing.getRemoteStatus(message);
     if (deliveryStatus === 'DELIVERY_FAILED') return false;
   }
   catch (err) {

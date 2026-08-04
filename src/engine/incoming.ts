@@ -138,10 +138,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    */
   async function pollPullPlugins(): Promise<void> {
     for (const plugin of registry.getByDeliveryPattern('PULL')) {
-      const fetchStatus = plugin.incoming.fetchStatus;
-      if (!fetchStatus) continue;
-
-      const results = await pollAwaitingTasksFor(plugin.id, { fetchStatus });
+      const results = await pollAwaitingTasksFor(plugin);
       for (const { parsedEvent, queueKey } of results) {
         await _processIncomingEvent(parsedEvent, queueKey);
       }
