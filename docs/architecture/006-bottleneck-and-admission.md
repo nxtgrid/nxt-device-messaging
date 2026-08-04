@@ -1,20 +1,24 @@
-# ADR-006: Queue Bottleneck Keys and Admission Strategies
+# ADR-006: Initial Queue Keys and Admission Strategies
 
 **Date:** 2026-07-29
-**Status:** Accepted
+**Status:** Accepted — **Amendment (2026-07-31, session 18b):** D1 revised —
+embed `pluginId` in the initial-queue key via `buildInitialQueueKey`; SPI method
+renamed `bottleneckKey` → `initialQueueKey`. Boot-time `bottleneckKind` registry
+(session 18) **reverted**. See §1, § D1, and decisions-log session 18b.
 
-> How plugins declare *where* work is queued (topology → Redis key) and *whether* the
+> How plugins declare *where* work is queued (initial Redis key) and *whether* the
 > distributor may take the next message from that queue (admission). Replaces the frozen
 > module’s `redisKeys.queueInitial` branches and `distributeToNetworkServers` string-split on
 > `lorawan_network` / `gateway`. Complements `deliveryPattern: 'PUSH' | 'PULL'` (Unit 6) —
 > delivery pattern is *how confirmation works after send*; admission is *how hard we hit the
-> bottleneck before/while sending*.
+> constrained node before/while sending*.
 
-**Read this when:** touching `bottleneckKey`, distribute/admission, initial queue keys,
-`messageFullCleanup` queue lists, plugin SPI (Unit 6), or LoRaWAN/DCU rate limiting.
+**Read this when:** touching `initialQueueKey`, `buildInitialQueueKey`, distribute/admission,
+initial queue keys, `messageFullCleanup` queue lists, plugin SPI (Unit 6), or LoRaWAN/DCU
+rate limiting.
 **Related:** this repo ADR-001 (plain-object plugins), ADR-002 (plugin tuning via config),
 `nxt-backend` ADR-001 (PUSH/PULL divergence; adapter-declared constraints),
-`nxt-backend` ADR-010 (plugin `bottleneckKey` sketch).
+`nxt-backend` ADR-010 (plugin queue-key sketch; historically named `bottleneckKey`).
 
 ---
 
@@ -26,15 +30,15 @@ In the frozen source (`db5c2ac`):
    (`queue:lorawan_network:{grid|unassigned}` vs `queue:gateway:{id}`).
 2. **`distributeToNetworkServers`** parses those keys (`split(':')`) and branches policy:
    LoRaWAN → time lock (flood spacing); gateway → concurrency cap + claim slot.
-3. That conflates **topology naming**, **admission policy**, and **PUSH/PULL delivery** into
-   core string matching — fine for a company built-in, hostile to an OSS plugin surface.
+3. That conflates **human topology labels**, **admission policy**, and **PUSH/PULL delivery**
+   into core string matching — fine for a company built-in, hostile to an OSS plugin surface.
 
-Real topologies (why two policies exist):
+Real constraints (why two admission policies exist):
 
-| Topology | Example plugin | Constraint | Queue bucket | Admission today |
+| Admission node | Example plugin | Constraint | Queue bucket | Admission today |
 |---|---|---|---|---|
-| Radio network (any GW) | `calin-chirpstack` | Don’t flood the network | Per `network_id` (or `unassigned`) | Spacing / flood lock (~2s) |
-| Meter pinned to one DCU | `calin-api-v1` / `v2` | Don’t overload the DCU / vendor API | Per DCU (`gateway.id` in legacy) | Concurrency cap (e.g. 5) + track set |
+| Radio network (any GW) | `calin-chirpstack` | Don’t flood the network | Per `networkId` (or `unassigned`) | Spacing / flood lock (~2s) |
+| Meter pinned to one DCU | `calin-api-v1` / `v2` | Don’t overload the DCU / vendor API | Per DCU (`gateway.id` in legacy) | Concurrency cap (e.g. 5) + rate-limit key |
 
 Hard cutover (no dual-write Redis) lets us change key ownership and distributor shape without
 migrating live queues.
@@ -43,30 +47,38 @@ migrating live queues.
 
 ## Decisions (locked)
 
-### 1. Plugins own `bottleneckKey(message) → string`
+### 1. Plugins own `initialQueueKey({ networkId, device }) → string`
 
-Each plugin returns the full Redis initial-queue key for a message. Core **does not** port
-`queueInitial` and **does not** branch on manufacturer/protocol/`pluginId` to build that key.
+Each plugin returns the full Redis **initial-queue** key from topology inputs only
+(`networkId` + `device`, incl. DCU/gateway) — not the full create DTO. Core **does not**
+port `queueInitial` and **does not** branch on manufacturer/protocol to build that key.
 
-**Naming convention** (documentation only — not a core parse protocol):
+Plugins **should** build keys with the shared helper (arguments document the segments):
 
-```text
-queue:{bottleneckKind}:{bottleneckId}
+```ts
+buildInitialQueueKey(pluginId, kind, id) → `queue:{pluginId}:{kind}:{id}`
 ```
+
+| Segment | Role |
+|---|---|
+| `pluginId` | Owning plugin — **only** segment distribute parses for `registry.get` |
+| `kind` | Human label for the admission node (`network`, `gateway`, `dcu`, …) — not policy |
+| `id` | Instance of that node (`42`, `unassigned`, …) — partitions the bucket |
 
 Examples:
 
 | Plugin | Situation | Key |
 |---|---|---|
-| `calin-chirpstack` | Network `42` | `queue:lorawan_network:42` |
-| `calin-chirpstack` | `network_id: null` | `queue:lorawan_network:unassigned` |
-| `calin-api-v1` | DCU / gateway `7` | `queue:gateway:7` (or `queue:dcu:7` — **plugin vocabulary**) |
+| `calin-chirpstack` | Network `42` | `queue:calin-chirpstack:network:42` |
+| `calin-chirpstack` | `networkId: null` | `queue:calin-chirpstack:network:unassigned` |
+| `calin-api-v1` | DCU / gateway `7` | `queue:calin-api-v1:gateway:7` (or `…:dcu:7`) |
 
-`{bottleneckKind}` and id encoding are **plugin-owned**. Core must not switch on
-`lorawan_network` vs `gateway`. Renaming `gateway` → `dcu` is a plugin concern only.
+Core must **not** switch on `kind` for admission or PUSH/PULL. `kind` vocabulary
+(`gateway` vs `dcu`) is plugin-local (see D4).
 
-`enqueueDeviceMessage(dto, queueKey)` already takes the key from the caller; the caller becomes
-`plugin.bottleneckKey(dto)` once the registry exists (Unit 5/6).
+The SPI name is **`initialQueueKey`** (agnostic): it is the Redis sorted set we enqueue into
+before distribute. The physical “bottleneck / admission node” story lives in the key
+segments and in `admission`, not in the method name.
 
 ### 2. Admission is declared with named strategies (+ custom escape hatch)
 
@@ -77,12 +89,7 @@ defaults, overridable via ADR-002 config.
 ```ts
 type Admission =
   | { strategy: 'spacing'; minIntervalMs: number }
-  | {
-      strategy: 'concurrency';
-      maxInFlight: number;
-      /** Redis set of in-flight message ids; default may derive from queueKey inside the plugin. */
-      trackKey?: (queueKey: string) => string;
-    }
+  | { strategy: 'concurrency'; maxInFlight: number }
   | {
       strategy: 'custom';
       canDistribute: (ctx: DistributeCtx) => Promise<boolean>;
@@ -93,26 +100,30 @@ type Admission =
 
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
-| `spacing` | `lockQueueForTimeMs` on the bottleneck queue before pick | Network flood control (LoRaWAN-like) |
-| `concurrency` | SCARD/SADD rate-limit set; validate+clean when at cap; claim after pick; release on cleanup/retry/fail | DCU / API concurrency (CALIN API-like) |
-| `custom` | Plugin-supplied hooks | Third topology that doesn’t fit the two primitives |
+| `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
+| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim after pick; release on cleanup/retry/fail (`concurrencyRateLimitKey`) | DCU / API concurrency (CALIN API-like) |
+| `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
-then shared `pickNextAndMoveToNs`. **No** `if (queueType === 'lorawan_network')` in core.
+then shared `pickNextAndMoveToNs`. **No** `if (kind === 'network')` in core.
 
-Any key parsing needed for `trackKey` lives in the **plugin** (or a helper the plugin opts
-into), not in the distributor’s topology switch.
+**Concurrency rate-limit key (session 19):** the admission node is already the initial-queue
+partition. Core derives
+`queue:{pluginId}:{kind}:{id}` → `rate_limit:{pluginId}:{kind}:{id}` via
+`buildConcurrencyRateLimitKey` — plugins do **not** supply a key builder. A different grain
+than the queue partition is `custom` admission.
 
 ### 3. `deliveryPattern` stays separate
 
 `deliveryPattern: 'PUSH' | 'PULL'` (Unit 6) answers post-send confirmation (webhook stages vs
-poll `queue_awaiting_task:{pluginId}`). It is **not** inferred from bottleneck kind and is
-**not** a substitute for admission.
+poll `queue_awaiting_task:{pluginId}`). It is **not** inferred from the initial-queue key and
+is **not** a substitute for admission.
 
 ### 4. Core stays agnostic of which plugins exist
 
-No core constants listing plugin ids, PULL ids, or bottleneck kinds. Enabled plugins come from
-config (ADR-002); each declares `bottleneckKey`, `admission`, and `deliveryPattern`.
+No core constants listing plugin ids, PULL ids, or admission-node kind vocabularies. Enabled
+plugins come from config (ADR-002); each declares `initialQueueKey`, `admission`, and
+`deliveryPattern`.
 
 ---
 
@@ -123,30 +134,33 @@ runs.
 
 ### D1 — How distribute maps `queueKey` → `pluginId`
 
-**Open.** Two candidates (pick at Unit 5/6, not earlier unless blocked):
+**Decided (2026-07-31, revised session 18b): embed `pluginId` in the key.**
 
-| Option | Idea | Pros | Cons |
-|---|---|---|---|
-| **A. Enqueue-time Redis map** | `HSET queue_owner {queueKey} {pluginId}` (or richer set member) | Exact ownership; kinds need not be globally unique | Extra Redis write; must GC owner entries; schema change |
-| **B. Boot-time kind registry** | Plugin registers `bottleneckKind`; distribute splits once for **lookup only** | No per-enqueue owner write | Kinds must be unique across enabled plugins; disabled plugin leaves ambiguous queues |
+| Option | Idea | Outcome |
+|---|---|---|
+| A. Enqueue-time Redis owner map | `HSET queue_owner {queueKey} {pluginId}` | Rejected for now (extra write + GC) |
+| B. Boot-time kind registry | Plugin declares `bottleneckKind`; unique kinds among enabled plugins | **Reverted** (session 18) — extra SPI + uniqueness for little gain |
+| **C. `pluginId` in key (chosen)** | `buildInitialQueueKey` → `queue:{pluginId}:{kind}:{id}`; parse segment 2 | No kind index; V1/V2 naturally get separate buckets |
 
-**Design criteria when choosing:**
+**Locked behaviour:**
 
-1. Core still must not branch on topology for *policy* — lookup may parse kind **only** to
-   find the plugin, never to choose spacing vs concurrency.
-2. Prefer correctness when two plugins could theoretically share a kind string → bias **A**.
-3. Prefer minimal Redis surface if kinds are guaranteed unique by convention → **B** may win.
-4. Hard cutover: either option is allowed; no dual-write migration story required.
-5. Document the choice in the decisions log the session it lands; update this ADR’s Status
-   note or add an amendment bullet.
+1. Plugins implement `initialQueueKey` using `buildInitialQueueKey(plugin.id, kind, id)`.
+2. Distribute: `getPluginIdFromInitialQueueKey(queueKey)` → `registry.get(pluginId)`.
+   Parse is lookup-only — **never** chooses admission or PUSH/PULL.
+3. Human `kind` is for operators reading Redis; admission id/partition is the full key
+   (and thus the `id` among peers of that plugin).
+4. Legacy shapes (`queue:lorawan_network:…`, `queue:gateway:…`) are not preserved — hard
+   cutover. CALIN V1 and V2 no longer share one `queue:gateway:{id}` ZSET; each plugin has
+   its own `queue:{pluginId}:…` buckets (acceptable).
 
-**Interim (until D1 lands):** none required for Unit 2 (no distributor yet).
+**Interim:** helper + SPI landed; distribute wiring is D3 / Unit 5.3.
 
 ### D2 — `messageFullCleanup` and the set of in-flight queue keys
 
 **Agreed direction:** Redis repo does not hardcode `PUSH_QUEUE_KEYS` /
 `PULL_PATTERN_IMPLEMENTATIONS`. Cleanup accepts (or later resolves) the list of queue keys to
-`ZREM`, plus correlation/external indexes and optional concurrency track key from the message.
+`ZREM`, plus correlation/external indexes and optional `concurrencyRateLimitKey` from the
+caller (`buildConcurrencyRateLimitKey(initialQueueKey)` — not a field on the message).
 
 **Design criteria when exploring (Unit 5 with Unit 6 registry):**
 
@@ -159,21 +173,33 @@ runs.
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys: string[] })` (name may
-vary). Callers in Unit 5+ supply the list; registry may build it later.
+**Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys?, concurrencyRateLimitKey? })`.
+Defaults cover known stage keys + `queue_awaiting_task:{pluginId}`; concurrency membership is
+**only** cleared when the caller passes `concurrencyRateLimitKey` (from
+`buildConcurrencyRateLimitKey(initialQueueKey)`). Callers in Unit 5+ must pass the full scrub
+set; registry may build it later. Full exit-path audit (retry queue, initial queues, cancel)
+is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 
-**When:** Unit 5 (engine) + Unit 6 (plugin interface/registry).
-
-**Criteria:** implement named strategies as core primitives; plugins only declare; config tunes
-`minIntervalMs` / `maxInFlight` (ADR-002). Replace string-split policy in
-`distributeToNetworkServers` entirely.
+**Decided / landed (2026-08-01, session 19; sendOne 2026-08-02 session 20):**
+`OutgoingService.distributeToNetworkServers` on
+`createOutgoingService({ registry, delivery, baseService })`
+runs named strategies (`spacing` / `concurrency` / `custom`); resolve plugin via D1-C.
+Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`) — no
+SPI `rateLimitKey`. After pick: fire-and-forget `sendOne` + PUSH|PULL post-send moves;
+send-fail passes `concurrencyRateLimitKey` when admission is concurrency. Enqueue
+fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests). Cron /
+`engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics
 
-Whether CALIN API keys use `gateway` vs `dcu` in `{bottleneckKind}` is **plugin-local**. No
-core ADR needed unless two bundled plugins would collide under boot-time kind registry (D1-B).
+Whether CALIN API keys use `gateway` vs `dcu` as the human `kind` segment is **plugin-local**.
+No uniqueness constraint across plugins (unlike the reverted D1-B kind registry).
+
+Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O parent. That does
+**not** force the Redis `kind` segment to be `relayNode`; plugins still choose `dcu` /
+`gateway` / etc. for admission keys.
 
 ---
 
@@ -182,20 +208,24 @@ core ADR needed unless two bundled plugins would collide under boot-time kind re
 | Unit | Implication |
 |---|---|
 | **2** Redis + Lua | Port generic key builders; **omit `queueInitial`**. Rename indexes/fields per ADR-003. `queueAwaitingTask(pluginId)`. Parameterize cleanup queue list (D2 interim). `REDIS_*`, Ramda, local Lua. **Do not** implement owner hash or admission engine yet. |
-| **3–4** | Queue stage keys (`QUEUE_NS_KEY`, PUSH gw/device, PULL awaiting) stay; no topology parse. |
-| **5** | `distribute` uses plugin admission (D3); needs D1 mapping choice. |
-| **6** | SPI: `bottleneckKey`, `admission`, `deliveryPattern`, plus send/incoming/token as already planned. |
-| **7–9** | Each plugin supplies concrete `bottleneckKey` + `admission` (`spacing` vs `concurrency`). |
+| **3–4** | Queue stage keys (`QUEUE_NS_KEY`, PUSH gw/device, PULL awaiting) stay; no topology parse for policy. |
+| **5** | `distribute` uses plugin admission (D3); D1-C parse → `registry.get`. |
+| **6** | SPI: `initialQueueKey`, `admission`, `deliveryPattern`, plus send/incoming/token as already planned. |
+| **7–9** | Each plugin supplies concrete `initialQueueKey` (via helper) + `admission`. |
 
 ---
 
 ## Rejected
 
-- **Keep parsing `lorawan_network` / `gateway` in core forever** — encodes company topology in
-  the OSS core.
+- **Keep parsing `lorawan_network` / `gateway` in core for policy** — encodes company topology
+  in the OSS core.
+- **Boot-time `bottleneckKind` registry (session 18 D1-B)** — solved lookup with extra SPI and
+  global kind uniqueness; superseded by embedding `pluginId` in the key.
 - **Every plugin must hand-write `canDistribute` / `onClaim`** — duplicates the two known
   primitives; named strategies are the default, `custom` is the escape hatch.
-- **Infer admission or PUSH/PULL from the queue key middle segment** — same smell as today.
+- **SPI `rateLimitKey` / `trackKey` on concurrency admission** — the initial-queue key already
+  identifies the admission node; `buildConcurrencyRateLimitKey` derives the Redis key.
+- **Infer admission or PUSH/PULL from the human `kind` segment** — same smell as legacy.
 - **Core `BUNDLED_PLUGIN_IDS` / `PULL_PATTERN_IMPLEMENTATIONS`** — already rejected in Unit 1;
   reinforced here.
 
@@ -204,24 +234,27 @@ core ADR needed unless two bundled plugins would collide under boot-time kind re
 ## Example declarations (non-normative sketch)
 
 ```ts
+import { buildInitialQueueKey } from './initial-queue-key.js';
+
 // calin-chirpstack
 {
   id: 'calin-chirpstack',
   deliveryPattern: 'PUSH',
-  bottleneckKey: (m) =>
-    `queue:lorawan_network:${m.network_id == null ? 'unassigned' : m.network_id}`,
+  initialQueueKey: (m) =>
+    buildInitialQueueKey(
+      'calin-chirpstack',
+      'network',
+      m.networkId == null ? 'unassigned' : String(m.networkId),
+    ),
   admission: { strategy: 'spacing', minIntervalMs: 2_000 },
 }
 
-// calin-api-v1
+// calin-api-v1 — concurrency rate-limit key is derived from the initial queue key
 {
   id: 'calin-api-v1',
   deliveryPattern: 'PULL',
-  bottleneckKey: (m) => `queue:gateway:${m.device.gateway!.id}`,
-  admission: {
-    strategy: 'concurrency',
-    maxInFlight: 5,
-    trackKey: (queueKey) => `rate_limit:gateway:${queueKey.split(':')[2]}`,
-  },
+  initialQueueKey: (m) =>
+    buildInitialQueueKey('calin-api-v1', 'dcu', String(m.device.relayNode!.id)),
+  admission: { strategy: 'concurrency', maxInFlight: 5 },
 }
 ```

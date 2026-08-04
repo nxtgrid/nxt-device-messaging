@@ -46,7 +46,8 @@ ADR-001 already cleared the path to esbuild.
 
 ### 4. Vitest for tests
 
-Native TypeScript/ESM, no Jest or Nx test harness. Fits ADR-002's `setConfig(testConfig)`
+Native TypeScript/ESM, no Jest or Nx test harness. Config resolution tests call `loadConfig`
+directly; domain tests pass fixtures / `createPluginRegistry` without importing `runtime`.
 override pattern and Fastify's usual greenfield choice.
 
 ### 5. ESLint only — house `teamRules`, adapted; no formatter product
@@ -103,7 +104,7 @@ tool.
 ## Related
 
 - **ADR-001** — Fastify + Zod; build tool left open; no Nx.
-- **ADR-002** — config; tests override via `setConfig`.
+- **ADR-002** — config; boot via `runtime.ts`; tests use `loadConfig` / injected fixtures.
 - **ADR-003** — HTTP contract; no tooling collision.
 - **`nxt-backend` ADR-006** — estate monorepo toolchain this repo deliberately does not inherit.
 - **ADR-005** — Dockerfile, compose, CI/GHCR, metrics, health (closed Decision 9).

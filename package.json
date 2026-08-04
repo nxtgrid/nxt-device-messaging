@@ -16,22 +16,27 @@
   },
   "scripts": {
     "prepare": "husky",
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsup",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "RUN_REDIS_SMOKE=1 vitest run --fileParallelism=false test/integration",
     "test:watch": "vitest"
   },
   "private": true,
   "dependencies": {
     "fastify": "^5.10.0",
+    "iovalkey": "^0.4.0",
+    "ramda": "^0.32.0",
+    "ulid": "^3.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^24.10.1",
+    "@types/ramda": "^0.32.0",
     "eslint": "^9.39.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",

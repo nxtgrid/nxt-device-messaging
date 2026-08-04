@@ -1,0 +1,112 @@
+# Command API smoke — Bearer from `.httpyac.cjs` `apiKey` (keep in sync with `.env`).
+
+### Enqueue stub-push
+# @name enqueueStubPush
+POST {{baseUrl}}/message/enqueue
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "commandType": "READ_CREDIT",
+  "priority": 1,
+  "pluginId": "stub-push",
+  "networkId": 42,
+  "correlationId": "httpyac-demo-1",
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-1"
+  }
+}
+
+### GET by correlationId (fixed)
+GET {{baseUrl}}/message/httpyac-demo-1
+Authorization: Bearer {{apiKey}}
+
+### GET by correlationId (from enqueue response)
+# @ref enqueueStubPush
+GET {{baseUrl}}/message/{{enqueueStubPush.correlationId}}
+Authorization: Bearer {{apiKey}}
+
+### Cancel one (from enqueue — expect CANCELLED)
+# @ref enqueueStubPush
+# @name cancelOne
+POST {{baseUrl}}/message/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationId": "httpyac-demo-1"
+}
+
+### Cancel missing (expect NOT_FOUND)
+POST {{baseUrl}}/message/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationId": "httpyac-missing"
+}
+
+### Enqueue for batch cancel
+# @name enqueueForBatch
+POST {{baseUrl}}/message/enqueue
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "commandType": "READ_CREDIT",
+  "priority": 1,
+  "pluginId": "stub-push",
+  "networkId": 42,
+  "correlationId": "httpyac-batch-1",
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-batch"
+  }
+}
+
+### Cancel many
+# @ref enqueueForBatch
+POST {{baseUrl}}/messages/cancel
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "correlationIds": ["{{enqueueForBatch.correlationId}}", "httpyac-missing"]
+}
+
+### Ingress stub-push (no Bearer — body is stub ParsedIncomingEvent shape)
+# After distribute/sendOne, copy deliveryQueueId from GET /message/:correlationId
+# (stub returns a unique stub-ext-<ulid> per send).
+POST {{baseUrl}}/ingress/stub-push
+Content-Type: application/json
+
+{
+  "deliveryQueueId": "stub-ext-REPLACE_ME",
+  "deliveryStatus": "DELIVERY_SUCCESSFUL",
+  "device": {
+    "type": "ELECTRICITY_METER",
+    "externalReference": "m-1"
+  },
+  "response": {
+    "status": "EXECUTION_SUCCESS"
+  }
+}
+
+### Generate token (stub-push)
+POST {{baseUrl}}/token/generate
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "pluginId": "stub-push",
+  "type": "TOP_UP_KWH",
+  "issueDateString": "2026-08-03",
+  "device": {
+    "externalReference": "m-1",
+    "decoderKey": "deadbeef"
+  },
+  "payload": {
+    "kwh": 10
+  }
+}

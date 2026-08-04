@@ -15,7 +15,7 @@ const engineSchema = z.object({
 }).strict();
 
 const resultWebhookSchema = z.object({
-  url: z.string().url(),
+  url: z.url(),
 }).strict();
 
 /**
@@ -44,3 +44,6 @@ export const deviceMessagingConfigSchema = z.object({
 }).strict();
 
 export type DeviceMessagingConfig = z.infer<typeof deviceMessagingConfigSchema>;
+
+/** Shared delivery-engine knobs (`config.delivery`) — retry / TTL only after D5. */
+export type DeliveryConfig = DeviceMessagingConfig['delivery'];

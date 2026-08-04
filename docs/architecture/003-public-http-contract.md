@@ -1,7 +1,10 @@
 # ADR-003: Public HTTP Contract
 
 **Date:** 2026-07-27
-**Status:** Accepted
+**Status:** Accepted — amended 2026-07-30 (command API + domain + Redis hash fields =
+camelCase; Redis key paths + Lua locals = snake_case); amended 2026-08-03 (Unit 6.1:
+service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
+amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -51,26 +54,37 @@ Cancel uses POST (not DELETE) so single and batch share one verb family and carr
 body. Soft-document an upper bound on batch size (on the order of hundreds); the port may
 MGET-optimise lookups for large batches. Message-bus delivery remains **deferred**.
 
-### 2. Full-pipeline field renames
+### 2. Field vocabulary (names) and wire casing
 
-These names are used everywhere — HTTP, Redis hash fields, indexes, logs — not only at the
-boundary:
+**Vocabulary** (same words HTTP ↔ Redis ↔ logs — not a Postgres constraint):
 
 | Inherited | Here |
 |---|---|
-| `meter_interaction_id` | `correlation_id` (opaque string, caller-supplied) |
-| `grid_id` | `network_id` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
-| `message_type` | `command_type` (opaque string to the core; see decision 4) |
+| `meter_interaction_id` | `correlationId` (opaque string, caller-supplied) |
+| `grid_id` | `networkId` (`number \| null`; null → LoRaWAN `unassigned` bucket) |
+| `message_type` | `commandType` (service-owned closed set; see decision 4) |
 
 Aligns with `nxt-backend` ADR-010 decision 4 and with estate vocabulary in ADR-011
-(`command_type` on `meter_command_batches`).
+(`command_type` on `meter_command_batches` — that column name stays on the estate DB).
+
+**Wire JSON, in-process domain types, and Redis hash fields are camelCase**
+(`correlationId`, `commandType`, `networkId`, `externalReference`, `deliveryStatus`, …).
+Path params match (`:correlationId`).
+
+**Redis key paths and Lua locals are snake_case** (keyspace / script style), with `:` as
+the segment separator — e.g. `device_message:{id}`, `idx:correlation_id:…`,
+`idx:external_delivery_id:…`. Hash field names stay on the camelCase side of that divide
+(they are the serialized JS object).
+
+Estate Postgres columns (e.g. ADR-011 `command_type`) are unrelated and stay snake_case
+on `nxt-backend`.
 
 ### 3. Caller selects the plugin via `pluginId`
 
 `device.manufacturer` + `device.protocol` are dropped from the public contract. The caller
 passes a required `pluginId`. The service routes enqueue, token generation, and ingress by
-that id. `device` on the wire is identity only (`type`, `external_reference`, optional
-`gateway`).
+that id. `device` on the wire is identity only (`type`, `externalReference`, optional
+`relayNode` — generic I/O parent for gateway / DCU / mesh hop; see D6).
 
 Bundled plugin ids (kebab-case, manufacturer + network server where both matter):
 
@@ -84,18 +98,41 @@ Bundled plugin ids (kebab-case, manufacturer + network server where both matter)
 A message or token request for a plugin that is not enabled fails that request clearly
 (ADR-002 decision 6); the process does not crash.
 
-### 4. `command_type` is a string to the core; plugins close the set
+### 4. Service-owned command vocabulary; plugins declare a subset
 
-The engine treats `command_type` as opaque. Each plugin declares the commands it accepts and
-validates on enqueue / token generate (400 on unknown type or invalid payload for that type).
-Bundled plugins keep concrete TypeScript unions locally. This preserves the single-file-plugin
-goal: a third-party plugin is not forced into the CALIN/NXT command vocabulary, and adding a
-command does not require a core change.
+The service owns a closed `CommandType` set (parity with estate
+`meter_interaction_type_enum` — reads / controls / writes / token commands / unsolicited).
+Wire validation:
 
-### 5. Inbound auth on the command API: static API key
+| Surface | Closed by |
+|---|---|
+| `POST /message/enqueue` `commandType` | `ENQUEUEABLE_COMMAND_TYPES` (excludes unsolicited) |
+| `POST /token/generate` `type` | `GENERATE_TOKEN_TYPES` (no `DELIVER_PREEXISTING_TOKEN`) |
+| Incoming / unsolicited | Full `COMMAND_TYPES` (incl. `READ_REPORT`, `JOIN_NETWORK`) |
 
-`POST /message/*`, `GET /message/*`, `POST /messages/*`, and `POST /token/*` require
-`Authorization: Bearer <key>` validated against `DEVICE_MESSAGING_API_KEY`.
+Each plugin declares `supportedCommandTypes` (a subset of enqueueable types). Enqueue checks
+enablement, then membership (400 via `UnsupportedCommandTypeError`). Per-type payload Zod
+stays plugin-local when adapters need it.
+
+**Amendment (2026-08-03):** replaces the earlier “opaque string; plugins close the set”
+wording. The product vocabulary is shared; third-party adapters either use it or we reopen
+the wire later. Adding a command is a one-file change in
+`src/lib/device-message/command-types.ts`, not a core engine change.
+
+Deliberate drift from the estate enum: this service uses `TOP_UP_KWH` where Postgres
+still has `TOP_UP` (kWh credit). Cutover maps at the `nxt-backend` boundary; a future
+currency top-up would add a new value rather than overloading the name.
+
+### 5. Inbound auth on the command API: static API key (opt-in)
+
+Command routes (`POST /message/*`, `GET /message/*`, `POST /messages/*`, `POST /token/*`)
+authenticate with a static Bearer key when configured:
+
+- **Key set:** require `Authorization: Bearer <key>` validated against
+  `DEVICE_MESSAGING_API_KEY`.
+- **Key unset/empty:** no inbound auth on those routes (local / quick-start, or an
+  operator choice such as private network or reverse-proxy auth). Does not fail boot or
+  skip route registration.
 
 `POST /ingress/:pluginId` does **not** use that key. Each plugin may declare
 `verifySignature`; opt-out is allowed (ChirpStack HTTP integrations typically have no HMAC).
@@ -112,10 +149,10 @@ Config: URL in the artifact (`resultWebhook.url`, ADR-002); signing secret in en
 Same set as today's `publish()` — with room to add transitions later without breaking
 consumers that ignore unknown statuses:
 
-1. First handoff to the network server (`SENT_TO_NS`, only when `retry_count` is 0)
+1. First handoff to the network server (`SENT_TO_NS`, only when `retryCount` is 0)
 2. Terminal success (`DELIVERY_SUCCESSFUL`)
 3. Terminal failure (`DELIVERY_FAILED`, including max-retries and PULL age timeout)
-4. Unsolicited uplinks (no `correlation_id`)
+4. Unsolicited uplinks (no `correlationId`)
 
 Mid-pipeline GW ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events today and
 do not in v1.
@@ -130,13 +167,13 @@ do not in v1.
   message: {
     id?: string;         // device-message ULID; may be absent for pure unsolicited
     correlationId?: string; // absent ⇒ unsolicited
-    commandType: string;
+    commandType?: string; // CommandType when present
     deliveryStatus: DeviceMessageDeliveryStatus;
     phase?: 'A' | 'B' | 'C';
     device: {
       type: string;
       externalReference: string;
-      gateway?: { id?: number; externalReference?: string; snr?: number; rssi?: number };
+      relayNode?: { id?: number; externalReference?: string; snr?: number; rssi?: number };
     };
     response?: {
       status: 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE';
@@ -148,9 +185,9 @@ do not in v1.
 }
 ```
 
-Wire JSON is **camelCase**. Queue internals (`delivery_queue_id`, `retry_count`, priority,
-`request_data`) are omitted from the webhook; `GET /message/:correlationId` may expose more
-for inspection.
+Wire JSON is **camelCase** (same as the command API). Queue internals (`deliveryQueueId`,
+`retryCount`, priority, `requestData`) are omitted from the webhook; `GET /message/:correlationId`
+may expose more for inspection.
 
 #### Signing (opt-in)
 
@@ -194,7 +231,8 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
   signed-opt-in callbacks.
 - Webhook durability is stronger than the stale plan's "single retry then drop," without a
   second queue product.
-- Plugin-scoped command validation keeps core hardware-agnostic.
+- Shared vocabulary + plugin subset keeps enqueue validation explicit without a per-plugin
+  wire dialect.
 - `calin-chirpstack` names the actual network server rather than over-claiming "LoRaWAN."
 
 ### Negative / Risks
@@ -211,8 +249,10 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
 
 - **Terminal-only webhooks** — would change `meter-interactions` PROCESSING behaviour;
   rejected in favour of parity with `publish()`.
-- **Core `command_type` enum** — couples core to CALIN/NXT vocabulary; breaks third-party
-  plugins.
+- ~~**Core `commandType` enum**~~ — **superseded 2026-08-03**: the service now owns
+  `CommandType` / `ENQUEUEABLE_COMMAND_TYPES` / `GENERATE_TOKEN_TYPES`; plugins declare
+  `supportedCommandTypes`. Fully opaque strings rejected for product parity with the estate
+  enum.
 - **Manufacturer + protocol on the wire** — split/rejoin dance; replaced by `pluginId`.
 - **Separate Redis DB for webhook state** — needless second client; many hosts only expose
   DB 0; key prefixes suffice.

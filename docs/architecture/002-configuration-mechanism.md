@@ -7,6 +7,18 @@
 > `nxt-backend` ADR-007"). `nxt-backend` ADR-007 decision 6 explicitly anticipated this:
 > *"When a capability (e.g. `device-messages`) is later extracted into its own service, that
 > config section travels with it."*
+>
+> **Amendment (2026-07-29):** Stage timeouts on shared `delivery.*` are an **interim** from
+> Phase 1 Unit 3 — see decision **D5** in `docs/decisions-log.md` and §5 below. End state:
+> only cross-plugin knobs stay on `delivery`; stage / poll delays live in plugin `tuning`.
+>
+> **Amendment (2026-07-30):** Access is via `src/runtime.ts` boot exports (`config`,
+> `pluginRegistry`), not `getConfig()` / `setConfig()`. See §4.
+>
+> **Amendment (2026-08-04):** D5 **names locked and implemented** (Unit 6.2) —
+> `nsInFlightTimeoutMs`, `relayNodeInFlightTimeoutMs`, `deviceInFlightTimeoutMs`,
+> `initialPollDelayMs` on `plugin.tuning`. PUSH mid-stage Redis key →
+> `queue_in_flight_to_relay_node` (was `…_to_gw`). Shared `delivery` is retry/TTL only.
 
 ---
 
@@ -37,8 +49,8 @@ The module as inherited is neither.
 | `CONFIG_QUEUE_GW.PROCESSING_TIMEOUT_MS` | 15min | `lib/queue-moving.push.ts` | push |
 | `CONFIG_QUEUE_DEVICE.PROCESSING_TIMEOUT_MS` | 12s | `lib/queue-moving.push.ts` | push |
 | `CONFIG_QUEUE_AWAITING_TASK.INITIAL_POLL_DELAY_MS` | 10s | `lib/queue-moving.pull.ts` | pull |
-| `PULL_MAX_CONCURRENT_PER_GATEWAY` | 5 | `lib/lifecycle.pull.ts` | pull |
-| `PULL_PATTERN_MAX_MESSAGE_AGE_MS` | 48h | `lib/lifecycle.pull.ts` | pull |
+| `PULL_MAX_CONCURRENT_PER_GATEWAY` | 5 | `lib/lifecycle.pull.ts` (legacy export; **not** ported to Unit 4 — ADR-006 admission) | pull |
+| `PULL_PATTERN_MAX_MESSAGE_AGE_MS` | 48h | `lib/lifecycle.pull.ts` (ported as Unit 4 module default; D5 → plugin `tuning`) | pull |
 | `LORAWAN_FLOOD_PREVENTION_WINDOW_MS` | 2s | `outgoing.service.ts` | plugin-specific, in a shared file |
 | `MAX_RETRIES` / base / multiplier / cap | 11 / 2s / ×2 / 1h | `lib/retry-helpers.ts` | shared |
 | `MESSAGE_TTL_SECONDS` | 7 days | `lib/redis-repository/index.ts` | shared |
@@ -87,10 +99,10 @@ therefore safe to inline in an environment variable, serve from object storage, 
   "plugins": [
     { "id": "calin-chirpstack",
       "settings": { "chirpstackUrl": "…", "applicationId": "…", "profileId": "…" },
-      "tuning":   { "nsTimeoutMs": 10000, "floodPreventionWindowMs": 2000 } },
+      "tuning":   { "nsInFlightTimeoutMs": 10000 } },
     { "id": "calin-api-v2",
       "settings": { "baseUrl": "…", "companyName": "…", "customerId": "…" },
-      "tuning":   { "nsTimeoutMs": 30000, "maxConcurrentPerGateway": 5 } }
+      "tuning":   { "nsInFlightTimeoutMs": 30000 } }
   ]
 }
 ```
@@ -125,13 +137,21 @@ Resolution follows `nxt-backend` ADR-007 decision 4's precedence, with service-l
 **`DEVICE_MESSAGING_CONFIG_JSON` (inline) → `DEVICE_MESSAGING_CONFIG_URL` (fetch) →
 `DEVICE_MESSAGING_CONFIG_PATH` (file) → bundled `config.default.json`.**
 
-At startup, before anything else is constructed: **resolve → `JSON.parse` → Zod `.parse()` →
-`Object.freeze` → `setConfig()`**. All code reads through a single global accessor `getConfig()`,
-which throws if called before the config is set. Tests override with `setConfig(testConfig)`.
+At startup (`src/runtime.ts`, top-level await): **resolve → `JSON.parse` → Zod `.parse()` →
+`Object.freeze` → export `config`**. The same module builds `pluginRegistry` from
+`config.plugins`. Call sites `import { config, pluginRegistry } from '../runtime.js'` and may
+bind values at module top level.
+
+**Import rule:** only composition / engine / HTTP import `runtime`. `lib/` helpers take the
+slices they need as arguments (e.g. `delivery`) so unit tests never pull boot I/O.
+
+`loadConfig()` remains a pure async function (returns the frozen config; no process-wide store).
+Tests of resolution call `loadConfig({ defaultConfigPath })` directly; tests of plugins call
+`createPluginRegistry([...])` without importing `runtime`.
 
 There is no DI container to inject a config service into (ADR-001 decision 2), so a frozen
-module-level object is simply the right primitive here — `nxt-backend` ADR-007's original
-justification applies with more force, not less.
+module-level binding from the boot module is the right primitive here — `nxt-backend` ADR-007's
+original justification applies with more force, not less.
 
 The repo ships the Zod schema, a documented `config.example.json`, and a minimal
 `config.default.json` that boots with no plugins enabled.
@@ -144,6 +164,22 @@ optional, and an operator who does not care writes nothing.
 
 This keeps the vendor knowledge (that CALIN needs ~30s and LoRaWAN ~10s) in the plugin that knows
 it, while leaving an operator free to tune for their own network.
+
+**Shared `delivery.*` vs plugin `tuning` (D5, locked 2026-07-29; names locked 2026-08-04):**
+
+| Stays on `delivery` (cross-plugin) | On `plugin.tuning` (Unit 6.2) |
+|---|---|
+| `maxRetries`, retry backoff knobs, `messageTtlSeconds` | `nsInFlightTimeoutMs` → `queue_in_flight_to_ns` |
+| | `relayNodeInFlightTimeoutMs` → `queue_in_flight_to_relay_node` (PUSH mid stage; was `gw*`) |
+| | `deviceInFlightTimeoutMs` → `queue_in_flight_to_device` (end meter) |
+| | `initialPollDelayMs` → first PULL poll |
+
+PULL max-age / poll-delay ladder stay module defaults until a real PULL plugin needs them.
+Concurrency caps stay on `admission` (ADR-006), not `tuning`.
+
+Unit 3 put stage timeouts on `delivery` before a registry existed. Unit 6.2 moves them to
+plugin `tuning` (defaults in code, config override) and drops those keys from core
+`delivery`. Queue helpers take knobs as arguments; they do not import `runtime`.
 
 ### 6. Honesty rules — fail fast, but degrade gracefully at runtime
 
@@ -205,7 +241,8 @@ instance name and has no meaning to an adopter.
 
 - Two configuration surfaces (artifact and env) means an operator must understand the split. The
   rule is simple — secrets in env, everything else in the artifact — but it is a rule to learn.
-- A global `getConfig()` singleton is less pure than injection; mitigated by `setConfig()` in tests.
+- Boot exports (`config` / `pluginRegistry`) are less pure than full parameter injection;
+  mitigated by keeping `lib/` free of `runtime` and injecting slices into helpers.
 - Boot stops at the first misconfigured plugin rather than reporting all of them. Accepted;
   aggregation is a future nicety.
 - Composing plugin schemas at runtime means the root config type is not fully static. The inferred

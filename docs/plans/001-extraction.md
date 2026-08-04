@@ -5,13 +5,15 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0 complete; Phase 1 in progress (Unit 1 done; ADR-006 locked before Unit 2)
+**Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Next: Phase 2 Unit 7**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
 plugin interface sketch) — but its phase order, framework assumptions, and several task descriptions
-are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 implements **ADR-003**,
-not the stale plan's Nest controllers.
+are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 is **ADR-003 polish**
+(webhook HMAC/DLQ, OpenAPI, auth); command/ingress routes land thin with the engine units that
+need them (same pattern as Intermezzo enqueue/get).
 
 ---
 
@@ -22,32 +24,42 @@ not the stale plan's Nest controllers.
 2. **The source is `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend`, frozen at
    `db5c2ac`.** Both repos are in the same Cursor workspace. Read the source, never a description
    of it.
-3. Port **one unit at a time**, in order. Each unit ends with the repo compiling. Stop after each
-   unit for review — do not run ahead.
-4. **Update the import ledger** as each file lands. The ledger, not git history, is the authoritative
-   record of what has been re-homed. A source file is only marked done when *every* behaviour in it
-   has a home.
-5. Record deviations — anything not a faithful port — in the decisions log with a reason.
+3. Port / implement **one chunk at a time**, in the order the plan currently states. Each chunk
+   ends with the repo compiling. Stop after each chunk for review — do not run ahead.
+4. **End-to-end rule (after Intermezzo):** each Unit 5 slice that has an ADR-003 **command or
+   ingress** surface ships **thin HTTP + httpYac smoke in the same chunk** (lean routes like
+   enqueue/get — not full OpenAPI/HMAC). Timer-only engine work (distribute, send, poll) has
+   **no** public route; exercise via bootable stub plugins + enqueue/get (and tests that may
+   invoke one tick). Do not invent a debug `POST /distribute` unless the maintainer asks.
+5. **Update the import ledger** as each legacy file lands. The ledger, not git history, is the
+   authoritative record of what has been re-homed. A source file is only marked done when *every*
+   behaviour in it has a home.
+6. Record deviations — anything not a faithful port — in the decisions log with a reason.
+7. **End-of-chunk ritual:** update `AGENTS.md` status, this plan’s checkboxes, and
+   `docs/decisions-log.md`; then write a **carry-over prompt** for the next fresh chat (done /
+   next / out of scope / who drives). Cold sessions must not need the prior transcript if those
+   three files + the prompt agree.
 
 ## Phases
 
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
-| **1** | Foundation + engine: units 1–6. Ends when the engine boots and cycles against a local Valkey | In progress (Unit 1 done) |
-| **2** | Adapters as plugins: units 7–10 (`calin-chirpstack`, `calin-api-v1`, `calin-api-v2`, `nxt-sts`) | Not started |
-| **3** | HTTP contract per **ADR-003**: enqueue/cancel/inspect, token, ingress, outbound webhook, auth, OpenAPI | Not started |
+| **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
+| **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
+| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-chirpstack`, `calin-api-v2`) | **Next: Unit 7** |
+| **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
-Phase 0 is **done**. Phase 1 (units 1–6) is next. Phase 3 is unblocked (**Decision 8 →
-ADR-003**). Phase 4 still owns the observability and hygiene pieces ADR-005 scopes there
-(metrics, pino sweep, CONTRIBUTING/README deploy notes) — CI/Docker stubs already landed in
-Phase 0.
+Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
+**Phase 1b is closed.** Next is **Phase 2 Unit 7** (`calin-api-v1`). Phase 4
+still owns ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) —
+CI/Docker stubs already in Phase 0.
 
 ## Port units
 
-Dependency-ordered, bottom-up. Adapters are ported **directly into plugin shape** — one pass, not
-port-then-convert (a deliberate merge of move-and-modify; the per-unit review is the control).
+Foundation was bottom-up; Intermezzo locked the outside-in path; **Unit 5.2+ resumes** with the
+end-to-end rule above. Adapters remain one-pass into plugin shape (per-unit review is the control).
 
 ### Phase 1
 
@@ -59,50 +71,122 @@ port-then-convert (a deliberate merge of move-and-modify; the per-unit review is
       shape, `device` identity-only (no manufacturer/protocol). **Not** in core: CALIN command
       predicates, `generateRandomNumber` / `toSafeNumberOrNull` (plugin units), or
       `PULL_PATTERN_IMPLEMENTATIONS` (plugins declare PUSH/PULL at registration — Unit 6).
-- [ ] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
+- [x] **Unit 2 — Redis repository and Lua. ⚠ Riskiest unit; review carefully.**
       `redis-repository/{index,keys,helpers}.ts` + the four files from
       `legacy/apps/tiamat/src/queries/lua/device-messages/`. Load the `.lua` files locally rather than
       via `@tiamat/queries`. `HERMES_*` → `REDIS_*` (ADR-002 §8). Full-pipeline field renames
       (ADR-003 §2) land here: `meter_interaction_id` → `correlation_id` (opaque **string**),
       `grid_id` → `network_id` (**`number | null`** — the `unassigned` LoRaWAN bucket must survive),
       `message_type` → `command_type`, and the index key prefix `idx:meter_interaction_id:` →
-      `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `bottleneckKey`);
+      `idx:correlation_id:`. **Per ADR-006:** omit `queueInitial` (plugins own `initialQueueKey`);
       `queueAwaitingTask(pluginId)`; `messageFullCleanup` takes `inFlightQueueKeys` (interim —
       see ADR-006 D2). No admission engine and no `queueKey → pluginId` map yet (D1/D3).
-- [ ] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
-      The hardcoded timeout/retry constants become config-backed with in-code defaults (ADR-002 §5).
-- [ ] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
-- [ ] **Unit 5 — Core engine, framework-stripped.** `device-messages.service.ts`,
-      `outgoing.service.ts`, `incoming.service.ts`, `token.service.ts`.
-      `@Injectable`/`@Module` removed; the two `@Cron` jobs become interval timers gated on
-      `engine.enabled` (ADR-002 §7 — **not** `NXT_ENV`); DI constructors dissolve into the
-      composition root. `subscribe()`/`static subscribers` stay in place for now and are replaced by
-      the outbound webhook in Phase 3 (**ADR-003** §6).
-      **Behaviour note:** `@Cron` does not guard re-entry; a plain `setInterval` reproduces that.
-      Adding an in-flight guard is an improvement — record it if taken.
-      **ADR-006:** replace `distributeToNetworkServers` string-split with plugin admission
-      (named strategies); resolve D1 (`queueKey → pluginId`) here with Unit 6; wire cleanup
-      callers per D2.
-- [ ] **Unit 6 — Plugin interface and registry.** `lib/plugin.interface.ts`,
-      `lib/plugin-registry.ts`. Normative SPI additions in **ADR-006**: `bottleneckKey`,
-      `admission` (`spacing` | `concurrency` | `custom`), `deliveryPattern` (`PUSH` | `PULL`).
-      Also: key plugins by `pluginId`, token capability, per-plugin command-type validation
-      (ADR-003 §§3–4), optional `verifySignature` for ingress. Only plugins present in config
-      are constructed (ADR-002 §6). Stale sketch in `nxt-backend` plan 001 task 3.1 is detail
-      only — correct `network_id` to `number | null`.
+- [x] **Unit 3 — Queue primitives.** `queue-moving{,.push,.pull}.ts`, `retry-helpers.ts`.
+      Hardcoded timeout/retry constants → `delivery.*` passed into helpers (ADR-002 §5).
+      **Interim:** stage timeouts on `delivery` — end state is plugin `tuning` (**D5**).
+      PULL `fromNsToAwaitingTask` takes `pluginId` (not `NetworkServerImplementation`).
+      `fromAnyToRetry` optional `concurrencyRateLimitKey` (ADR-006; mirrors Unit 2 cleanup).
+      No distribute admission / `initialQueueKey` wiring here.
+- [x] **Unit 4 — Lifecycle.** `lifecycle.push.ts`, `lifecycle.pull.ts`.
+      PUSH: `getPushTimeouts` / `maybeExtendMessageInRelayNodeQueue`. PULL:
+      `pollAwaitingTasksFor(plugin)` / `getPullTimeouts(now, pluginIds)` — no hardcoded
+      PULL ids. Interim facets deleted in Unit 6 (`DeviceMessagingPlugin`).
+      Max age + poll ladder = module defaults (D5). No concurrency export (ADR-006).
+      Cleanup options pass-through only (D2).
+- [x] **Pre–Unit 5 — Minimal plugin SPI + registry.** Now under `src/plugins/`
+      (`plugin.interface.ts`, `registry.ts`, `catalog.ts`). `DeviceMessagingPlugin` with
+      nested `outgoing` / `incoming` / optional `token`; `Admission` declaration (ADR-006);
+      one-shot `createPluginRegistry(config.plugins)` exported from `src/runtime.ts` with
+      `config`. **Not** here: D1 owner map, D3 admission execution, D5 timeout move, real
+      plugins.
+
+### Phase 1b — Walking skeleton Intermezzo
+
+**Why:** exerciseable contracts (config → stub plugin → HTTP → Redis) before more bottom-up
+engine. Closed session 16 (I4 skipped). See decisions-log sessions 12–16.
+
+- [x] **I0 — Docs pivot.** Plan / AGENTS / decisions-log course correction only.
+- [x] **I1 — Boot + stub plugins.** `src/runtime.ts` loads config and builds
+      `pluginRegistry` from `PLUGIN_CATALOG` (`stub-push` / `stub-pull` under
+      `src/plugins/stub/`). Lookup-only registry; unknown / duplicate ids fail at boot.
+      `config.default.json` stays empty; `config.example.json` lists both stubs.
+- [x] **I2 — Thin HTTP.** Zod + routes for `POST /message/enqueue` and
+      `GET /message/:correlationId` under `src/http/`; **camelCase wire** (ADR-003);
+      Bearer when `DEVICE_MESSAGING_API_KEY` is set; in-memory store until I3; temporary
+      `wire.ts` map to snake_case domain (deleted in I3). Plugin enablement once via
+      `pluginRegistry.get`. Smoke: `src/http/smoke/` (httpYac). Not full Phase 3
+      (no HMAC/DLQ/OpenAPI/ingress).
+- [x] **I3 — Enqueue → Redis.** Thin `src/engine/outgoing.ts` (enqueue + get-by-correlation);
+      plugin `initialQueueKey` → initial queue; distribute no-op. **Domain + Redis hash fields
+      camelCase**; Redis **key paths** snake_case (`idx:correlation_id:`). Deleted `wire.ts` /
+      in-memory store. Create DTO = Zod `createDeviceMessageSchema` in
+      `lib/device-message/schemas.ts` → `CreateDeviceMessage` in `types.ts`; HTTP lean
+      (maps `UnknownPluginError` → 400). Optional `correlationId` (no server ULID). Smoke +
+      README Valkey-only compose. **Intermezzo HTTP↔Redis exit criterion met.**
+- [x] **I4 — Skipped.** Maintainer closed Intermezzo without optional cancel / stub
+      distribute tick (session 16). Cancel lands in Unit 5.2 with thin HTTP.
+
+**Intermezzo closed.** HTTP↔Redis exit met in I3; I4 skipped. Resume Unit 5.2+.
+
+### Phase 1 (engine resumed after 1b)
+
+- [x] **Unit 5 — Core engine, framework-stripped.** Sliced for review; **command/ingress
+      faces land thin HTTP in the same chunk** (end-to-end rule):
+      - [x] **5.1** Base — `src/engine/base.ts`: `retryOrFail`, `requeueMessage`,
+        `emitDeliveryEvent` stub (no in-process pub/sub — ADR-003 webhook later).
+        Requeue via `plugin.initialQueueKey` (not `queueInitial`).
+        `InitialQueueKeyInput` = `{ networkId, device }`; requeue uses `getMessageRawPropsById`.
+      - [x] **5.2** Cancel — engine cancel + thin `POST /message/cancel` /
+        `POST /messages/cancel` + smoke (enqueue/get already from I3)
+      - [x] **5.3** `distributeToNetworkServers` + D3 admission on `createOutgoingService`
+        (timer wiring deferred to 5.6; exercise via stubs + one tick; no public route).
+        **D1 (18b):** `buildInitialQueueKey` → `queue:{pluginId}:{kind}:{id}`.
+        **D3 (19):** named spacing/concurrency/custom; enqueue fire-and-forget kick;
+        concurrency rate-limit key derived via `buildConcurrencyRateLimitKey` (no SPI
+        builder); stop before `sendOne`.
+      - [x] **5.4** sendOne + post-send PUSH|PULL moves (internal; stubs + smoke poll).
+        Fire-and-forget after pick. `createBaseService` peer at composition root;
+        `retryOrFail` gets `concurrencyRateLimitKey` when admission is concurrency
+        (message → `initialQueueKey` → `buildConcurrencyRateLimitKey`).
+      - [x] **5.5** Incoming + thin `POST /ingress/:pluginId` + smoke.
+        `createIncomingService` peer shares `baseService`; HTTP resolves plugin once →
+        `handle(event, plugin)`. `pollPullPlugins` as callable tick; timers deferred to 5.6.
+      - [x] **5.6** Token + thin `POST /token/generate` + interval timers (`engine.enabled`).
+        `createTokenService`; `runMessageResolutionCycle` on outgoing; `startEngineTimers`
+        (2s resolution / 5s poll). Engine facades named `*Service`.
+      **ADR-006 / deferred:** D1+D3 done in 5.3; send-fail concurrency key in 5.4; D2 on
+      remaining cleanup paths (incoming success not yet); D5 done in Unit 6.
+- [x] **Unit 6 — Plugin SPI polish + config wiring.**
+      - Service-owned `CommandType` / `ENQUEUEABLE_COMMAND_TYPES` / `GENERATE_TOKEN_TYPES`
+        (`TOP_UP_KWH`); plugin `supportedCommandTypes`; enqueue gate + 400.
+      - Token body Zod-inferred (`GenerateTokenRequest`); deleted hand SPI token type.
+      - Unit 4 interim facets deleted (`DeviceMessagingPlugin` in lifecycle).
+      - PUSH/PULL discriminant / boot-assert **skipped** (no downstream-check win).
+      - **D6:** wire `device.relayNode` (was `gateway`); stub PULL `kind` = `relayNode`.
+      - **D5:** `PluginTuning` on SPI; queue-moving reads tuning; `delivery` = retry/TTL only.
+        Redis mid stage `queue_in_flight_to_relay_node`; stubs `mergeStubTuning` from config.
+      - Catalog still stubs-only; Units 7–10 add real factories to the same map
+        (order: v1 → nxt-sts → chirpstack → v2).
 
 ### Phase 2 — adapters as plugins
 
-- [ ] **Unit 7 — `calin-chirpstack`** (~1,200 lines). Source folder is still
+Order amended sessions 24–24b: **PULL first** (`calin-api-v1`) for controllable vendor-API
+testing; **`nxt-sts` before ChirpStack** so token commands are testable before PUSH delivery;
+then `calin-chirpstack`; `calin-api-v2` last.
+
+- [ ] **Unit 7 — `calin-api-v1`** (~726 lines). Actively supported; V1 meters are in the field.
+      First real adapter — validates the plugin SPI (`nxt-backend` ADR-001) under PULL
+      (outgoing create-task + poll). Source: `adapters/calin-api-v1/`
+      (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
+- [ ] **Unit 8 — `nxt-sts` token plugin** (46 lines). `HttpService` → native `fetch`.
+      Needed before ChirpStack so token-generate / deliver-token paths can be exercised.
+- [ ] **Unit 9 — `calin-chirpstack`** (~1,200 lines). Source folder is still
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
       decode-response-data, correlate-request-response, connectivity-helpers}`, plus
-      `lib/chirpstack-repository/` moved in as plugin-internal. `bottleneckKey` must handle the
-      `unassigned` bucket.
-- [ ] **Unit 8 — calin-api-v1** (~726 lines). Actively supported; V1 meters are in the field.
-      Second real adapter, so this is what validates the plugin SPI (`nxt-backend` ADR-001).
-- [ ] **Unit 9 — calin-api-v2** (~500 lines).
-- [ ] **Unit 10 — nxt-sts token plugin** (46 lines). `HttpService` → native `fetch`.
+      `lib/chirpstack-repository/` moved in as plugin-internal. `initialQueueKey` must handle
+      the `unassigned` bucket.
+- [ ] **Unit 10 — calin-api-v2** (~500 lines).
 
 ## Import ledger
 
@@ -113,44 +197,49 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 |---|---|---|---|
 | `lib/types.ts` | 175 | 1 | **ported** → `src/lib/types.ts` (core-only; see session 5) |
 | *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 7–10 | **deferred** — adapter-only; lands with the plugin that needs each helper |
-| `lib/redis-repository/index.ts` | 472 | 2 | pending |
-| `lib/redis-repository/keys.ts` | 94 | 2 | pending |
-| `lib/redis-repository/helpers.ts` | 100 | 2 | pending |
-| `../../queries/lua/device-messages/fetch-next-message-in-queue.lua` | 84 | 2 | pending |
-| `../../queries/lua/device-messages/fetch-next-message-in-queue.types.ts` | 38 | 2 | pending |
-| `../../queries/lua/device-messages/move-message-between-queues.lua` | 75 | 2 | pending |
-| `../../queries/lua/device-messages/move-message-between-queues.types.ts` | 33 | 2 | pending |
-| `lib/queue-moving.ts` | 185 | 3 | pending |
-| `lib/queue-moving.push.ts` | 106 | 3 | pending |
-| `lib/queue-moving.pull.ts` | 59 | 3 | pending |
-| `lib/retry-helpers.ts` | 45 | 3 | pending |
-| `lib/lifecycle.push.ts` | 82 | 4 | pending |
-| `lib/lifecycle.pull.ts` | 138 | 4 | pending |
-| `device-messages.service.ts` | 140 | 5 | pending |
-| `outgoing.service.ts` | 354 | 5 | pending |
-| `incoming.service.ts` | 163 | 5 | pending |
-| `token.service.ts` | 36 | 5 | pending |
-| `dto/create-device-message.dto.ts` | 25 | 5 | pending |
-| `dto/generate-token.dto.ts` | 17 | 5 | pending |
+| `lib/redis-repository/index.ts` | 472 | 2 | **ported** → `src/lib/redis-repository/index.ts` |
+| `lib/redis-repository/keys.ts` | 94 | 2 | **ported** → `src/lib/redis-repository/keys.ts` |
+| `lib/redis-repository/helpers.ts` | 100 | 2 | **ported** → `src/lib/redis-repository/helpers.ts` |
+| `../../queries/lua/device-messages/fetch-next-message-in-queue.lua` | 84 | 2 | **ported** → `src/lib/redis-repository/lua/fetch-next-message-in-queue.lua` |
+| `../../queries/lua/device-messages/fetch-next-message-in-queue.types.ts` | 38 | 2 | **ported** → `src/lib/redis-repository/lua/fetch-next-message-in-queue.types.ts` |
+| `../../queries/lua/device-messages/move-message-between-queues.lua` | 75 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.lua` |
+| `../../queries/lua/device-messages/move-message-between-queues.types.ts` | 33 | 2 | **ported** → `src/lib/redis-repository/lua/move-message-between-queues.types.ts` |
+| `lib/queue-moving.ts` | 185 | 3 | **ported** → `src/lib/queue-moving.ts` |
+| `lib/queue-moving.push.ts` | 106 | 3 | **ported** → `src/lib/queue-moving.push.ts` |
+| `lib/queue-moving.pull.ts` | 59 | 3 | **ported** → `src/lib/queue-moving.pull.ts` |
+| `lib/retry-helpers.ts` | 45 | 3 | **ported** → `src/lib/retry-helpers.ts` |
+| `lib/lifecycle.push.ts` | 82 | 4 | **ported** → `src/lib/lifecycle.push.ts` |
+| `lib/lifecycle.pull.ts` | 138 | 4 | **ported** → `src/lib/lifecycle.pull.ts` |
+| *(new)* `lib/plugin.interface.ts` | — | pre–5 | **ported** → `src/plugins/plugin.interface.ts` (moved from `lib/` post-I1) |
+| *(new)* `lib/plugin-registry.ts` | — | pre–5 → I1 tidy | **ported** → `src/plugins/registry.ts` (one-shot from config; no mutable register) |
+| *(new)* `plugins/catalog.ts` | — | I1 tidy | **ported** → `src/plugins/catalog.ts` |
+| *(new)* `plugins/stub.ts` | — | I1 | **ported** → `src/plugins/stub/index.ts` (`stub-push` / `stub-pull`) |
+| *(new)* `plugins/register-from-config.ts` | — | I1 | **dropped** — folded into `createPluginRegistry` |
+| `device-messages.service.ts` | 140 | 5.1 | **ported** → `src/engine/base.ts` (no pub/sub; `emitDeliveryEvent` stub) |
+| `outgoing.service.ts` | 354 | 5 | **ported** → `src/engine/outgoing.ts` (+ resolution cycle; timers in `timers.ts`) |
+| `incoming.service.ts` | 163 | 5.5 | **ported** → `src/engine/incoming.ts` (+ thin `src/http/ingress-routes.ts`) |
+| `token.service.ts` | 36 | 5.6 | **ported** → `src/engine/token.ts` (+ thin `src/http/token-routes.ts`) |
+| `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
+| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
-| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 7 | pending |
-| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 7 | pending |
-| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 7 | pending |
-| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 7 | pending |
-| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 7 | pending |
-| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 7 | pending |
-| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 7 | pending |
-| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 7 | pending — **see coupling note below** |
+| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | pending |
+| `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | pending |
+| `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | pending |
+| `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | pending |
+| `adapters/nxt-sts/_token.service.ts` | 46 | 8 | pending |
+| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 9 | pending |
+| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 9 | pending |
+| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 9 | pending |
+| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 9 | pending |
+| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 9 | pending |
+| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 9 | pending |
+| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 9 | pending |
+| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 9 | pending — **see coupling note below** |
 | `adapters/calin-lorawan/lib/_UNUSED_EXAMPLE_correlate-request-response.redis.ts` | 138 | — | **dropped** — dead code |
-| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 8 | pending |
-| `adapters/calin-api-v1/_incoming.service.ts` | 274 | 8 | pending |
-| `adapters/calin-api-v1/_token.service.ts` | 97 | 8 | pending |
-| `adapters/calin-api-v1/lib/repo.ts` | 133 | 8 | pending |
-| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 9 | pending |
-| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 9 | pending |
-| `adapters/calin-api-v2/_token.service.ts` | 82 | 9 | pending |
-| `adapters/calin-api-v2/lib/repo.ts` | 212 | 9 | pending — **see coupling note below** |
-| `adapters/nxt-sts/_token.service.ts` | 46 | 10 | pending |
+| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 10 | pending |
+| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 10 | pending |
+| `adapters/calin-api-v2/_token.service.ts` | 82 | 10 | pending |
+| `adapters/calin-api-v2/lib/repo.ts` | 212 | 10 | pending — **see coupling note below** |
 
 ### Coupling note — vendor clients shared with `meter-installs`
 
@@ -176,10 +265,12 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 |---|---|---|
 | Message-bus adapter for results | ADR-003: HTTP webhook is v1; bus stays optional | A consumer needs broker delivery |
 | Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
+| Debug HTTP to run distribute / poll once | Nice for manual stepping; not in ADR-003; overkill while timers + stubs suffice | Manual smoke against timers becomes painful |
 | Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
 | HA / multi-instance (leader election, Redis-backed correlator) | `nxt-backend` ADR-010 §6 defers it | Evidence of multi-instance demand |
 
-Cancel is **not** deferred — ADR-003 ships `POST /message/cancel` and `POST /messages/cancel`.
+Cancel is **not** deferred — Unit **5.2** ships engine + `POST /message/cancel` /
+`POST /messages/cancel`.
 
 ## Notes & decisions log
 

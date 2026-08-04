@@ -38,14 +38,33 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete; Phase 1 in progress (Unit 1 done).** Tooling (ADR-004), config loader
-(ADR-002), Fastify shell with `GET /healthz` on port **3100**, and deployment stubs
-(ADR-005: Dockerfile, compose + Valkey, CI/GHCR) are in place. Core domain types live in
-`src/lib/types.ts`; Units 2–6 (Redis, queues, lifecycle, engine, plugin registry) are next.
+**Phase 0 complete. Phase 1 foundation through Unit 6 (SPI polish + D5/D6). Phase 1b
+Intermezzo closed (I0–I3; I4 skipped). Next: Phase 2 Unit 7 (`calin-api-v1`;
+then `nxt-sts` → `calin-chirpstack` → `calin-api-v2`).**
 
-- **Dev:** `pnpm install` → `pnpm dev` (listens on `PORT`, default 3100)
+Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
+command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
+paths (distribute / send / poll / resolution) stay internal — exercise via stub
+plugins + enqueue/get (no public debug trigger for now).
+
+Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
+(`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
+deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts` +
+`command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
+`device.relayNode`), Redis/Lua, queue primitives (`queue_in_flight_to_relay_node`),
+lifecycle (typed on `DeviceMessagingPlugin`), `src/plugins/` (SPI + `PluginTuning` +
+`initialQueueKey` / catalog / registry / `stub/` with `mergeStubTuning`), `src/http/`
+(lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac), `src/engine/` peer
+factories — `createBaseService` / `createOutgoingService` / `createIncomingService` /
+`createTokenService` + `startEngineTimers` (`engine.enabled`). Errors from
+`engine/errors.ts`. Composition root in `main.ts`. **Units 5–6 complete.**
+
+- **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
+  `pnpm dev` (loads `.env`; port **3100**)
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
-- **Compose:** copy `.env.example` → `.env`, then `docker compose up --build`
+- **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
+- **Smoke:** `src/http/smoke/message.http` (httpYac); opt-in
+  `pnpm test:integration` (sets `RUN_REDIS_SMOKE=1`; serial files; shared Valkey)
 
 ## Workflow
 
@@ -90,7 +109,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
 | 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
-| 006 | Queue bottleneck keys + named admission strategies (`spacing` / `concurrency` / `custom`) |
+| 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
 
 ### `nxt-backend` ADRs that constrain this repo
 
@@ -128,5 +147,23 @@ the plugin interface sketch) — never as instructions.
 - Verb prefixes for booleans: `isLoading`, `hasError`, `canRetry`.
 - Prefer short single-purpose functions, early returns over nesting, and a functional style.
 - Prefer immutability: `readonly` for data that does not change, `as const` for literals.
+- **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
+  keep private helpers in that scope; return a plain object literal as the interface. Example:
+  `createOutgoingService({ registry, delivery, baseService })`. Complements ADR-001 §2
+  (no DI container). Pure
+  helpers and module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.
+
+## Plugins (first-party)
+
+Plugins are authored and tested **in this repository**, not as an external third-party
+ecosystem. Treat plugin authors as co-maintainers of the SPI.
+
+- Make the plugin ↔ engine contract **clear and documented** (JSDoc, ADR-006, examples).
+- Prefer a sane API over nailing every misuse shut with runtime checks, Zod at call sites,
+  or defensive parsing of keys the helper just built.
+- Rely on the implementor to pass correct segments and to cover their plugin with in-repo
+  tests. Add fail-fast validation only for footguns that are easy to hit during normal
+  in-repo development and cheap to catch at the choke point — not for every imaginable
+  malformed input.

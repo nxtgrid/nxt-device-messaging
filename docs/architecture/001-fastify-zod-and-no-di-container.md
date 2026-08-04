@@ -90,6 +90,15 @@ The 4 existing DI constructors are removed rather than replaced — three of the
 inject the vendor adapters that the plugin registry supersedes, and the fourth injects
 `HttpService`, which decision 4 removes.
 
+**Preferred composition shape (locked 2026-07-31):** when a module needs dependencies, prefer a
+**factory function** that takes them as arguments, defines private helpers in that factory’s
+scope (closures over the deps), and returns a **plain object literal** as the public interface.
+Reference: peer factories at the composition root — `createBaseService({ registry, delivery })`
+and `createOutgoingService({ registry, delivery, baseService })` in `src/engine/` /
+`main.ts`. This is explicit DI without a container — testable, no classes, no framework.
+Use it when practical; thin pure helpers and module-level Redis/Lua remain fine outside
+this shape.
+
 ### 3. Zod is the single source of truth for validation and OpenAPI
 
 Request and response schemas are Zod schemas, surfaced to Fastify through a Zod type provider so

@@ -56,10 +56,22 @@ export default tseslint.config(
       'coverage/**',
       'node_modules/**',
       'eslint.config.mjs',
+      'src/http/smoke/**/*.http',
     ],
   },
   {
     files: [ '**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts' ],
     rules: teamRules,
+  },
+  {
+    // httpYac env helper is CommonJS (`module.exports`); not covered by the TS block.
+    files: [ 'src/http/smoke/**/*.cjs' ],
+    languageOptions: {
+      globals: {
+        module: 'writable',
+        require: 'readonly',
+        exports: 'writable',
+      },
+    },
   },
 );

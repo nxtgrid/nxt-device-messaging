@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getConfig, loadConfig, setConfig } from '../../../src/config/index.js';
+import { loadConfig } from '../../../src/config/index.js';
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 const FROM_PATH_FIXTURE = join(FIXTURES_DIR, 'from-path.config.json');
@@ -107,24 +107,8 @@ describe('loadConfig', () => {
 
     expect(config.delivery.maxRetries).toBe(11);
     expect(config.delivery.retryBaseDelayMs).toBe(2000);
-  });
-});
-
-describe('getConfig / setConfig', () => {
-  it('returns the config previously set', () => {
-    const testConfig = {
-      $schemaVersion: '1' as const,
-      engine: { enabled: false },
-      delivery: {
-        maxRetries: 1,
-        retryBaseDelayMs: 100,
-        retryBackoffMultiplier: 2,
-        retryMaxDelayMs: 1000,
-        messageTtlSeconds: 60,
-      },
-      plugins: [],
-    };
-    setConfig(testConfig);
-    expect(getConfig()).toBe(testConfig);
+    expect(config.delivery.retryBackoffMultiplier).toBe(2);
+    expect(config.delivery.retryMaxDelayMs).toBe(3_600_000);
+    expect(config.delivery.messageTtlSeconds).toBe(604_800);
   });
 });

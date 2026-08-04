@@ -1,5 +1,9 @@
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig } from 'tsup';
+
+const LUA_SRC_DIR = 'src/lib/redis-repository/lua';
+const LUA_DIST_DIR = 'dist/lib/redis-repository/lua';
 
 /**
  * Production build (ADR-004). Lua scripts are copied beside `dist/` when
@@ -17,5 +21,11 @@ export default defineConfig({
   splitting: false,
   async onSuccess() {
     copyFileSync('config.default.json', 'dist/config.default.json');
+    // Lua scripts are loaded at runtime by the Redis repository (ADR-004).
+    mkdirSync(LUA_DIST_DIR, { recursive: true });
+    for (const name of readdirSync(LUA_SRC_DIR)) {
+      if (!name.endsWith('.lua')) continue;
+      copyFileSync(join(LUA_SRC_DIR, name), join(LUA_DIST_DIR, name));
+    }
   },
 });
