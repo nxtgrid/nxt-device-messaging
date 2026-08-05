@@ -79,7 +79,7 @@ describe('createCalinApiV1Client', () => {
       client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
     ).rejects.toMatchObject({
       name: 'CalinApiV1Error',
-      message: '[CALIN V1 API] responded with a HTML page..',
+      message: '[CALIN API-V1] responded with a HTML page..',
       code: 500,
     });
   });
@@ -99,7 +99,7 @@ describe('createCalinApiV1Client', () => {
     ).rejects.toEqual(
       expect.objectContaining({
         name: 'CalinApiV1Error',
-        message: '[CALIN V1 API] is down: backend gone',
+        message: '[CALIN API-V1] is down: backend gone',
         code: 503,
       }),
     );
@@ -119,7 +119,7 @@ describe('createCalinApiV1Client', () => {
       client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
     ).rejects.toEqual(
       new CalinApiV1Error(
-        '[CALIN V1 API] could not be reached, connection was refused',
+        '[CALIN API-V1] could not be reached, connection was refused',
         'ECONNREFUSED',
       ),
     );
@@ -136,7 +136,7 @@ describe('createCalinApiV1Client', () => {
     await expect(
       client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
     ).rejects.toMatchObject({
-      message: '[CALIN V1 API] abruptly closed its end of the connection',
+      message: '[CALIN API-V1] abruptly closed its end of the connection',
       code: 'ECONNRESET',
     });
   });
@@ -153,7 +153,7 @@ describe('createCalinApiV1Client', () => {
       client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
     ).rejects.toMatchObject({
       name: 'CalinApiV1Error',
-      message: '[CALIN V1 API] is down',
+      message: '[CALIN API-V1] is down',
       code: null,
     });
   });

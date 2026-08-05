@@ -12,7 +12,6 @@ import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
   DeviceMessage,
   EnqueueableCommandType,
-  FailureContext,
   GenerateTokenInput,
 } from '../../lib/device-message/types.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
@@ -25,6 +24,7 @@ import type {
 } from '../plugin.interface.js';
 import { createCalinApiV1Client } from './lib/repo.js';
 import { loadCalinApiV1Secrets } from './lib/secrets.js';
+import { createCalinApiV1Outgoing } from './outgoing.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -77,16 +77,15 @@ const CALIN_API_V1_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v1` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Outgoing / incoming / token throw
- * until Unit 7.3–7.5 ports those surfaces; the HTTP client is ready (7.2).
+ * Validates secrets at construct (ADR-002 §6). HTTP client + outgoing are wired
+ * (7.2–7.3); incoming / token throw until 7.4–7.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
 export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
   const secrets = loadCalinApiV1Secrets();
   const client = createCalinApiV1Client({ apiBaseUrl: secrets.apiBaseUrl });
-  // Held for Units 7.3–7.5 (outgoing / incoming / token).
-  const _vendorIo = { secrets, client };
+  const outgoing = createCalinApiV1Outgoing({ secrets, client });
 
   const tuning = mergePluginTuning(CALIN_API_V1_DEFAULT_TUNING, entry);
 
@@ -97,7 +96,7 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
   };
 
   const notImplemented = (surface: string): never => {
-    throw new Error(`calin-api-v1 ${ surface } not implemented (Unit 7.3+)`);
+    throw new Error(`calin-api-v1 ${ surface } not implemented (Unit 7.4+)`);
   };
 
   return {
@@ -107,16 +106,7 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
     admission: CALIN_API_V1_ADMISSION,
     tuning,
     initialQueueKey,
-    outgoing: {
-      sendOne: async (_message: DeviceMessage): Promise<string> =>
-        notImplemented('outgoing.sendOne'),
-      parseError: (err: unknown): FailureContext => {
-        if (err instanceof Error) {
-          return { reason: err.message };
-        }
-        return { reason: String(err) };
-      },
-    },
+    outgoing,
     incoming: {
       fetchStatus: async (_message: DeviceMessage) =>
         notImplemented('incoming.fetchStatus'),

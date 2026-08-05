@@ -222,7 +222,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
 | `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
-| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | pending |
+| `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | **ported** → `src/plugins/calin-api-v1/outgoing.ts` (Unit 7.3) |
 | `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | pending |
 | `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | pending |
 | `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | **ported** → `src/plugins/calin-api-v1/lib/repo.ts` (fetch; Unit 7.2) |

@@ -139,12 +139,11 @@ describe('createCalinApiV1Plugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('vendor surfaces throw until Unit 7.3+', async () => {
+  it('incoming / token throw until Unit 7.4+; outgoing is wired', async () => {
     stubValidCalinApiV1Env();
     const plugin = createCalinApiV1Plugin({ id: CALIN_API_V1_ID });
-    await expect(plugin.outgoing.sendOne(sampleMessage)).rejects.toThrow(
-      /outgoing.sendOne not implemented/,
-    );
+    expect(plugin.outgoing.sendOne).toBeTypeOf('function');
+    expect(plugin.outgoing.parseError(new Error('x'))).toEqual({ reason: 'x' });
     await expect(plugin.incoming.fetchStatus?.(sampleMessage)).rejects.toThrow(
       /incoming.fetchStatus not implemented/,
     );
