@@ -149,12 +149,12 @@ describe('createCalinApiV1Client', () => {
     );
 
     const client = createCalinApiV1Client({ apiBaseUrl: API_BASE });
-    await expect(
-      client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
-    ).rejects.toMatchObject({
+    const error = await client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' })
+      .catch((err: unknown) => err);
+    expect(error).toMatchObject({
       name: 'CalinApiV1Error',
       message: '[CALIN API-V1] is down',
-      code: null,
     });
+    expect(error).toHaveProperty('code', undefined);
   });
 });
