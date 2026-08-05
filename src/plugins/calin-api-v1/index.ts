@@ -10,7 +10,6 @@
 
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
-  DeviceMessage,
   EnqueueableCommandType,
   GenerateTokenInput,
 } from '../../lib/device-message/types.js';
@@ -22,6 +21,7 @@ import type {
   InitialQueueKeyInput,
   PluginTuning,
 } from '../plugin.interface.js';
+import { createCalinApiV1Incoming } from './incoming.js';
 import { createCalinApiV1Client } from './lib/repo.js';
 import { loadCalinApiV1Secrets } from './lib/secrets.js';
 import { createCalinApiV1Outgoing } from './outgoing.js';
@@ -77,8 +77,8 @@ const CALIN_API_V1_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v1` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). HTTP client + outgoing are wired
- * (7.2–7.3); incoming / token throw until 7.4–7.5.
+ * Validates secrets at construct (ADR-002 §6). HTTP client, outgoing, and
+ * incoming are wired (7.2–7.4); token throws until 7.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
@@ -86,6 +86,7 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
   const secrets = loadCalinApiV1Secrets();
   const client = createCalinApiV1Client({ apiBaseUrl: secrets.apiBaseUrl });
   const outgoing = createCalinApiV1Outgoing({ secrets, client });
+  const incoming = createCalinApiV1Incoming({ secrets, client });
 
   const tuning = mergePluginTuning(CALIN_API_V1_DEFAULT_TUNING, entry);
 
@@ -93,10 +94,6 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
     const relayNodeId = input.device.relayNode?.id;
     const dcuPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
     return buildInitialQueueKey(CALIN_API_V1_ID, CALIN_API_V1_NODE_KIND, dcuPart);
-  };
-
-  const notImplemented = (surface: string): never => {
-    throw new Error(`calin-api-v1 ${ surface } not implemented (Unit 7.4+)`);
   };
 
   return {
@@ -107,13 +104,11 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
     tuning,
     initialQueueKey,
     outgoing,
-    incoming: {
-      fetchStatus: async (_message: DeviceMessage) =>
-        notImplemented('incoming.fetchStatus'),
-    },
+    incoming,
     token: {
-      generate: async (_input: GenerateTokenInput): Promise<string> =>
-        notImplemented('token.generate'),
+      generate: async (_input: GenerateTokenInput): Promise<string> => {
+        throw new Error('calin-api-v1 token.generate not implemented (Unit 7.5)');
+      },
     },
   };
 }

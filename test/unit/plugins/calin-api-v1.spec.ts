@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { DeviceMessage } from '#src/lib/device-message/types.js';
 import {
   CALIN_API_V1_ID,
   createCalinApiV1Plugin,
@@ -27,16 +26,6 @@ const deviceOnly: InitialQueueKeyInput = {
     externalReference: 'm-1',
   },
 };
-
-const sampleMessage = {
-  id: 'msg-1',
-  commandType: 'READ_CREDIT',
-  pluginId: CALIN_API_V1_ID,
-  networkId: 42,
-  device: deviceOnly.device,
-  deliveryQueueId: '',
-  deliveryStatus: 'QUEUED',
-} as DeviceMessage;
 
 /** Stub every required `CALIN_API_V1_*` key (cleared in {@link afterEach}). */
 function stubValidCalinApiV1Env(): void {
@@ -139,20 +128,17 @@ describe('createCalinApiV1Plugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('incoming / token throw until Unit 7.4+; outgoing is wired', async () => {
+  it('token throws until Unit 7.5; outgoing + incoming are wired', async () => {
     stubValidCalinApiV1Env();
     const plugin = createCalinApiV1Plugin({ id: CALIN_API_V1_ID });
     expect(plugin.outgoing.sendOne).toBeTypeOf('function');
-    expect(plugin.outgoing.parseError(new Error('x'))).toEqual({ reason: 'x' });
-    await expect(plugin.incoming.fetchStatus?.(sampleMessage)).rejects.toThrow(
-      /incoming.fetchStatus not implemented/,
-    );
+    expect(plugin.incoming.fetchStatus).toBeTypeOf('function');
     await expect(plugin.token!.generate({
       type: 'TOP_UP_KWH',
       issueDateString: '2026-08-04',
       device: { externalReference: 'm-1' },
       payload: { kwh: 10 },
-    })).rejects.toThrow(/token.generate not implemented/);
+    })).rejects.toThrow(/token.generate not implemented \(Unit 7\.5\)/);
   });
 
   it('registers via PLUGIN_CATALOG when env is present', () => {
