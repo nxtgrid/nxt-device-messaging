@@ -6,7 +6,8 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
-**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Next: Phase 2 Unit 7**
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Unit 7 (`calin-api-v1`) done.
+Next: Phase 2 Unit 8 (`nxt-sts`)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -47,14 +48,14 @@ need them (same pattern as Intermezzo enqueue/get).
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
-| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-chirpstack`, `calin-api-v2`) | **Next: Unit 7** |
+| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-chirpstack`, `calin-api-v2`) | **Unit 7 done; next Unit 8** |
 | **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
-**Phase 1b is closed.** Next is **Phase 2 Unit 7** (`calin-api-v1`). Phase 4
-still owns ADR-005 observability hygiene (metrics, pino sweep, CONTRIBUTING/README) —
-CI/Docker stubs already in Phase 0.
+**Phase 1b is closed.** Phase 2 **Unit 7** (`calin-api-v1`) is **done**. Next is
+**Unit 8** (`nxt-sts`). Phase 4 still owns ADR-005 observability hygiene (metrics, pino
+sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
 
 ## Port units
 
@@ -174,12 +175,13 @@ Order amended sessions 24–24b: **PULL first** (`calin-api-v1`) for controllabl
 testing; **`nxt-sts` before ChirpStack** so token commands are testable before PUSH delivery;
 then `calin-chirpstack`; `calin-api-v2` last.
 
-- [ ] **Unit 7 — `calin-api-v1`** (~726 lines). Actively supported; V1 meters are in the field.
+- [x] **Unit 7 — `calin-api-v1`** (~726 lines). Actively supported; V1 meters are in the field.
       First real adapter — validates the plugin SPI (`nxt-backend` ADR-001) under PULL
       (outgoing create-task + poll). Source: `adapters/calin-api-v1/`
-      (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
+      (`_outgoing`, `_incoming`, `_token`, `lib/repo`). Landed 7.0–7.6 (session 25).
 - [ ] **Unit 8 — `nxt-sts` token plugin** (46 lines). `HttpService` → native `fetch`.
       Needed before ChirpStack so token-generate / deliver-token paths can be exercised.
+      Also lands `generateRandomNumber` (shared helper still deferred).
 - [ ] **Unit 9 — `calin-chirpstack`** (~1,200 lines). Source folder is still
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
@@ -220,7 +222,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `incoming.service.ts` | 163 | 5.5 | **ported** → `src/engine/incoming.ts` (+ thin `src/http/ingress-routes.ts`) |
 | `token.service.ts` | 36 | 5.6 | **ported** → `src/engine/token.ts` (+ thin `src/http/token-routes.ts`) |
 | `dto/create-device-message.dto.ts` | 25 | I3 / 5 | **ported** → `src/lib/device-message/schemas.ts` (`createDeviceMessageSchema`) |
-| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`) |
+| `dto/generate-token.dto.ts` | 17 | 5.6 | **ported** → `src/lib/device-message/schemas.ts` (`generateTokenSchema`; Unit 7.5: `type`-discriminated payload) |
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
 | `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | **ported** → `src/plugins/calin-api-v1/outgoing.ts` (Unit 7.3) |
 | `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | **ported** → `src/plugins/calin-api-v1/incoming.ts` (Unit 7.4; camelCase `response.data`) |
