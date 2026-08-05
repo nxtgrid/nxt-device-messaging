@@ -4,9 +4,8 @@
  * Adopter notification goes through {@link emitDeliveryEvent} (stub until Phase 3
  * lands the outbound webhook — ADR-003).
  *
- * Concurrency admission release is owned here: {@link BaseService.cleanupMessage} and
- * {@link BaseService.retryOrFail} derive the rate-limit key from the registry so
- * callers never thread it (legacy inferred it inside cleanup).
+ * Concurrency admission: the rate-limit key is stored on the message hash at claim
+ * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `fromAnyToRetry` SREM it.
  */
 
 import { isNotNil } from 'ramda';
@@ -14,6 +13,7 @@ import type { DeliveryConfig } from '../config/schema.js';
 import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { calculateBackoffDelay } from '../lib/retry-helpers.js';
+import { omitInternalFields } from '../lib/device-message/omit-internal-fields.js';
 import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
@@ -21,7 +21,6 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
-import { buildConcurrencyRateLimitKey } from '../plugins/_shared/initial-queue-key.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 
 /**
@@ -33,25 +32,21 @@ import type { PluginRegistry } from '../plugins/registry.js';
  * @param message - The message (or partial) to broadcast
  */
 export function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
+  const payload = omitInternalFields(message);
   // Temporary until Phase 3 webhook — see delivery outcomes in the process log.
   console.info('[emitDeliveryEvent]', {
-    id: message.id,
-    correlationId: message.correlationId,
-    commandType: message.commandType,
-    deliveryStatus: message.deliveryStatus,
-    response: message.response,
-    device: message.device?.externalReference,
-    unsolicited: message.unsolicited,
+    id: payload.id,
+    correlationId: payload.correlationId,
+    commandType: payload.commandType,
+    deliveryStatus: payload.deliveryStatus,
+    response: payload.response,
+    device: payload.device?.externalReference,
+    unsolicited: payload.unsolicited,
   });
 }
 
-/** Shared retry / requeue / cleanup operations used by peers. */
+/** Shared retry / requeue operations used by peers. */
 export type BaseService = {
-  /**
-   * Full message scrub including concurrency admission slot when applicable.
-   * Prefer this over calling `redisRepo.messageFullCleanup` from engine peers.
-   */
-  cleanupMessage(message: DeviceMessage): Promise<void>;
   retryOrFail(
     messageId: string,
     currentQueueKey: string,
@@ -74,28 +69,6 @@ export type CreateBaseServiceOptions = {
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { registry, delivery } = options;
 
-  function _concurrencyRateLimitKeyFor(message: DeviceMessage): string | undefined {
-    const plugin = registry.get(message.pluginId);
-    if (!plugin || plugin.admission.strategy !== 'concurrency') return undefined;
-    return buildConcurrencyRateLimitKey(
-      plugin.initialQueueKey({
-        networkId: message.networkId,
-        device: message.device,
-      }),
-    );
-  }
-
-  /**
-   * Delete message hash, stage membership, indexes, and concurrency track slot.
-   *
-   * @param message - Message to remove
-   */
-  async function cleanupMessage(message: DeviceMessage): Promise<void> {
-    await redisRepo.messageFullCleanup(message, {
-      concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(message),
-    });
-  }
-
   /**
    * Handle a failed delivery attempt by either scheduling a retry or failing permanently.
    *
@@ -103,9 +76,6 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
    * - If skipRetry is true: fail immediately (unrecoverable error)
    * - If retryCount >= maxRetries: clean up and emit failure
    * - Otherwise: schedule retry with exponential backoff
-   *
-   * Releases the concurrency admission slot on both retry and final failure when
-   * the plugin uses that strategy.
    *
    * @param messageId - ULID of the message
    * @param currentQueueKey - The queue where the message currently resides
@@ -139,7 +109,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     ];
 
     if (isFinalFailure) {
-      await cleanupMessage(message);
+      await redisRepo.messageFullCleanup(message);
       emitDeliveryEvent({
         ...message,
         failureHistory: newFailureHistory,
@@ -163,7 +133,6 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       currentQueueKey,
       nextRetryAt,
       updateProps,
-      { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(message) },
     );
   }
 
@@ -221,7 +190,6 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
   }
 
   return {
-    cleanupMessage,
     retryOrFail,
     requeueMessage,
   };

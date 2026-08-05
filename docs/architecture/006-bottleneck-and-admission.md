@@ -173,12 +173,13 @@ caller (`buildConcurrencyRateLimitKey(initialQueueKey)` — not a field on the m
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2 → refined):** Redis
-`messageFullCleanup(message, { inFlightQueueKeys?, concurrencyRateLimitKey? })` stays dumb.
-Engine **`BaseService.cleanupMessage` / `retryOrFail`** derive the key via registry +
-`buildConcurrencyRateLimitKey(initialQueueKey)` — peers must not thread it. Defaults cover
-known stage keys + `queue_awaiting_task:{pluginId}`. Full exit-path audit (retry queue,
-initial queues) is still D2 work.
+**Interim (Unit 2 → refined):** At concurrency **claim**, Redis stores
+`concurrencyRateLimitKey` on the message hash (`claimConcurrencyRateLimit` = SADD + HSET).
+`messageFullCleanup` / `fromAnyToRetry` SREM that field (legacy-shaped) — no key threading.
+The field is **stripped** before adopter-facing emit / command GET (`omitInternalFields`).
+`messageFullCleanup` takes **no options** — fixed ZREM of stage keys +
+`queue_awaiting_task:{pluginId}` (not dynamic initial/retry queues; cancel ZREMs those first).
+Full exit-path audit is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 

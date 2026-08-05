@@ -134,9 +134,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, {
-          concurrencyRateLimitKey: rateLimitKey,
-        });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

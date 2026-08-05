@@ -82,7 +82,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
       // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, { inFlightQueueKeys: [ queueKey ] });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

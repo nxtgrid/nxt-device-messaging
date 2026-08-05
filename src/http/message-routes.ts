@@ -13,6 +13,7 @@ import {
   UnsupportedCommandTypeError,
 } from '../engine/errors.js';
 import type { OutgoingService } from '../engine/outgoing.js';
+import { omitInternalFields } from '../lib/device-message/omit-internal-fields.js';
 import {
   cancelManyBodySchema,
   cancelOneBodySchema,
@@ -41,7 +42,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
 
     try {
       const message = await opts.outgoingService.enqueue(parsed.data);
-      return reply.code(201).send(message);
+      return reply.code(201).send(omitInternalFields(message));
     }
     catch (err) {
       if (
@@ -66,7 +67,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(404).send({ error: 'Not found' });
     }
 
-    return message;
+    return omitInternalFields(message);
   });
 
   app.post('/message/cancel', async (request, reply) => {

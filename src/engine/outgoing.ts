@@ -148,7 +148,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return;
-        await redisRepo.addToConcurrencyRateLimit(rateLimitKey, messageId);
+        await redisRepo.claimConcurrencyRateLimit(rateLimitKey, messageId);
         return;
       }
       case 'custom':
@@ -269,13 +269,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       await baseService.retryOrFail(messageId, queueKey, { reason });
     }
 
-    // 3. PULL: age-based permanent failure (cleanup via baseService — releases admission)
+    // 3. PULL: age-based permanent failure (cleanup already done inside getPullTimeouts)
     const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
-    const pullTimeouts = await getPullTimeouts(
-      now,
-      pullPluginIds,
-      baseService.cleanupMessage,
-    );
+    const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
     for (const { message } of pullTimeouts) {
       emitDeliveryEvent(message);
     }
@@ -367,7 +363,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const removed = await redisRepo.removeMessageFromQueue(queueKey, message.id);
     if (removed === 0) return false;
 
-    await baseService.cleanupMessage(message);
+    await redisRepo.messageFullCleanup(message);
     return true;
   }
 

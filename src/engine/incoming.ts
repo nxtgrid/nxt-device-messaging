@@ -112,7 +112,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await baseService.cleanupMessage(storedMessage);
+    await redisRepo.messageFullCleanup(storedMessage);
 
     const updatedMessage: DeviceMessage = { ...storedMessage, deliveryStatus, response, device };
 
