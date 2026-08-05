@@ -3,6 +3,10 @@
  *
  * Adopter notification goes through {@link emitDeliveryEvent} (stub until Phase 3
  * lands the outbound webhook — ADR-003).
+ *
+ * Concurrency admission release is owned here: {@link BaseService.cleanupMessage} and
+ * {@link BaseService.retryOrFail} derive the rate-limit key from the registry so
+ * callers never thread it (legacy inferred it inside cleanup).
  */
 
 import { isNotNil } from 'ramda';
@@ -17,6 +21,7 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
+import { buildConcurrencyRateLimitKey } from '../plugins/_shared/initial-queue-key.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 
 /**
@@ -40,15 +45,17 @@ export function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
   });
 }
 
-/** Shared retry / requeue operations used by peers and (later) the resolution cycle. */
+/** Shared retry / requeue / cleanup operations used by peers. */
 export type BaseService = {
+  /**
+   * Full message scrub including concurrency admission slot when applicable.
+   * Prefer this over calling `redisRepo.messageFullCleanup` from engine peers.
+   */
+  cleanupMessage(message: DeviceMessage): Promise<void>;
   retryOrFail(
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-    options?: {
-      concurrencyRateLimitKey?: string;
-    },
   ): Promise<void>;
   requeueMessage(messageId: string): Promise<void>;
 };
@@ -67,6 +74,28 @@ export type CreateBaseServiceOptions = {
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { registry, delivery } = options;
 
+  function _concurrencyRateLimitKeyFor(message: DeviceMessage): string | undefined {
+    const plugin = registry.get(message.pluginId);
+    if (!plugin || plugin.admission.strategy !== 'concurrency') return undefined;
+    return buildConcurrencyRateLimitKey(
+      plugin.initialQueueKey({
+        networkId: message.networkId,
+        device: message.device,
+      }),
+    );
+  }
+
+  /**
+   * Delete message hash, stage membership, indexes, and concurrency track slot.
+   *
+   * @param message - Message to remove
+   */
+  async function cleanupMessage(message: DeviceMessage): Promise<void> {
+    await redisRepo.messageFullCleanup(message, {
+      concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(message),
+    });
+  }
+
   /**
    * Handle a failed delivery attempt by either scheduling a retry or failing permanently.
    *
@@ -75,18 +104,17 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
    * - If retryCount >= maxRetries: clean up and emit failure
    * - Otherwise: schedule retry with exponential backoff
    *
+   * Releases the concurrency admission slot on both retry and final failure when
+   * the plugin uses that strategy.
+   *
    * @param messageId - ULID of the message
    * @param currentQueueKey - The queue where the message currently resides
    * @param failureContext - Details about why the failure occurred
-   * @param options - Optional D2 seams (e.g. concurrency track key when admission is concurrency)
    */
   async function retryOrFail(
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-    options?: {
-      concurrencyRateLimitKey?: string;
-    },
   ): Promise<void> {
     const message = await redisRepo.getMessageById(messageId);
 
@@ -111,9 +139,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     ];
 
     if (isFinalFailure) {
-      await redisRepo.messageFullCleanup(message, {
-        concurrencyRateLimitKey: options?.concurrencyRateLimitKey,
-      });
+      await cleanupMessage(message);
       emitDeliveryEvent({
         ...message,
         failureHistory: newFailureHistory,
@@ -137,7 +163,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       currentQueueKey,
       nextRetryAt,
       updateProps,
-      { concurrencyRateLimitKey: options?.concurrencyRateLimitKey },
+      { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(message) },
     );
   }
 
@@ -195,6 +221,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
   }
 
   return {
+    cleanupMessage,
     retryOrFail,
     requeueMessage,
   };

@@ -26,12 +26,6 @@ import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.
  */
 const PULL_PATTERN_MAX_MESSAGE_AGE_MS = 48 * 60 * 60 * 1000; // 172_800_000
 
-/** Options passed through to {@link redisRepo.messageFullCleanup} (ADR-006 D2 interim). */
-export type MessageFullCleanupOptions = {
-  inFlightQueueKeys?: readonly string[];
-  concurrencyRateLimitKey?: string;
-};
-
 /** Result of polling: a parsed event tied to its queue. */
 export type PollResult = {
   parsedEvent: ParsedIncomingEvent;
@@ -103,20 +97,21 @@ export async function pollAwaitingTasksFor(
 
 /**
  * Find PULL pattern messages that have exceeded their max age.
- * Cleans up timed-out messages and returns them for publishing.
+ * Cleans up via the caller-supplied function (pass `baseService.cleanupMessage`
+ * so concurrency admission slots are released), then returns them for publishing.
  *
  * Caller supplies which PULL `pluginId`s to scan (Unit 5/6 get them from the registry).
  * Core does not hardcode which plugins are PULL.
  *
  * @param now - Current timestamp
  * @param pluginIds - PULL plugin ids whose awaiting-task queues to scan
- * @param cleanupOptions - Optional D2 cleanup seams (no key invention here)
+ * @param cleanupMessage - Full scrub including admission release
  * @returns Array of failed messages ready to publish (already cleaned up in Redis)
  */
 export async function getPullTimeouts(
   now: number,
   pluginIds: readonly string[],
-  cleanupOptions?: MessageFullCleanupOptions,
+  cleanupMessage: (message: DeviceMessage) => Promise<void>,
 ): Promise<PullTimeoutResult[]> {
   const results: PullTimeoutResult[] = [];
 
@@ -124,7 +119,7 @@ export async function getPullTimeouts(
     const queueKey = redisKeys.queueAwaitingTask(pluginId);
     // @SCALE :: Loads all message IDs at once. Fine for current volume (~500 max),
     // but if scale increases, switch to batched ZRANGE with LIMIT (not ZSCAN, which
-    // is unsafe when mutating the set during iteration via messageFullCleanup).
+    // is unsafe when mutating the set during iteration via cleanup).
     const messageIds = await redisRepo.getAllMessageIdsInQueue(queueKey);
 
     for (const messageId of messageIds) {
@@ -136,7 +131,7 @@ export async function getPullTimeouts(
       if (!message) continue;
 
       // Permanent failure - no retry for PULL pattern timeouts
-      await redisRepo.messageFullCleanup(message, cleanupOptions);
+      await cleanupMessage(message);
       results.push({
         message: {
           ...message,

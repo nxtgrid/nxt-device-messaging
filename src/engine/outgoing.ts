@@ -99,18 +99,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   const { registry, delivery, baseService, kickDistributeOnEnqueue = true } = options;
 
   /**
-   * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
-   *
-   * @param plugin - Owning plugin (`admission.strategy`)
-   * @param message - Message whose initial queue identity drives the key
-   */
-  function _concurrencyRateLimitKeyFor(plugin: DeviceMessagingPlugin, message: DeviceMessage): string | undefined {
-    if (plugin.admission.strategy !== 'concurrency') return undefined;
-    const queueKey = plugin.initialQueueKey({ networkId: message.networkId, device: message.device });
-    return buildConcurrencyRateLimitKey(queueKey);
-  }
-
-  /**
    * Whether this queue may yield a message under the plugin's admission strategy.
    *
    * @param plugin - Owning plugin (`admission`)
@@ -173,7 +161,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
   /**
    * Send one message via the plugin; on success move NS → relay-node (PUSH) or awaiting-task (PULL).
-   * On failure, {@link BaseService.retryOrFail} from the NS queue (with concurrency key when needed).
+   * On failure, {@link BaseService.retryOrFail} from the NS queue.
    *
    * @param plugin - Owning plugin (`outgoing.sendOne` + tuning)
    * @param message - The message to send (already in NS queue)
@@ -200,7 +188,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         message.id,
         QUEUE_NS_KEY,
         plugin.outgoing.parseError(err),
-        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
       );
       return;
     }
@@ -222,7 +209,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
           reason: 'Plugin returned an empty deliveryQueueId after sendOne',
           skipRetry: true,
         },
-        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
       );
       return;
     }
@@ -283,9 +269,13 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       await baseService.retryOrFail(messageId, queueKey, { reason });
     }
 
-    // 3. PULL: age-based permanent failure (cleanup already done inside getPullTimeouts)
+    // 3. PULL: age-based permanent failure (cleanup via baseService — releases admission)
     const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
-    const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
+    const pullTimeouts = await getPullTimeouts(
+      now,
+      pullPluginIds,
+      baseService.cleanupMessage,
+    );
     for (const { message } of pullTimeouts) {
       emitDeliveryEvent(message);
     }
@@ -377,7 +367,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const removed = await redisRepo.removeMessageFromQueue(queueKey, message.id);
     if (removed === 0) return false;
 
-    await redisRepo.messageFullCleanup(message);
+    await baseService.cleanupMessage(message);
     return true;
   }
 

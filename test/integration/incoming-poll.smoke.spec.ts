@@ -111,6 +111,8 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
       const afterPoll = await outgoingService.getByCorrelationId(correlationId);
       expect(afterPoll).toBeNull();
       expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+      // Success cleanup must release the concurrency admission slot (legacy inferred this).
+      expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(0);
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
