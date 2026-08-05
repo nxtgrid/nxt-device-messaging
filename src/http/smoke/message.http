@@ -9,15 +9,12 @@ Content-Type: application/json
 {
   "commandType": "READ_CREDIT",
   "priority": 10,
-  "pluginId": "calin-api-v1",
-  "networkId": 17,
-  "correlationId": "000111001101011",
+  "pluginId": "stub-push",
+  "networkId": 42,
+  "correlationId": "httpyac-demo-1",
   "device": {
     "type": "ELECTRICITY_METER",
-    "externalReference": "47001766527",
-    "relayNode": {
-      "id": 18
-    }
+    "externalReference": "m-1"
   }
 }
 
