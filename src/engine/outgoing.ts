@@ -176,11 +176,22 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    */
   async function _sendOneToNetworkServer(plugin: DeviceMessagingPlugin, message: DeviceMessage): Promise<void> {
     let deliveryQueueId: string;
+    const startedAt = performance.now();
+    const slowThresholdMs = plugin.tuning.nsInFlightTimeoutMs;
 
     try {
       deliveryQueueId = await plugin.outgoing.sendOne(message);
     }
     catch (err) {
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      if (elapsedMs > slowThresholdMs) {
+        console.warn(
+          `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
+            `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
+            `took ${ elapsedMs }ms before throwing`,
+          err,
+        );
+      }
       await baseService.retryOrFail(
         message.id,
         QUEUE_NS_KEY,
@@ -188,6 +199,15 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
       );
       return;
+    }
+
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    if (elapsedMs > slowThresholdMs) {
+      console.warn(
+        `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
+          `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
+          `took ${ elapsedMs }ms — resolution cycle may have already scheduled a retry`,
+      );
     }
 
     if (!deliveryQueueId) {

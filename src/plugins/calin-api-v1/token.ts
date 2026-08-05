@@ -116,9 +116,11 @@ export function createCalinApiV1Token(
     }
 
     if (!res.token) {
-      // @TODO :: Logging errors to see best response
-      const message = '[CALIN API-V1 TOKEN SERVICE] Got an empty response'/*  + res.failureReason ? ` because: ${ res.failureReason }` : '' */;
-      console.warn(message, res.failureReason);
+      const base = '[CALIN API-V1 TOKEN SERVICE] Got an empty response';
+      const message = res.failureReason
+        ? `${ base } because: ${ res.failureReason }`
+        : base;
+      console.warn(message, { type });
       throw new Error(message);
     }
 

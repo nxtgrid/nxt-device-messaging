@@ -99,9 +99,9 @@ export function createCalinApiV1Outgoing(
   /** Format a calendar date for CALIN `SET_DATE` (`yymmddww`, UTC weekday). */
   const _formatDate = ({ year, month, day }: { year: number; month: number; day: number }): string => {
     if (
-      !(typeof year === 'number')
-      || !(typeof month === 'number')
-      || !(typeof day === 'number')
+      !Number.isSafeInteger(year)
+      || !Number.isSafeInteger(month)
+      || !Number.isSafeInteger(day)
     ) {
       throw new Error('Invalid payload for setting date');
     }
@@ -111,7 +111,17 @@ export function createCalinApiV1Outgoing(
     // Use UTC explicitly: the DTO carries grid-local calendar values and the
     // server typically runs in UTC, so we treat year/month/day as a literal
     // calendar date rather than a server-local timestamp.
-    const weekday = new Date(Date.UTC(fullYear, month - 1, day)).getUTCDay();
+    // Reject rollover (e.g. 30 Feb → 2 Mar): mm/dd come from the input, so a
+    // rolled Date.UTC weekday would disagree with the calendar digits we send.
+    const utc = new Date(Date.UTC(fullYear, month - 1, day));
+    if (
+      utc.getUTCFullYear() !== fullYear
+      || utc.getUTCMonth() !== month - 1
+      || utc.getUTCDate() !== day
+    ) {
+      throw new Error('Invalid payload for setting date');
+    }
+    const weekday = utc.getUTCDay();
     const yy = String(fullYear % 100).padStart(2, '0');
     const mm = String(month).padStart(2, '0');
     const dd = String(day).padStart(2, '0');

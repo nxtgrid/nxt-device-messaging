@@ -126,13 +126,33 @@ describe('createCalinApiV1Token', () => {
     );
   });
 
-  it('throws when the vendor returns no token', async () => {
+  it('throws when the vendor returns no token, including failure reason', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const token = createCalinApiV1Token({
+      secrets: tokenSecrets,
+      client: mockClient(vi.fn().mockResolvedValue({
+        result_code: 1,
+        reason: 'Insufficient credit',
+      })),
+    });
+
+    await expect(
+      token.generate({
+        ...shared,
+        type: 'TOP_UP_KWH',
+        payload: { kwh: 1 },
+      }),
+    ).rejects.toThrow(
+      '[CALIN API-V1 TOKEN SERVICE] Got an empty response because: Insufficient credit',
+    );
+  });
+
+  it('throws a generic empty-response message when the vendor omits reason', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const token = createCalinApiV1Token({
       secrets: tokenSecrets,
       client: mockClient(vi.fn().mockResolvedValue({
         result_code: 0,
-        reason: 'OK',
       })),
     });
 

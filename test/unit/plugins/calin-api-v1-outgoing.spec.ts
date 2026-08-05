@@ -136,6 +136,23 @@ describe('createCalinApiV1Outgoing', () => {
     );
   });
 
+  it('sendOne SET_DATE rejects non-existent calendar dates', async () => {
+    const sendRequest = vi.fn();
+    const outgoing = createCalinApiV1Outgoing({
+      secrets: adminSecrets,
+      client: mockClient(sendRequest),
+    });
+
+    await expect(
+      outgoing.sendOne(baseMessage({
+        commandType: 'SET_DATE',
+        requestData: { payload: { year: 2026, month: 2, day: 30 } },
+      })),
+    ).rejects.toThrow('Invalid payload for setting date');
+
+    expect(sendRequest).not.toHaveBeenCalled();
+  });
+
   it('sendOne token commands reject missing / blank token', async () => {
     const outgoing = createCalinApiV1Outgoing({
       secrets: adminSecrets,

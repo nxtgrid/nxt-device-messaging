@@ -36,6 +36,8 @@ export type CalinApiV1Secrets = {
  * Read and validate {@link CALIN_API_V1_ENV_KEYS} from `process.env`.
  *
  * @returns Validated secrets
+ * Values are trimmed. Blank / whitespace-only counts as missing.
+ *
  * @throws If any required key is missing or blank (`MISSING …`)
  */
 export function loadCalinApiV1Secrets(): CalinApiV1Secrets {
@@ -44,11 +46,12 @@ export function loadCalinApiV1Secrets(): CalinApiV1Secrets {
 
   for (const key of CALIN_API_V1_ENV_KEYS) {
     const value = process.env[key];
-    if (value === undefined || value.trim() === '') {
+    const trimmed = value?.trim();
+    if (trimmed === undefined || trimmed === '') {
       missing.push(key);
     }
     else {
-      values[key] = value;
+      values[key] = trimmed;
     }
   }
 

@@ -1059,12 +1059,16 @@ at baseline `db5c2ac`.
 
 ### 2026-08-04 — review nits pass (carried)
 
-**Open — PULL** `deliveryQueueId` **race in** `fromAnyToRetry`**.** The `@RACE-CONDITION` comment in
-`src/lib/queue-moving.ts` stands: `HDEL deliveryQueueId` can race a concurrent PULL
-`fetchStatus` / vendor poll that still needs the external task id. Not fixed in this pass.
-Preferred direction when tackled: keep `deliveryQueueId` until the retry attempt actually
-starts (or otherwise serialize poll vs retry). Related: thorough `messageFullCleanup` exit-path
-smoke matrix remains deferred (cancel smoke header / D2).
+**Open — PULL** `deliveryQueueId` **/** retry **race (engine, not plugin-specific).**
+`fromAnyToRetry` clears `deliveryQueueId`, drops the external-delivery index, and ZADDs
+`queue_awaiting_retry` in one pipeline. A concurrent poll can already hold `messageId`
+(lookup succeeded) and later call `messageFullCleanup`, which does **not** ZREM
+`queue_awaiting_retry` — leaving an orphan retry member after the hash is deleted.
+(Poll holding a stale in-memory `deliveryQueueId` for `fetchStatus` is a milder sibling;
+skip-if-missing on re-read is already guarded.) Not fixed here. Preferred fix: serialize
+poll vs retry, or claim/remove retry membership in success cleanup (D2 family). **Do not**
+gate enabling `calin-api-v1` alone — same hole exists for any PULL plugin (incl. stubs);
+plugin stays opt-in via `plugins[]`. Thorough cleanup exit-path matrix still deferred.
 
 ### 2026-08-05 — session 25: Unit 7 closed (`calin-api-v1`)
 
@@ -1091,9 +1095,36 @@ smoke matrix remains deferred (cancel smoke header / D2).
 - `config.example.json` stays stubs-only so `pnpm dev` works; enable v1 via `plugins[]` + env
 - Factory: `createCalinApiV1Plugin(entry)` only — secrets from `process.env` (`vi.stubEnv` in tests)
 
-**Still open (unchanged):** D2 / thorough cleanup suite; PULL `deliveryQueueId` race in
-`fromAnyToRetry` (review nits); `generateRandomNumber` deferred to Unit 8 with `nxt-sts`.
+**Still open (unchanged):** D2 / thorough cleanup suite; PULL poll↔retry orphan race
+(review nits, clarified above); `generateRandomNumber` deferred to Unit 8 with `nxt-sts`.
 
 **Next:** Phase 2 **Unit 8** — `nxt-sts` from `legacy/.../adapters/nxt-sts/_token.service.ts`
 (`HttpService` → `fetch`; map wire `TOP_UP_KWH` ↔ vendor `TOP_UP` if the STS API still expects
 the estate name).
+
+### 2026-08-05 — review: fetch timeout vs `NS_SLOW` (Unit 7 follow-up)
+
+**Context.** Reviewer asked for `AbortSignal` on `calin-api-v1` `fetch` so a hung CALIN
+socket cannot pin all five concurrency admission slots. Stage timeouts do not cancel the
+in-flight HTTP call.
+
+**Locked for now — no request abort on the CALIN client.**
+
+- Legacy V1 axios also had **no** request timeout; production often waited a long time and
+  still got a response.
+- Aborting at ~`nsInFlightTimeoutMs` (20s default) would fight that: slow success is common,
+  and legacy already warned that resolution may have zombie-retried the NS entry meanwhile.
+- Observability first: ported legacy **`[NS_SLOW]`** logging into engine
+  `_sendOneToNetworkServer` — warn when `sendOne` exceeds `plugin.tuning.nsInFlightTimeoutMs`
+  (throw path and success path). Threshold tracks tuning, not a hardcoded 20s.
+
+**Deferred improvements (real, not “abort at 20s”):**
+
+| Item | Why it matters | When |
+| --- | --- | --- |
+| Generous fetch safety deadline (e.g. 60–120s) + optional `err.name === 'TimeoutError'` branch in the client | Caps true never-return hangs without cutting normal slow CALIN | If real hangs show up in testing / ops |
+| NS zombie `retryOrFail` should pass `concurrencyRateLimitKey` when the plugin uses concurrency admission | Today a hang past NS timeout can leave the admission slot occupied while the message is retried; `validateAndCleanConcurrencyRateLimit` only drops members whose message hash is gone | Engine / D2 family — next time we touch NS timeout or admission release |
+| (Depends on abort) map `TimeoutError` distinctly from generic “API is down” in `repo.ts` | Clearer failure history if/when AbortSignal lands | With the safety deadline |
+
+Do **not** treat short AbortSignal as a Unit 7 must-fix. `NS_SLOW` is the intentional
+stand-in until field evidence says otherwise.

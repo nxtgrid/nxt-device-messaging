@@ -65,6 +65,16 @@ describe('loadCalinApiV1Secrets', () => {
     vi.stubEnv('CALIN_API_V1_ADMIN_PASSWORD', '   ');
     expect(() => loadCalinApiV1Secrets()).toThrow(/CALIN_API_V1_ADMIN_PASSWORD/);
   });
+
+  it('trims surrounding whitespace on stored values', () => {
+    stubValidCalinApiV1Env();
+    vi.stubEnv('CALIN_API_V1_URL', '  https://calin.example/api  ');
+    vi.stubEnv('CALIN_API_V1_COMPANY_NAME', '  Acme  ');
+    expect(loadCalinApiV1Secrets()).toMatchObject({
+      apiBaseUrl: 'https://calin.example/api',
+      companyName: 'Acme',
+    });
+  });
 });
 
 describe('createCalinApiV1Plugin', () => {
