@@ -3,6 +3,9 @@
  *
  * Adopter notification goes through {@link emitDeliveryEvent} (stub until Phase 3
  * lands the outbound webhook — ADR-003).
+ *
+ * Concurrency admission: the rate-limit key is stored on the message hash at claim
+ * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `fromAnyToRetry` SREM it.
  */
 
 import { isNotNil } from 'ramda';
@@ -10,6 +13,7 @@ import type { DeliveryConfig } from '../config/schema.js';
 import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { calculateBackoffDelay } from '../lib/retry-helpers.js';
+import { omitInternalFields } from '../lib/device-message/omit-internal-fields.js';
 import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
@@ -28,27 +32,25 @@ import type { PluginRegistry } from '../plugins/registry.js';
  * @param message - The message (or partial) to broadcast
  */
 export function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
+  const payload = omitInternalFields(message);
   // Temporary until Phase 3 webhook — see delivery outcomes in the process log.
   console.info('[emitDeliveryEvent]', {
-    id: message.id,
-    correlationId: message.correlationId,
-    commandType: message.commandType,
-    deliveryStatus: message.deliveryStatus,
-    response: message.response,
-    device: message.device?.externalReference,
-    unsolicited: message.unsolicited,
+    id: payload.id,
+    correlationId: payload.correlationId,
+    commandType: payload.commandType,
+    deliveryStatus: payload.deliveryStatus,
+    response: payload.response,
+    device: payload.device?.externalReference,
+    unsolicited: payload.unsolicited,
   });
 }
 
-/** Shared retry / requeue operations used by peers and (later) the resolution cycle. */
+/** Shared retry / requeue operations used by peers. */
 export type BaseService = {
   retryOrFail(
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-    options?: {
-      concurrencyRateLimitKey?: string;
-    },
   ): Promise<void>;
   requeueMessage(messageId: string): Promise<void>;
 };
@@ -78,15 +80,11 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
    * @param messageId - ULID of the message
    * @param currentQueueKey - The queue where the message currently resides
    * @param failureContext - Details about why the failure occurred
-   * @param options - Optional D2 seams (e.g. concurrency track key when admission is concurrency)
    */
   async function retryOrFail(
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-    options?: {
-      concurrencyRateLimitKey?: string;
-    },
   ): Promise<void> {
     const message = await redisRepo.getMessageById(messageId);
 
@@ -111,9 +109,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     ];
 
     if (isFinalFailure) {
-      await redisRepo.messageFullCleanup(message, {
-        concurrencyRateLimitKey: options?.concurrencyRateLimitKey,
-      });
+      await redisRepo.messageFullCleanup(message);
       emitDeliveryEvent({
         ...message,
         failureHistory: newFailureHistory,
@@ -137,7 +133,6 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       currentQueueKey,
       nextRetryAt,
       updateProps,
-      { concurrencyRateLimitKey: options?.concurrencyRateLimitKey },
     );
   }
 

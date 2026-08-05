@@ -8,7 +8,7 @@ Content-Type: application/json
 
 {
   "commandType": "READ_CREDIT",
-  "priority": 1,
+  "priority": 10,
   "pluginId": "stub-push",
   "networkId": 42,
   "correlationId": "httpyac-demo-1",

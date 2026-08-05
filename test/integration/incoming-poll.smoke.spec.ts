@@ -111,13 +111,14 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
       const afterPoll = await outgoingService.getByCorrelationId(correlationId);
       expect(afterPoll).toBeNull();
       expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+      // Success cleanup must release the slot (key was stored on the message at claim).
+      expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(0);
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, {
-          concurrencyRateLimitKey: rateLimitKey,
-        });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       else if (enqueuedId) {
         await redisRepo.client.srem(rateLimitKey, enqueuedId);

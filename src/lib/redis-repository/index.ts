@@ -399,25 +399,17 @@ export const redisRepo = {
   },
 
   /**
-   * Complete cleanup of a message from all Redis structures.
+   * Complete cleanup of a message from stage queues / indexes / admission.
    * Called on successful delivery or permanent failure.
-   * Removes: message hash, in-flight queue entries, indexes, optional concurrency slot.
    *
-   * Unit 2 interim (ADR-006 D2):
-   * - `inFlightQueueKeys` — queues to ZREM (defaults to known stage keys + awaiting-task).
-   * - `concurrencyRateLimitKey` — optional Redis key to SREM (from
-   *   `buildConcurrencyRateLimitKey(initialQueueKey)` when releasing a concurrency slot).
+   * ZREMs known stage keys + `queue_awaiting_task:{pluginId}`. Does **not** touch
+   * dynamic initial bottleneck queues or the retry queue — callers that still hold
+   * membership there must ZREM first (cancel does). Concurrency slot: SREM
+   * `message.concurrencyRateLimitKey` when present (set at claim).
    *
    * @param message - The message to clean up
-   * @param options - Optional D2 cleanup seams
    */
-  async messageFullCleanup(
-    message: DeviceMessage,
-    options?: {
-      inFlightQueueKeys?: readonly string[];
-      concurrencyRateLimitKey?: string;
-    },
-  ): Promise<void> {
+  async messageFullCleanup(message: DeviceMessage): Promise<void> {
     const messageKey = redisKeys.message(message.id);
 
     const indexesToDelete = [
@@ -425,7 +417,7 @@ export const redisRepo = {
       message.deliveryQueueId && redisKeys.indexExternalDeliveryId(message.deliveryQueueId),
     ].filter(Boolean) as string[];
 
-    const inFlightQueueKeys = options?.inFlightQueueKeys ?? [
+    const inFlightQueueKeys = [
       'queue_in_flight_to_ns',
       'queue_in_flight_to_relay_node',
       'queue_in_flight_to_device',
@@ -437,14 +429,14 @@ export const redisRepo = {
     // 1. Delete the message
     multi.del(messageKey);
 
-    // 2. Remove from queues (shotgun only over caller-provided / default keys)
+    // 2. Remove from stage / awaiting-task queues
     for (const queueKey of inFlightQueueKeys) {
       multi.zrem(queueKey, message.id);
     }
 
-    // 3. Clean up concurrency rate-limit set when the caller supplies the key
-    if (options?.concurrencyRateLimitKey) {
-      multi.srem(options.concurrencyRateLimitKey, message.id);
+    // 3. Release concurrency admission slot (key stored on the message at claim)
+    if (message.concurrencyRateLimitKey) {
+      multi.srem(message.concurrencyRateLimitKey, message.id);
     }
 
     // 4. Delete indexes
@@ -461,14 +453,20 @@ export const redisRepo = {
   // ------------------------------------
 
   /**
-   * Add a message to a concurrency rate-limit tracking set.
-   * Called when a message is successfully claimed under the concurrency strategy.
+   * Claim a concurrency admission slot: SADD the track set and persist the key
+   * on the message hash so cleanup/retry can SREM without re-deriving it.
    *
    * @param concurrencyRateLimitKey - Opaque rate-limit set key
    * @param messageId - The message ULID
    */
-  addToConcurrencyRateLimit(concurrencyRateLimitKey: string, messageId: string) {
-    return _client.sadd(concurrencyRateLimitKey, messageId);
+  async claimConcurrencyRateLimit(
+    concurrencyRateLimitKey: string,
+    messageId: string,
+  ): Promise<void> {
+    const multi = _client.multi();
+    multi.sadd(concurrencyRateLimitKey, messageId);
+    multi.hset(redisKeys.message(messageId), { concurrencyRateLimitKey });
+    assertExecSucceeded(await multi.exec(), 'claimConcurrencyRateLimit');
   },
 
   /**

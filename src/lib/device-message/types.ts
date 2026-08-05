@@ -152,6 +152,11 @@ export type DeviceMessage = Omit<CreateDeviceMessage, 'commandType'> & {
   retryCount?: number;
   /** History of failed delivery attempts. */
   failureHistory?: FailureReason[];
+  /**
+   * Redis concurrency admission track key, set at distribute claim.
+   * Internal only — stripped before adopter-facing emit / GET.
+   */
+  concurrencyRateLimitKey?: string;
 };
 
 /**

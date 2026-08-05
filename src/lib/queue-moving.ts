@@ -123,15 +123,13 @@ export const moveQueue = {
    * Updates retry count, delivery status, and failure history.
    * Cleans up the external delivery ID index (will get a new one on retry).
    *
-   * Concurrency admission slot cleanup is opt-in via `concurrencyRateLimitKey`
-   * (`buildConcurrencyRateLimitKey`) — same seam as `messageFullCleanup`.
-   * Callers that omit it (PUSH, or spacing admission) are a no-op for that step.
+   * Releases a concurrency admission slot when the message hash has
+   * `concurrencyRateLimitKey` (written at distribute claim).
    *
    * @param messageId - ULID of the message
    * @param currentQueueKey - Queue where the message currently resides
    * @param nextRetryAt - Unix timestamp when message should be retried
    * @param updateProps - Updated retry metadata
-   * @param options - Optional D2 seams (e.g. concurrency rate-limit key)
    */
   async fromAnyToRetry(
     messageId: string,
@@ -142,9 +140,6 @@ export const moveQueue = {
       deliveryStatus: DeviceMessageDeliveryStatus;
       failureHistory: FailureReason[];
     },
-    options?: {
-      concurrencyRateLimitKey?: string;
-    },
   ): Promise<void> {
     const messageKey = redisKeys.message(messageId);
 
@@ -154,9 +149,10 @@ export const moveQueue = {
     const inQueue = await redisRepo.client.zscore(currentQueueKey, messageId);
     if (inQueue === null) return;
 
-    const [ currentDeliveryQueueId ] = await redisRepo.client.hmget(
+    const [ currentDeliveryQueueId, concurrencyRateLimitKey ] = await redisRepo.client.hmget(
       messageKey,
       'deliveryQueueId',
+      'concurrencyRateLimitKey',
     );
 
     const pipeline = redisRepo.client.multi();
@@ -180,9 +176,10 @@ export const moveQueue = {
       pipeline.del(redisKeys.indexExternalDeliveryId(currentDeliveryQueueId));
     }
 
-    // 4. Concurrency rate-limit membership — caller supplies concurrencyRateLimitKey
-    if (options?.concurrencyRateLimitKey) {
-      pipeline.srem(options.concurrencyRateLimitKey, messageId);
+    // 4. Release concurrency admission slot; clear stored key until next claim
+    if (concurrencyRateLimitKey) {
+      pipeline.srem(concurrencyRateLimitKey, messageId);
+      pipeline.hdel(messageKey, 'concurrencyRateLimitKey');
     }
 
     await pipeline.exec();
