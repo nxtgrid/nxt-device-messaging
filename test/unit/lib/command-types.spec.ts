@@ -66,10 +66,43 @@ describe('command-types vocabulary', () => {
       ...base,
       type: 'DELIVER_PREEXISTING_TOKEN',
     }).success).toBe(false);
+  });
+
+  it('requires per-type payload on generateTokenSchema', () => {
+    const base = {
+      pluginId: 'stub-push',
+      issueDateString: '2026-08-03',
+      device: { externalReference: 'm-1' },
+    };
 
     expect(generateTokenSchema.safeParse({
       ...base,
       type: 'TOP_UP_KWH',
+    }).success).toBe(false);
+    expect(generateTokenSchema.safeParse({
+      ...base,
+      type: 'TOP_UP_KWH',
+      payload: { kwh: 10 },
     }).success).toBe(true);
+
+    expect(generateTokenSchema.safeParse({
+      ...base,
+      type: 'SET_POWER_LIMIT',
+    }).success).toBe(false);
+    expect(generateTokenSchema.safeParse({
+      ...base,
+      type: 'SET_POWER_LIMIT',
+      payload: { powerLimit: 5000 },
+    }).success).toBe(true);
+
+    expect(generateTokenSchema.safeParse({
+      ...base,
+      type: 'CLEAR_TAMPER',
+    }).success).toBe(true);
+    expect(generateTokenSchema.safeParse({
+      ...base,
+      type: 'CLEAR_TAMPER',
+      payload: { kwh: 1 },
+    }).success).toBe(false);
   });
 });

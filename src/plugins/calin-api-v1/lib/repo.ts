@@ -71,21 +71,6 @@ type CalinApiV1Response =
   | CalinApiV1PosResponse
   | CalinApiV1MaintenanceResponse;
 
-/** JSON body fields accepted by CALIN V1 endpoints. */
-export type CalinApiV1RequestBody = Record<string, string | number | boolean>;
-
-/** Thin HTTP client for CALIN API V1. */
-export type CalinApiV1Client = {
-  readonly sendRequest: <T extends CalinApiV1Response>(
-    path: string,
-    body: CalinApiV1RequestBody,
-  ) => Promise<T>;
-};
-
-type CreateCalinApiV1ClientDeps = {
-  readonly apiBaseUrl: string;
-};
-
 type UnexpectedCodeProbe = {
   readonly result_code?: unknown;
   readonly reason?: unknown;
@@ -122,14 +107,12 @@ function getNetworkErrorCode(err: unknown): string | undefined {
  *
  * @param deps - Base URL from {@link loadCalinApiV1Secrets}
  */
-export function createCalinApiV1Client(
-  deps: CreateCalinApiV1ClientDeps,
-): CalinApiV1Client {
+export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
   const { apiBaseUrl } = deps;
 
   const sendRequest = async <T extends CalinApiV1Response>(
     path: string,
-    body: CalinApiV1RequestBody,
+    body: Record<string, string | number | boolean>,
   ): Promise<T> => {
     try {
       const response = await fetch(apiBaseUrl + path, {
@@ -237,3 +220,6 @@ export function createCalinApiV1Client(
 
   return { sendRequest };
 }
+
+/** Thin HTTP client for CALIN API V1 ({@link createCalinApiV1Client}). */
+export type CalinApiV1Client = ReturnType<typeof createCalinApiV1Client>;

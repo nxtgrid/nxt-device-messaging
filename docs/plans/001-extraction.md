@@ -224,7 +224,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `device-messages.module.ts` | 37 | 5 | **dropped** — superseded by the composition root (ADR-001 §2) |
 | `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | **ported** → `src/plugins/calin-api-v1/outgoing.ts` (Unit 7.3) |
 | `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | **ported** → `src/plugins/calin-api-v1/incoming.ts` (Unit 7.4; camelCase `response.data`) |
-| `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | pending |
+| `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | **ported** → `src/plugins/calin-api-v1/token.ts` (Unit 7.5; `TOP_UP_KWH`) |
 | `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | **ported** → `src/plugins/calin-api-v1/lib/repo.ts` (fetch; Unit 7.2) |
 | `adapters/nxt-sts/_token.service.ts` | 46 | 8 | pending |
 | `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 9 | pending |

@@ -49,6 +49,7 @@ describe('token generate (stub-push)', () => {
         type: 'TOP_UP_KWH',
         issueDateString: '2026-08-03',
         device: { externalReference: 'smoke-meter' },
+        payload: { kwh: 5 },
       },
     });
     expect(noToken.statusCode).toBe(400);

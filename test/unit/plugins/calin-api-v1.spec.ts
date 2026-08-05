@@ -128,17 +128,12 @@ describe('createCalinApiV1Plugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('token throws until Unit 7.5; outgoing + incoming are wired', async () => {
+  it('wires outgoing, incoming, and token facets', () => {
     stubValidCalinApiV1Env();
     const plugin = createCalinApiV1Plugin({ id: CALIN_API_V1_ID });
     expect(plugin.outgoing.sendOne).toBeTypeOf('function');
     expect(plugin.incoming.fetchStatus).toBeTypeOf('function');
-    await expect(plugin.token!.generate({
-      type: 'TOP_UP_KWH',
-      issueDateString: '2026-08-04',
-      device: { externalReference: 'm-1' },
-      payload: { kwh: 10 },
-    })).rejects.toThrow(/token.generate not implemented \(Unit 7\.5\)/);
+    expect(plugin.token?.generate).toBeTypeOf('function');
   });
 
   it('registers via PLUGIN_CATALOG when env is present', () => {

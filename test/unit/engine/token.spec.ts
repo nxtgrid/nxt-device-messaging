@@ -15,6 +15,7 @@ const request = {
   type: 'TOP_UP_KWH' as const,
   issueDateString: '2026-08-03',
   device: { externalReference: 'm-1' },
+  payload: { kwh: 10 },
 };
 
 describe('createTokenService', () => {
@@ -42,6 +43,7 @@ describe('createTokenService', () => {
       type: request.type,
       issueDateString: request.issueDateString,
       device: request.device,
+      payload: request.payload,
     });
   });
 
