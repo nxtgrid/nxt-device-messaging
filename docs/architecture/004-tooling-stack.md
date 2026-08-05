@@ -50,6 +50,10 @@ Native TypeScript/ESM, no Jest or Nx test harness. Config resolution tests call 
 directly; domain tests pass fixtures / `createPluginRegistry` without importing `runtime`.
 override pattern and Fastify's usual greenfield choice.
 
+Tests import application code via the package `imports` subpath `#src/*` → `./src/*`
+(see `package.json`). That alias works for any file in the package; production `src/`
+keeps relative imports.
+
 ### 5. ESLint only — house `teamRules`, adapted; no formatter product
 
 Lint and style are enforced by **ESLint 9 flat config** + `typescript-eslint`. There is **no**

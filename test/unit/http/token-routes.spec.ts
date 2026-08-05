@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../../src/app.js';
-import { STUB_PUSH_ID, STUB_TOKEN_VALUE } from '../../../src/plugins/stub/index.js';
+import { buildApp } from '#src/app.js';
+import { STUB_PUSH_ID, STUB_TOKEN_VALUE } from '#src/plugins/stub/index.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 
 const generateBody = {

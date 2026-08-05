@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../../src/app.js';
-import { STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+import { buildApp } from '#src/app.js';
+import { InvalidEnqueueError } from '#src/engine/errors.js';
+import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 
 const enqueueBody = {
@@ -79,6 +80,28 @@ describe('message command routes (enqueue / get / cancel)', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
       error: `Plugin ${ STUB_PUSH_ID } does not support commandType: READ_CREDIT`,
+    });
+
+    await app.close();
+  });
+
+  it('maps InvalidEnqueueError from outgoing to 400', async () => {
+    const outgoingService = createInMemoryOutgoingService({
+      knownPluginIds: [ STUB_PUSH_ID ],
+    });
+    outgoingService.enqueue = async () => {
+      throw new InvalidEnqueueError(STUB_PUSH_ID, 'device.relayNode.id is required');
+    };
+
+    const app = await buildApp({ outgoingService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/message/enqueue',
+      payload: enqueueBody,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: `Plugin ${ STUB_PUSH_ID }: device.relayNode.id is required`,
     });
 
     await app.close();

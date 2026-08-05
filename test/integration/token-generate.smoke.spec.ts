@@ -6,14 +6,14 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../src/app.js';
-import { createTokenService } from '../../src/engine/token.js';
-import { createPluginRegistry } from '../../src/plugins/registry.js';
+import { buildApp } from '#src/app.js';
+import { createTokenService } from '#src/engine/token.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   STUB_PULL_ID,
   STUB_PUSH_ID,
   STUB_TOKEN_VALUE,
-} from '../../src/plugins/stub/index.js';
+} from '#src/plugins/stub/index.js';
 
 describe('token generate (stub-push)', () => {
   it('POST /token/generate → { token: stub-token }', async () => {
@@ -49,6 +49,7 @@ describe('token generate (stub-push)', () => {
         type: 'TOP_UP_KWH',
         issueDateString: '2026-08-03',
         device: { externalReference: 'smoke-meter' },
+        payload: { kwh: 5 },
       },
     });
     expect(noToken.statusCode).toBe(400);

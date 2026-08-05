@@ -4,15 +4,15 @@
 
 import { ulid } from 'ulid';
 
-import { UnknownPluginError, UnsupportedCommandTypeError } from '../../src/engine/errors.js';
-import type { OutgoingService } from '../../src/engine/outgoing.js';
+import { UnknownPluginError, UnsupportedCommandTypeError } from '#src/engine/errors.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type {
   CancelMessageResult,
   CreateDeviceMessage,
   DeviceMessage,
   EnqueueableCommandType,
   PluginId,
-} from '../../src/lib/device-message/types.js';
+} from '#src/lib/device-message/types.js';
 
 export type InMemoryOutgoingServiceOptions = {
   /** When set, enqueue throws {@link UnknownPluginError} for other ids. */

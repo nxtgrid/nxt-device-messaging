@@ -77,10 +77,7 @@ export const deserializeMessage = (
     networkId: 'networkId' in raw ? parseInt(raw.networkId) : null,
     ...(raw.correlationId ? { correlationId: raw.correlationId } : {}),
 
-    ...(raw.requestData
-      ? { requestData: JSON.parse(raw.requestData) as NonNullable<CreateDeviceMessage['requestData']> }
-      : {}
-    ),
+    ...(raw.requestData ? { requestData: JSON.parse(raw.requestData) as NonNullable<CreateDeviceMessage['requestData']> } : {}),
     ...(raw.phase ? { phase: raw.phase as PhaseEnum } : {}),
 
     deliveryQueueId: raw.deliveryQueueId ?? '',
@@ -88,5 +85,6 @@ export const deserializeMessage = (
 
     retryCount: parseInt(raw.retryCount ?? '0'),
     failureHistory: raw.failureHistory ? (JSON.parse(raw.failureHistory) as FailureReason[]) : [],
+    ...(raw.concurrencyRateLimitKey ? { concurrencyRateLimitKey: raw.concurrencyRateLimitKey } : {}),
   };
 };

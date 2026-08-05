@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
-import { STUB_PULL_ID, STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
+import { STUB_PULL_ID, STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 
 describe('createPluginRegistry', () => {
   it('builds a lookup-only registry from config entries', () => {

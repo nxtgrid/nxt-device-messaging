@@ -2,9 +2,9 @@
  * @fileoverview In-memory {@link TokenService} for HTTP unit tests (no Valkey).
  */
 
-import { TokenNotSupportedError, UnknownPluginError } from '../../src/engine/errors.js';
-import type { TokenService } from '../../src/engine/token.js';
-import type { PluginId } from '../../src/lib/device-message/types.js';
+import { TokenNotSupportedError, UnknownPluginError } from '#src/engine/errors.js';
+import type { TokenService } from '#src/engine/token.js';
+import type { PluginId } from '#src/lib/device-message/types.js';
 
 export type InMemoryTokenServiceOptions = {
   /** Plugin ids that accept generate (default: all). */

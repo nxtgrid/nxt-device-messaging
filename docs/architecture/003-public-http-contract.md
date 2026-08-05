@@ -111,8 +111,10 @@ Wire validation:
 | Incoming / unsolicited | Full `COMMAND_TYPES` (incl. `READ_REPORT`, `JOIN_NETWORK`) |
 
 Each plugin declares `supportedCommandTypes` (a subset of enqueueable types). Enqueue checks
-enablement, then membership (400 via `UnsupportedCommandTypeError`). Per-type payload Zod
-stays plugin-local when adapters need it.
+enablement, then membership (400 via `UnsupportedCommandTypeError`).
+`POST /token/generate` uses a `type`-discriminated Zod union so required payload fields
+(`kwh` / `powerLimit`) are enforced on the wire; further adapter-specific checks may still
+be plugin-local when needed.
 
 **Amendment (2026-08-03):** replaces the earlier “opaque string; plugins close the set”
 wording. The product vocabulary is shared; third-party adapters either use it or we reopen

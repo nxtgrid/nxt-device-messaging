@@ -9,14 +9,14 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../src/app.js';
-import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
-import { createBaseService } from '../../src/engine/base.js';
-import { createIncomingService } from '../../src/engine/incoming.js';
-import { createOutgoingService } from '../../src/engine/outgoing.js';
-import { QUEUE_DEVICE_KEY } from '../../src/lib/queue-moving.push.js';
-import { createPluginRegistry } from '../../src/plugins/registry.js';
-import { STUB_PUSH_ID } from '../../src/plugins/stub/index.js';
+import { buildApp } from '#src/app.js';
+import { deviceMessagingConfigSchema } from '#src/config/schema.js';
+import { createBaseService } from '#src/engine/base.js';
+import { createIncomingService } from '#src/engine/incoming.js';
+import { createOutgoingService } from '#src/engine/outgoing.js';
+import { QUEUE_DEVICE_KEY } from '#src/lib/queue-moving.push.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
+import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';

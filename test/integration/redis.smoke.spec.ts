@@ -60,9 +60,9 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       expect(message?.deliveryStatus).toBe('QUEUED');
       expect(message?.device.externalReference).toBe('smoke-meter');
 
-      await redisRepo.messageFullCleanup(message!, {
-        inFlightQueueKeys: [ queueKey ],
-      });
+      // Initial bottleneck queue is not in messageFullCleanup's stage list.
+      await redisRepo.client.zrem(queueKey, message!.id);
+      await redisRepo.messageFullCleanup(message!);
 
       // messageFullCleanup does not SREM queues_to_distribute_from — the distributor Lua
       // GC's that when a queue empties. Smoke has no distribute pass, so tidy explicitly.
@@ -81,9 +81,8 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
     finally {
       const leftover = await redisRepo.getMessageFromCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, {
-          inFlightQueueKeys: [ queueKey ],
-        });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

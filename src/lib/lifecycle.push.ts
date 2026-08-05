@@ -59,8 +59,11 @@ export async function maybeExtendMessageInRelayNodeQueue(
   message: DeviceMessage,
   plugin: DeviceMessagingPlugin,
 ): Promise<boolean> {
+  const getRemoteStatus = plugin.outgoing.getRemoteStatus;
+  if (!getRemoteStatus) return false;
+
   try {
-    const { deliveryStatus } = await plugin.outgoing.getRemoteStatus(message);
+    const { deliveryStatus } = await getRemoteStatus(message);
     if (deliveryStatus === 'DELIVERY_FAILED') return false;
   }
   catch (err) {

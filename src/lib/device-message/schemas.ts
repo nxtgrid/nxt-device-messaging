@@ -10,7 +10,6 @@ import { z } from 'zod';
 import {
   asZodEnum,
   ENQUEUEABLE_COMMAND_TYPES,
-  GENERATE_TOKEN_TYPES,
 } from './command-types.js';
 
 /** I/O parent (LoRaWAN gateway / DCU / mesh hop) — D6. */
@@ -53,6 +52,10 @@ export const phaseSchema = z.enum([ 'A', 'B', 'C' ]);
  */
 export const createDeviceMessageSchema = z.object({
   commandType: z.enum(asZodEnum(ENQUEUEABLE_COMMAND_TYPES)),
+  /**
+   * Delivery urgency within an initial queue. **Higher is more urgent**
+   * (e.g. `100` is picked before `10`). Stored as Redis ZSET score `-priority`.
+   */
   priority: z.number(),
   pluginId: z.string().min(1),
   requestData: requestDataSchema.optional(),
@@ -72,21 +75,40 @@ export const cancelManyBodySchema = z.object({
   correlationIds: z.array(z.string().min(1)).min(1),
 }).strict();
 
+/** Device block shared by all `POST /token/generate` variants. */
+const generateTokenDeviceSchema = z.object({
+  externalReference: z.string().min(1),
+  decoderKey: z.string().optional(),
+}).strict();
+
+const generateTokenSharedFields = {
+  pluginId: z.string().min(1),
+  issueDateString: z.string().min(1),
+  device: generateTokenDeviceSchema,
+};
+
 /**
  * `POST /token/generate` body (ADR-003 §1 / §3).
- * Single wire schema (includes `pluginId`); SPI omits routing at the call site.
- * `type` is closed by {@link GENERATE_TOKEN_TYPES}.
+ * Discriminated on `type`: required payload fields are enforced at the wire
+ * (includes `pluginId`; SPI omits routing at the call site).
  */
-export const generateTokenSchema = z.object({
-  pluginId: z.string().min(1),
-  type: z.enum(asZodEnum(GENERATE_TOKEN_TYPES)),
-  issueDateString: z.string().min(1),
-  device: z.object({
-    externalReference: z.string().min(1),
-    decoderKey: z.string().optional(),
+export const generateTokenSchema = z.discriminatedUnion('type', [
+  z.object({
+    ...generateTokenSharedFields,
+    type: z.literal('TOP_UP_KWH'),
+    payload: z.object({ kwh: z.number() }).strict(),
   }).strict(),
-  payload: z.object({
-    kwh: z.number().optional(),
-    powerLimit: z.number().optional(),
-  }).strict().optional(),
-}).strict();
+  z.object({
+    ...generateTokenSharedFields,
+    type: z.literal('SET_POWER_LIMIT'),
+    payload: z.object({ powerLimit: z.number() }).strict(),
+  }).strict(),
+  z.object({
+    ...generateTokenSharedFields,
+    type: z.literal('CLEAR_TAMPER'),
+  }).strict(),
+  z.object({
+    ...generateTokenSharedFields,
+    type: z.literal('CLEAR_CREDIT'),
+  }).strict(),
+]);

@@ -26,12 +26,6 @@ import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.
  */
 const PULL_PATTERN_MAX_MESSAGE_AGE_MS = 48 * 60 * 60 * 1000; // 172_800_000
 
-/** Options passed through to {@link redisRepo.messageFullCleanup} (ADR-006 D2 interim). */
-export type MessageFullCleanupOptions = {
-  inFlightQueueKeys?: readonly string[];
-  concurrencyRateLimitKey?: string;
-};
-
 /** Result of polling: a parsed event tied to its queue. */
 export type PollResult = {
   parsedEvent: ParsedIncomingEvent;
@@ -110,13 +104,11 @@ export async function pollAwaitingTasksFor(
  *
  * @param now - Current timestamp
  * @param pluginIds - PULL plugin ids whose awaiting-task queues to scan
- * @param cleanupOptions - Optional D2 cleanup seams (no key invention here)
  * @returns Array of failed messages ready to publish (already cleaned up in Redis)
  */
 export async function getPullTimeouts(
   now: number,
   pluginIds: readonly string[],
-  cleanupOptions?: MessageFullCleanupOptions,
 ): Promise<PullTimeoutResult[]> {
   const results: PullTimeoutResult[] = [];
 
@@ -136,7 +128,7 @@ export async function getPullTimeouts(
       if (!message) continue;
 
       // Permanent failure - no retry for PULL pattern timeouts
-      await redisRepo.messageFullCleanup(message, cleanupOptions);
+      await redisRepo.messageFullCleanup(message);
       results.push({
         message: {
           ...message,

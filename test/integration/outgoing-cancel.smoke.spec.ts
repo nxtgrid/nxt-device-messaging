@@ -14,11 +14,11 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { createBaseService } from '../../src/engine/base.js';
-import { createOutgoingService } from '../../src/engine/outgoing.js';
-import { STUB_PUSH_ID } from '../../src/plugins/stub/index.js';
-import { createPluginRegistry } from '../../src/plugins/registry.js';
-import { sleep } from '../../src/lib/utilities.js';
+import { createBaseService } from '#src/engine/base.js';
+import { createOutgoingService } from '#src/engine/outgoing.js';
+import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
+import { sleep } from '#src/lib/utilities.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const goSlow = false;
@@ -82,7 +82,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
       // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, { inFlightQueueKeys: [ queueKey ] });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

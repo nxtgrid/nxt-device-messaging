@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildApp } from '../../../src/app.js';
-import { createPluginRegistry } from '../../../src/plugins/registry.js';
-import { STUB_PULL_ID, STUB_PUSH_ID } from '../../../src/plugins/stub/index.js';
+import { buildApp } from '#src/app.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
+import { STUB_PULL_ID, STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
 
 describe('POST /ingress/:pluginId', () => {

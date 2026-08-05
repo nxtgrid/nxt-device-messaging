@@ -9,16 +9,16 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { deviceMessagingConfigSchema } from '../../src/config/schema.js';
-import { createBaseService } from '../../src/engine/base.js';
-import { createOutgoingService } from '../../src/engine/outgoing.js';
-import { QUEUE_NS_KEY } from '../../src/lib/queue-moving.js';
-import { QUEUE_RELAY_NODE_KEY } from '../../src/lib/queue-moving.push.js';
+import { deviceMessagingConfigSchema } from '#src/config/schema.js';
+import { createBaseService } from '#src/engine/base.js';
+import { createOutgoingService } from '#src/engine/outgoing.js';
+import { QUEUE_NS_KEY } from '#src/lib/queue-moving.js';
+import { QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
 import {
   STUB_PULL_ID,
   STUB_PUSH_ID,
-} from '../../src/plugins/stub/index.js';
-import { createPluginRegistry } from '../../src/plugins/registry.js';
+} from '#src/plugins/stub/index.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   POST_SEND_STATUS,
   waitForPostSend,
@@ -134,9 +134,8 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover, {
-          concurrencyRateLimitKey: rateLimitKey,
-        });
+        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redisRepo.messageFullCleanup(leftover);
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

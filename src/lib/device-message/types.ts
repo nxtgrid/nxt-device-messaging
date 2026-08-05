@@ -36,8 +36,11 @@ export type CreateDeviceMessage = z.infer<typeof createDeviceMessageSchema>;
  */
 export type GenerateTokenRequest = z.infer<typeof generateTokenSchema>;
 
+/** `Omit` that distributes over unions (keeps `type` discrimination). */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 /** Plugin `token.generate` args — wire body without routing. */
-export type GenerateTokenInput = Omit<GenerateTokenRequest, 'pluginId'>;
+export type GenerateTokenInput = DistributiveOmit<GenerateTokenRequest, 'pluginId'>;
 
 export type PhaseEnum = z.infer<typeof phaseSchema>;
 export type DeviceMessageDevice = CreateDeviceMessage['device'];
@@ -149,6 +152,11 @@ export type DeviceMessage = Omit<CreateDeviceMessage, 'commandType'> & {
   retryCount?: number;
   /** History of failed delivery attempts. */
   failureHistory?: FailureReason[];
+  /**
+   * Redis concurrency admission track key, set at distribute claim.
+   * Internal only — stripped before adopter-facing emit / GET.
+   */
+  concurrencyRateLimitKey?: string;
 };
 
 /**

@@ -25,14 +25,18 @@ import type {
 import {
   buildConcurrencyRateLimitKey,
   getPluginIdFromInitialQueueKey,
-} from '../plugins/initial-queue-key.js';
+} from '../plugins/_shared/initial-queue-key.js';
 import type {
   DeviceMessagingPlugin,
   DistributeCtx,
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { emitDeliveryEvent, type BaseService } from './base.js';
-import { UnknownPluginError, UnsupportedCommandTypeError } from './errors.js';
+import {
+  InvalidEnqueueError,
+  UnknownPluginError,
+  UnsupportedCommandTypeError,
+} from './errors.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
@@ -95,18 +99,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   const { registry, delivery, baseService, kickDistributeOnEnqueue = true } = options;
 
   /**
-   * Concurrency admission track key for retry/cleanup, or undefined for spacing/custom.
-   *
-   * @param plugin - Owning plugin (`admission.strategy`)
-   * @param message - Message whose initial queue identity drives the key
-   */
-  function _concurrencyRateLimitKeyFor(plugin: DeviceMessagingPlugin, message: DeviceMessage): string | undefined {
-    if (plugin.admission.strategy !== 'concurrency') return undefined;
-    const queueKey = plugin.initialQueueKey({ networkId: message.networkId, device: message.device });
-    return buildConcurrencyRateLimitKey(queueKey);
-  }
-
-  /**
    * Whether this queue may yield a message under the plugin's admission strategy.
    *
    * @param plugin - Owning plugin (`admission`)
@@ -156,7 +148,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return;
-        await redisRepo.addToConcurrencyRateLimit(rateLimitKey, messageId);
+        await redisRepo.claimConcurrencyRateLimit(rateLimitKey, messageId);
         return;
       }
       case 'custom':
@@ -169,25 +161,44 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
   /**
    * Send one message via the plugin; on success move NS → relay-node (PUSH) or awaiting-task (PULL).
-   * On failure, {@link BaseService.retryOrFail} from the NS queue (with concurrency key when needed).
+   * On failure, {@link BaseService.retryOrFail} from the NS queue.
    *
    * @param plugin - Owning plugin (`outgoing.sendOne` + tuning)
    * @param message - The message to send (already in NS queue)
    */
   async function _sendOneToNetworkServer(plugin: DeviceMessagingPlugin, message: DeviceMessage): Promise<void> {
     let deliveryQueueId: string;
+    const startedAt = performance.now();
+    const slowThresholdMs = plugin.tuning.nsInFlightTimeoutMs;
 
     try {
       deliveryQueueId = await plugin.outgoing.sendOne(message);
     }
     catch (err) {
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      if (elapsedMs > slowThresholdMs) {
+        console.warn(
+          `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
+            `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
+            `took ${ elapsedMs }ms before throwing`,
+          err,
+        );
+      }
       await baseService.retryOrFail(
         message.id,
         QUEUE_NS_KEY,
         plugin.outgoing.parseError(err),
-        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
       );
       return;
+    }
+
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    if (elapsedMs > slowThresholdMs) {
+      console.warn(
+        `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
+          `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
+          `took ${ elapsedMs }ms — resolution cycle may have already scheduled a retry`,
+      );
     }
 
     if (!deliveryQueueId) {
@@ -198,7 +209,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
           reason: 'Plugin returned an empty deliveryQueueId after sendOne',
           skipRetry: true,
         },
-        { concurrencyRateLimitKey: _concurrencyRateLimitKeyFor(plugin, message) },
       );
       return;
     }
@@ -390,6 +400,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       if (!plugin) throw new UnknownPluginError(create.pluginId);
       if (!plugin.supportedCommandTypes.includes(create.commandType)) {
         throw new UnsupportedCommandTypeError(create.pluginId, create.commandType);
+      }
+      const enqueueIssue = plugin.validateEnqueue?.(create);
+      if (enqueueIssue !== undefined) {
+        throw new InvalidEnqueueError(create.pluginId, enqueueIssue);
       }
 
       const queueKey = plugin.initialQueueKey({

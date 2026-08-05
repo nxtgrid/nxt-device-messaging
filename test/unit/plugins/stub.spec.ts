@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import type { InitialQueueKeyInput } from '../../../src/plugins/plugin.interface.js';
-import { ENQUEUEABLE_COMMAND_TYPES } from '../../../src/lib/device-message/command-types.js';
-import type { DeviceMessage } from '../../../src/lib/device-message/types.js';
+import { ENQUEUEABLE_COMMAND_TYPES } from '#src/lib/device-message/command-types.js';
+import type { DeviceMessage } from '#src/lib/device-message/types.js';
+import { mergePluginTuning } from '#src/plugins/_shared/merge-plugin-tuning.js';
+import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import {
   createStubPlugin,
   createStubPullPlugin,
   createStubPushPlugin,
-  mergeStubTuning,
   STUB_DEFAULT_TUNING,
   STUB_PULL_ID,
   STUB_PUSH_ID,
-} from '../../../src/plugins/stub/index.js';
+} from '#src/plugins/stub/index.js';
 
 const deviceOnly: InitialQueueKeyInput = {
   networkId: 42,
@@ -69,7 +69,7 @@ describe('stub plugins', () => {
   });
 
   it('rejects unknown or invalid stub tuning keys', () => {
-    expect(() => mergeStubTuning({
+    expect(() => mergePluginTuning(STUB_DEFAULT_TUNING, {
       id: STUB_PUSH_ID,
       tuning: { notAKnob: 1 },
     })).toThrow(/Invalid tuning/);
@@ -105,10 +105,18 @@ describe('stub plugins', () => {
       admission: { strategy: 'spacing', minIntervalMs: 1 },
     });
     await expect(plugin.outgoing.sendOne(sampleMessage)).resolves.toMatch(/^stub-ext-/);
-    expect(plugin.outgoing.getRemoteStatus(sampleMessage)).toEqual({
+    expect(plugin.outgoing.getRemoteStatus?.(sampleMessage)).toEqual({
       deliveryStatus: 'QUEUED',
     });
     expect(plugin.outgoing.parseError(new Error('boom'))).toEqual({ reason: 'boom' });
     expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:custom-stub:network:42');
   });
+
+  it('PULL stub omits getRemoteStatus; PUSH stub implements it', () => {
+    expect(createStubPullPlugin({ id: STUB_PULL_ID }).outgoing.getRemoteStatus)
+      .toBeUndefined();
+    expect(createStubPushPlugin({ id: STUB_PUSH_ID }).outgoing.getRemoteStatus)
+      .toBeTypeOf('function');
+  });
 });
+

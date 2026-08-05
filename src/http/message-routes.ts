@@ -7,8 +7,13 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 
-import { UnknownPluginError, UnsupportedCommandTypeError } from '../engine/errors.js';
+import {
+  InvalidEnqueueError,
+  UnknownPluginError,
+  UnsupportedCommandTypeError,
+} from '../engine/errors.js';
 import type { OutgoingService } from '../engine/outgoing.js';
+import { omitInternalFields } from '../lib/device-message/omit-internal-fields.js';
 import {
   cancelManyBodySchema,
   cancelOneBodySchema,
@@ -37,10 +42,14 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
 
     try {
       const message = await opts.outgoingService.enqueue(parsed.data);
-      return reply.code(201).send(message);
+      return reply.code(201).send(omitInternalFields(message));
     }
     catch (err) {
-      if (err instanceof UnknownPluginError || err instanceof UnsupportedCommandTypeError) {
+      if (
+        err instanceof UnknownPluginError
+        || err instanceof UnsupportedCommandTypeError
+        || err instanceof InvalidEnqueueError
+      ) {
         return reply.code(400).send({ error: err.message });
       }
       throw err;
@@ -58,7 +67,7 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(404).send({ error: 'Not found' });
     }
 
-    return message;
+    return omitInternalFields(message);
   });
 
   app.post('/message/cancel', async (request, reply) => {

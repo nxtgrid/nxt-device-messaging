@@ -101,7 +101,7 @@ type Admission =
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
 | `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
-| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim after pick; release on cleanup/retry/fail (`concurrencyRateLimitKey`) | DCU / API concurrency (CALIN API-like) |
+| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `fromAnyToRetry` | DCU / API concurrency (CALIN API-like) |
 | `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
@@ -158,9 +158,10 @@ runs.
 ### D2 — `messageFullCleanup` and the set of in-flight queue keys
 
 **Agreed direction:** Redis repo does not hardcode `PUSH_QUEUE_KEYS` /
-`PULL_PATTERN_IMPLEMENTATIONS`. Cleanup accepts (or later resolves) the list of queue keys to
-`ZREM`, plus correlation/external indexes and optional `concurrencyRateLimitKey` from the
-caller (`buildConcurrencyRateLimitKey(initialQueueKey)` — not a field on the message).
+`PULL_PATTERN_IMPLEMENTATIONS`. Cleanup ZREMs a fixed stage-key list (+ awaiting-task),
+plus correlation/external indexes. Concurrency admission release reads
+`concurrencyRateLimitKey` from the message hash (written at claim) — not a caller-threaded
+option.
 
 **Design criteria when exploring (Unit 5 with Unit 6 registry):**
 
@@ -173,24 +174,28 @@ caller (`buildConcurrencyRateLimitKey(initialQueueKey)` — not a field on the m
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2):** `messageFullCleanup(message, { inFlightQueueKeys?, concurrencyRateLimitKey? })`.
-Defaults cover known stage keys + `queue_awaiting_task:{pluginId}`; concurrency membership is
-**only** cleared when the caller passes `concurrencyRateLimitKey` (from
-`buildConcurrencyRateLimitKey(initialQueueKey)`). Callers in Unit 5+ must pass the full scrub
-set; registry may build it later. Full exit-path audit (retry queue, initial queues, cancel)
-is still D2 work.
+**Interim (Unit 2 → refined):** At concurrency **claim**, Redis stores
+`concurrencyRateLimitKey` on the message hash (`claimConcurrencyRateLimit` = SADD + HSET).
+`messageFullCleanup` / `fromAnyToRetry` SREM that field (legacy-shaped) — no key threading.
+The field is **stripped** before adopter-facing emit / command GET (`omitInternalFields`).
+`messageFullCleanup` takes **no options** — fixed ZREM of stage keys +
+`queue_awaiting_task:{pluginId}` (not dynamic initial/retry queues; cancel ZREMs those first).
+Full exit-path audit is still D2 work.
 
 ### D3 — Wire `distribute` + admission execution
 
-**Decided / landed (2026-08-01, session 19; sendOne 2026-08-02 session 20):**
+**Decided / landed (2026-08-01, session 19; sendOne 2026-08-02 session 20;
+concurrency claim/store refined later):**
 `OutgoingService.distributeToNetworkServers` on
 `createOutgoingService({ registry, delivery, baseService })`
 runs named strategies (`spacing` / `concurrency` / `custom`); resolve plugin via D1-C.
 Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`) — no
-SPI `rateLimitKey`. After pick: fire-and-forget `sendOne` + PUSH|PULL post-send moves;
-send-fail passes `concurrencyRateLimitKey` when admission is concurrency. Enqueue
-fire-and-forget kick (opt-out `kickDistributeOnEnqueue` for tests). Cron /
-`engine.enabled` still Unit 5.6.
+SPI `rateLimitKey`. On concurrency claim: SADD the track set and HSET
+`concurrencyRateLimitKey` on the message (`claimConcurrencyRateLimit`). After pick:
+fire-and-forget `sendOne` + PUSH|PULL post-send moves. Send-fail / success / timeout
+cleanup does **not** pass a key — `messageFullCleanup` and `fromAnyToRetry` read and
+SREM the stored field. Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue`
+for tests). Cron / `engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics
 
@@ -234,7 +239,7 @@ Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O par
 ## Example declarations (non-normative sketch)
 
 ```ts
-import { buildInitialQueueKey } from './initial-queue-key.js';
+import { buildInitialQueueKey } from './_shared/initial-queue-key.js';
 
 // calin-chirpstack
 {
