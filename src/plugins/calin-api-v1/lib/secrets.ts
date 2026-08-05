@@ -20,13 +20,25 @@ export const CALIN_API_V1_ENV_KEYS = [
 
 type CalinApiV1EnvKey = (typeof CALIN_API_V1_ENV_KEYS)[number];
 
+/** Validated secrets for the CALIN API V1 plugin. */
+export type CalinApiV1Secrets = {
+  readonly apiBaseUrl: string;
+  readonly companyName: string;
+  readonly adminUsername: string;
+  readonly adminPassword: string;
+  readonly posUsername: string;
+  readonly posPassword: string;
+  readonly maintenanceUsername: string;
+  readonly maintenancePassword: string;
+};
+
 /**
  * Read and validate {@link CALIN_API_V1_ENV_KEYS} from `process.env`.
  *
  * @returns Validated secrets
  * @throws If any required key is missing or blank (`MISSING …`)
  */
-export function loadCalinApiV1Secrets() {
+export function loadCalinApiV1Secrets(): CalinApiV1Secrets {
   const values = {} as Record<CalinApiV1EnvKey, string>;
   const missing: CalinApiV1EnvKey[] = [];
 

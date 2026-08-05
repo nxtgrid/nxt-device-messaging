@@ -8,7 +8,7 @@ import {
 import {
   CALIN_API_V1_ENV_KEYS,
   loadCalinApiV1Secrets,
-} from '#src/plugins/calin-api-v1/secrets.js';
+} from '#src/plugins/calin-api-v1/lib/secrets.js';
 import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 
@@ -139,7 +139,7 @@ describe('createCalinApiV1Plugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('vendor surfaces throw until Unit 7.2+', async () => {
+  it('vendor surfaces throw until Unit 7.3+', async () => {
     stubValidCalinApiV1Env();
     const plugin = createCalinApiV1Plugin({ id: CALIN_API_V1_ID });
     await expect(plugin.outgoing.sendOne(sampleMessage)).rejects.toThrow(

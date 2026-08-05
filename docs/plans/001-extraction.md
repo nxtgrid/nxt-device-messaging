@@ -196,7 +196,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | Source file | Lines | Unit | Status |
 |---|---|---|---|
 | `lib/types.ts` | 175 | 1 | **ported** → `src/lib/types.ts` (core-only; see session 5) |
-| *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 7–10 | **deferred** — adapter-only; lands with the plugin that needs each helper |
+| *(new)* `lib/utils.ts` — vendors `generateRandomNumber`, `toSafeNumberOrNull` | — | 7–10 | **partial** — `toSafeNumberOrNull` → `src/plugins/_shared/to-safe-number-or-null.ts` (Unit 7.2); `generateRandomNumber` still deferred |
 | `lib/redis-repository/index.ts` | 472 | 2 | **ported** → `src/lib/redis-repository/index.ts` |
 | `lib/redis-repository/keys.ts` | 94 | 2 | **ported** → `src/lib/redis-repository/keys.ts` |
 | `lib/redis-repository/helpers.ts` | 100 | 2 | **ported** → `src/lib/redis-repository/helpers.ts` |
@@ -225,7 +225,7 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `adapters/calin-api-v1/_outgoing.service.ts` | 222 | 7 | pending |
 | `adapters/calin-api-v1/_incoming.service.ts` | 274 | 7 | pending |
 | `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | pending |
-| `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | pending |
+| `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | **ported** → `src/plugins/calin-api-v1/lib/repo.ts` (fetch; Unit 7.2) |
 | `adapters/nxt-sts/_token.service.ts` | 46 | 8 | pending |
 | `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 9 | pending |
 | `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 9 | pending |
