@@ -27,8 +27,17 @@ import type { PluginRegistry } from '../plugins/registry.js';
  *
  * @param message - The message (or partial) to broadcast
  */
-export function emitDeliveryEvent(_message: Partial<DeviceMessage>): void {
-  // no-op
+export function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
+  // Temporary until Phase 3 webhook — see delivery outcomes in the process log.
+  console.info('[emitDeliveryEvent]', {
+    id: message.id,
+    correlationId: message.correlationId,
+    commandType: message.commandType,
+    deliveryStatus: message.deliveryStatus,
+    response: message.response,
+    device: message.device?.externalReference,
+    unsolicited: message.unsolicited,
+  });
 }
 
 /** Shared retry / requeue operations used by peers and (later) the resolution cycle. */

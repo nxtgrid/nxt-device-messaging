@@ -196,7 +196,8 @@ export const redisRepo = {
     multi.hset(messageKey, serializedHash);
     multi.expire(messageKey, MESSAGE_TTL_SECONDS);
 
-    // 2. Add to the appropriate initial queue
+    // 2. Add to the appropriate initial queue.
+    // Higher `priority` is more urgent → more negative score → popped first.
     const score = -1 * dto.priority;
     multi.zadd(queueKey, score, messageId);
 
@@ -226,7 +227,7 @@ export const redisRepo = {
    * @param messageId - ULID of the message
    * @param fromQueueKey - Source queue (typically retry queue)
    * @param toQueueKey - Destination initial queue
-   * @param priority - Original message priority
+   * @param priority - Original message priority (higher = more urgent; score `-priority`)
    */
   async requeueMessage(
     messageId: string,

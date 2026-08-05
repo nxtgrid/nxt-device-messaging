@@ -95,6 +95,7 @@ describe('createCalinApiV1Plugin', () => {
         device: { ...deviceOnly.device, relayNode: { id: 7 } },
       }),
     ).toBe('queue:calin-api-v1:dcu:7');
+    // Still builds unassigned for cancel/requeue of legacy rows; enqueue rejects.
     expect(plugin.initialQueueKey(deviceOnly)).toBe(
       'queue:calin-api-v1:dcu:unassigned',
     );
@@ -102,6 +103,23 @@ describe('createCalinApiV1Plugin', () => {
     expect(plugin.incoming.handle).toBeUndefined();
     expect(plugin.outgoing.getRemoteStatus).toBeUndefined();
     expect(plugin.token?.generate).toBeTypeOf('function');
+  });
+
+  it('validateEnqueue requires device.relayNode.id', () => {
+    stubValidCalinApiV1Env();
+    const plugin = createCalinApiV1Plugin({ id: CALIN_API_V1_ID });
+    const base = {
+      commandType: 'READ_CREDIT' as const,
+      priority: 1,
+      pluginId: CALIN_API_V1_ID,
+      networkId: null,
+      device: deviceOnly.device,
+    };
+    expect(plugin.validateEnqueue?.(base)).toBe('device.relayNode.id is required');
+    expect(plugin.validateEnqueue?.({
+      ...base,
+      device: { ...deviceOnly.device, relayNode: { id: 7 } },
+    })).toBeUndefined();
   });
 
   it('fails construct when secrets are missing', () => {

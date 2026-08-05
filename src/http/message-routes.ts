@@ -7,7 +7,11 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 
-import { UnknownPluginError, UnsupportedCommandTypeError } from '../engine/errors.js';
+import {
+  InvalidEnqueueError,
+  UnknownPluginError,
+  UnsupportedCommandTypeError,
+} from '../engine/errors.js';
 import type { OutgoingService } from '../engine/outgoing.js';
 import {
   cancelManyBodySchema,
@@ -40,7 +44,11 @@ export const messageRoutes: FastifyPluginAsync<MessageRoutesOpts> = async (app, 
       return reply.code(201).send(message);
     }
     catch (err) {
-      if (err instanceof UnknownPluginError || err instanceof UnsupportedCommandTypeError) {
+      if (
+        err instanceof UnknownPluginError
+        || err instanceof UnsupportedCommandTypeError
+        || err instanceof InvalidEnqueueError
+      ) {
         return reply.code(400).send({ error: err.message });
       }
       throw err;

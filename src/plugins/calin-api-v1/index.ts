@@ -9,7 +9,10 @@
  */
 
 import type { DeviceMessagingConfig } from '../../config/schema.js';
-import type { EnqueueableCommandType } from '../../lib/device-message/types.js';
+import type {
+  CreateDeviceMessage,
+  EnqueueableCommandType,
+} from '../../lib/device-message/types.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
@@ -95,6 +98,14 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
     return buildInitialQueueKey(CALIN_API_V1_ID, CALIN_API_V1_NODE_KIND, dcuPart);
   };
 
+  /** Enqueue requires a DCU id — do not park on `…:dcu:unassigned`. */
+  const validateEnqueue = (create: CreateDeviceMessage): string | undefined => {
+    if (create.device.relayNode?.id == null) {
+      return 'device.relayNode.id is required';
+    }
+    return undefined;
+  };
+
   return {
     id: CALIN_API_V1_ID,
     deliveryPattern: 'PULL',
@@ -102,6 +113,7 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagin
     admission: CALIN_API_V1_ADMISSION,
     tuning,
     initialQueueKey,
+    validateEnqueue,
     outgoing,
     incoming,
     token,

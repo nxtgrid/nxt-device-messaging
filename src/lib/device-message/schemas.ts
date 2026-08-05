@@ -52,6 +52,10 @@ export const phaseSchema = z.enum([ 'A', 'B', 'C' ]);
  */
 export const createDeviceMessageSchema = z.object({
   commandType: z.enum(asZodEnum(ENQUEUEABLE_COMMAND_TYPES)),
+  /**
+   * Delivery urgency within an initial queue. **Higher is more urgent**
+   * (e.g. `100` is picked before `10`). Stored as Redis ZSET score `-priority`.
+   */
   priority: z.number(),
   pluginId: z.string().min(1),
   requestData: requestDataSchema.optional(),

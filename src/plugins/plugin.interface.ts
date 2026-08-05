@@ -9,6 +9,7 @@
  */
 
 import type {
+  CreateDeviceMessage,
   DeviceMessage,
   DeviceMessageDevice,
   EnqueueableCommandType,
@@ -97,6 +98,13 @@ export type DeviceMessagingPlugin = {
    * Prefer `buildInitialQueueKey` so keys are `queue:{pluginId}:{kind}:{id}`.
    */
   initialQueueKey(input: InitialQueueKeyInput): string;
+
+  /**
+   * Optional enqueue-only checks beyond `supportedCommandTypes`.
+   * Return an error detail string to reject (engine → `InvalidEnqueueError` / HTTP 400).
+   * Not called on cancel / requeue.
+   */
+  validateEnqueue?(create: CreateDeviceMessage): string | undefined;
 
   /** How hard the distributor may hit this plugin's initial queues. */
   readonly admission: Admission;

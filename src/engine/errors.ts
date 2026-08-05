@@ -47,3 +47,17 @@ export class UnsupportedCommandTypeError extends Error {
     this.commandType = commandType;
   }
 }
+
+/**
+ * Thrown when enqueue input fails a plugin-local requirement (e.g. missing
+ * `device.relayNode.id`). HTTP maps this to 400.
+ */
+export class InvalidEnqueueError extends Error {
+  readonly pluginId: PluginId;
+
+  constructor(pluginId: PluginId, detail: string) {
+    super(`Plugin ${ pluginId }: ${ detail }`);
+    this.name = 'InvalidEnqueueError';
+    this.pluginId = pluginId;
+  }
+}
