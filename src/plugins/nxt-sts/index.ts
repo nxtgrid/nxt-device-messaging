@@ -3,7 +3,8 @@
  *
  * Token-only adapter for the NXT STS generator API (ADR-003 §3). No enqueue /
  * delivery path — `supportedCommandTypes` is empty; `outgoing.sendOne` rejects.
- * Unit 8.1 lands SPI wiring (secrets, catalog, stubs). Vendor mint lands in 8.2.
+ * Delivery SPI fields (tuning / admission / initialQueueKey) are required by the
+ * current contract and unused for mint.
  *
  * Enable: add `{ "id": "nxt-sts" }` to config `plugins[]` and set `NXT_STS_URL`
  * (see `.env.example`). Missing secrets fail at construct.
@@ -23,6 +24,7 @@ import type {
   InitialQueueKeyInput,
   PluginTuning,
 } from '../plugin.interface.js';
+import { createNxtStsClient } from './lib/repo.js';
 import { loadNxtStsSecrets } from './lib/secrets.js';
 import { createNxtStsToken } from './token.js';
 
@@ -59,13 +61,14 @@ const NXT_STS_ADMISSION: Admission = {
 /**
  * Build the `nxt-sts` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Token mint is stubbed until 8.2.
+ * Validates secrets at construct (ADR-002 §6). Vendor mint via native `fetch`.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
 export function createNxtStsPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
   const secrets = loadNxtStsSecrets();
-  const token = createNxtStsToken({ secrets });
+  const client = createNxtStsClient({ apiBaseUrl: secrets.apiBaseUrl });
+  const token = createNxtStsToken({ client });
   const tuning = mergePluginTuning(NXT_STS_DEFAULT_TUNING, entry);
 
   const initialQueueKey = (_input: InitialQueueKeyInput): string => {

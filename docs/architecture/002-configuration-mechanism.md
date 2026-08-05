@@ -39,7 +39,7 @@ The module as inherited is neither.
 | calin-lorawan | `CHIRPSTACK_API_URL`, `CHIRPSTACK_API_TOKEN`, `CHIRPSTACK_APPLICATION_ID`, `CHIRPSTACK_PROFILE_ID`, `CHIRPSTACK_APP_KEY` |
 | calin-api-v1 | Legacy `CALIN_V1_*` → **this service** `CALIN_API_V1_*` (plugin-id aligned; Unit 7): `CALIN_API_V1_URL`, `CALIN_API_V1_COMPANY_NAME`, `CALIN_API_V1_ADMIN_USERNAME`, `CALIN_API_V1_ADMIN_PASSWORD`, `CALIN_API_V1_POS_USERNAME`, `CALIN_API_V1_POS_PASSWORD`, `CALIN_API_V1_MAINTENANCE_USERNAME`, `CALIN_API_V1_MAINTENANCE_PASSWORD` |
 | calin-api-v2 | `CALIN_V2_API`, `CALIN_V2_COMPANY_NAME`, `CALIN_V2_CUSTOMER_ID`, `CALIN_V2_ADMIN_USERNAME`, `CALIN_V2_PASSWORD`, `CALIN_V2_POS_PASSWORD` |
-| nxt-sts | `STS_GENERATOR_API` |
+| nxt-sts | Legacy `STS_GENERATOR_API` → **this service** `NXT_STS_URL` (plugin-id aligned; Unit 8) |
 
 **And ~14 hardcoded tuning constants that no operator can change without editing code:**
 
