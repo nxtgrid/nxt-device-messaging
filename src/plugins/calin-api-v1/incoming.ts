@@ -35,7 +35,7 @@ const TASK_PATH_MAP = {
 } as const;
 
 // Map DataItem to phase (for three-phase responses)
-const DataItemToPhase: Record<string, PhaseEnum> = {
+const dataItemToPhase: Record<string, PhaseEnum> = {
   'VoltageA': 'A', 'VoltageB': 'B', 'VoltageC': 'C',
   // 'PowerA': 'A', 'PowerB': 'B', 'PowerC': 'C',
   'CurrentA': 'A', 'CurrentB': 'B', 'CurrentC': 'C',
@@ -84,7 +84,7 @@ export function createCalinApiV1Incoming(
     requestedPhase?: PhaseEnum,
   ): ParsedResponseSlice => {
     const { DataItem, Data } = fullResult;
-    const responsePhase = DataItemToPhase[DataItem] ?? requestedPhase;
+    const responsePhase = dataItemToPhase[DataItem] ?? requestedPhase;
 
     switch (DataItem) {
       // READ_CREDIT

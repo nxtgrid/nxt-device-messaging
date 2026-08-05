@@ -202,7 +202,6 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
       else if (err instanceof Error && err.message) {
         console.error('[CALIN API-V1] Error with a message', err);
         message = '[CALIN API-V1] is down';
-        code = toSafeNumberOrNull(undefined);
       }
       else {
         console.error(
@@ -210,7 +209,6 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
           err,
         );
         message = '[CALIN API-V1] is down';
-        code = toSafeNumberOrNull(undefined);
       }
 
       console.error(message, code);

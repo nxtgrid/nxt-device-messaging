@@ -54,7 +54,7 @@ export function createCalinApiV1Token(
       meter_number: meterNumber,
       amount,
     });
-    return { token: res?.result?.token, failureReason: res?.reason };
+    return { token: res.result?.token, failureReason: res.reason };
   };
 
   const _generatePowerLimitToken = async (meterNumber: string, maxPower: number): Promise<TokenAttempt> => {
@@ -63,7 +63,7 @@ export function createCalinApiV1Token(
       meter_number: meterNumber,
       max_power: maxPower,
     });
-    return { token: res?.result, failureReason: res?.reason };
+    return { token: res.result, failureReason: res.reason };
   };
 
   const _generateClearTamperToken = async (meterNumber: string): Promise<TokenAttempt> => {
@@ -74,7 +74,7 @@ export function createCalinApiV1Token(
         meter_number: meterNumber,
       },
     );
-    return { token: res?.result, failureReason: res?.reason };
+    return { token: res.result, failureReason: res.reason };
   };
 
   const _generateClearCreditToken = async (meterNumber: string): Promise<TokenAttempt> => {
@@ -85,7 +85,7 @@ export function createCalinApiV1Token(
         meter_number: meterNumber,
       },
     );
-    return { token: res?.result, failureReason: res?.reason };
+    return { token: res.result, failureReason: res.reason };
   };
 
   const generate = async (input: GenerateTokenInput): Promise<string> => {
