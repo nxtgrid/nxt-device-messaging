@@ -23,4 +23,19 @@ describe('omitInternalFields', () => {
     expect(message.concurrencyRateLimitKey).toBe('rate_limit:calin-api-v1:dcu:7');
     expect(payload.response).toEqual(message.response);
   });
+
+  it('returns the same object when concurrencyRateLimitKey is absent', () => {
+    const message = {
+      id: '01ar',
+      commandType: 'READ_CREDIT',
+      pluginId: 'stub-push',
+      priority: 1,
+      networkId: 42,
+      device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
+      deliveryQueueId: '',
+      deliveryStatus: 'QUEUED',
+    } as DeviceMessage;
+
+    expect(omitInternalFields(message)).toBe(message);
+  });
 });
