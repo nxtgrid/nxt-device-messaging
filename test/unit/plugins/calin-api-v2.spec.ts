@@ -154,7 +154,7 @@ describe('createCalinApiV2Plugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('wires outgoing and incoming; token stays stub until 9.5', () => {
+  it('wires outgoing, incoming, and token facets', () => {
     stubValidCalinApiV2Env();
     const plugin = createCalinApiV2Plugin({ id: CALIN_API_V2_ID });
     expect(plugin.outgoing.sendOne).toBeTypeOf('function');

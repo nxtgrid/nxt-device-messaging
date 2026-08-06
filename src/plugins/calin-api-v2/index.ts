@@ -2,8 +2,7 @@
  * @fileoverview `calin-api-v2` plugin factory (Unit 9 — Phase 2).
  *
  * PULL adapter for the CALIN HTTP API V2. Unit 9.1 lands SPI wiring (secrets,
- * admission, initial queue, tuning, catalog). Client + outgoing + incoming in
- * 9.2–9.4; token in 9.5.
+ * admission, initial queue, tuning, catalog). Vendor I/O ports in 9.2–9.5.
  *
  * Enable: add `{ "id": "calin-api-v2" }` to config `plugins[]` and set
  * `CALIN_API_V2_*` env (see `.env.example`). Missing secrets fail at construct.
@@ -26,6 +25,7 @@ import { createCalinApiV2Incoming } from './incoming.js';
 import { createCalinApiV2Client } from './lib/repo.js';
 import { loadCalinApiV2Secrets } from './lib/secrets.js';
 import { createCalinApiV2Outgoing } from './outgoing.js';
+import { createCalinApiV2Token } from './token.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -78,8 +78,8 @@ const CALIN_API_V2_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v2` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Outgoing + incoming are wired
- * (Units 9.3–9.4); token stays a stub until 9.5.
+ * Validates secrets at construct (ADR-002 §6). Vendor I/O is fully wired
+ * (Units 9.2–9.5: client, outgoing, incoming, token).
  *
  * @param entry - Config `plugins[]` entry for this id
  */
@@ -93,6 +93,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
   });
   const outgoing = createCalinApiV2Outgoing({ secrets, client });
   const incoming = createCalinApiV2Incoming({ secrets, client });
+  const token = createCalinApiV2Token({ secrets, client });
 
   const tuning = mergePluginTuning(CALIN_API_V2_DEFAULT_TUNING, entry);
 
@@ -110,10 +111,6 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     return undefined;
   };
 
-  const generate = async (): Promise<string> => {
-    throw new Error('[calin-api-v2] token not ported yet (Unit 9.5)');
-  };
-
   return {
     id: CALIN_API_V2_ID,
     deliveryPattern: 'PULL',
@@ -124,6 +121,6 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     validateEnqueue,
     outgoing,
     incoming,
-    token: { generate },
+    token,
   };
 }
