@@ -79,7 +79,7 @@ const CALIN_API_V2_ADMISSION: Admission = {
  * Build the `calin-api-v2` {@link DeviceMessagingPlugin}.
  *
  * Validates secrets at construct (ADR-002 §6). Vendor I/O facets are stubs until
- * Units 9.2–9.5 (client, outgoing, incoming, token).
+ * Units 9.3–9.5; `lib/repo.ts` client lands in 9.2 for those facets.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
