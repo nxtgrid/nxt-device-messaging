@@ -5,10 +5,11 @@ import { NxtStsError } from '#src/plugins/nxt-sts/lib/repo.js';
 import { createNxtStsToken } from '#src/plugins/nxt-sts/token.js';
 
 const ISSUE_DATE = '2026-08-05T10:30:00';
+const DECODER_KEY = '0123456789ABCDEF';
 
 const shared = {
   issueDateString: ISSUE_DATE,
-  device: { externalReference: 'm-1', decoderKey: 'dec-1' },
+  device: { externalReference: 'm-1', decoderKey: DECODER_KEY },
 } as const;
 
 function mockClient(
@@ -36,7 +37,7 @@ describe('createNxtStsToken', () => {
     ).resolves.toBe('tok-topup');
 
     expect(sendTokenRequest).toHaveBeenCalledWith({
-      decoderKey: 'dec-1',
+      decoderKey: DECODER_KEY,
       randomNumber: 6,
       issueDate: ISSUE_DATE,
       type: 'TOP_UP_KWH',
@@ -58,7 +59,7 @@ describe('createNxtStsToken', () => {
     ).resolves.toBe('tok-limit');
 
     expect(sendTokenRequest).toHaveBeenCalledWith({
-      decoderKey: 'dec-1',
+      decoderKey: DECODER_KEY,
       randomNumber: 0,
       issueDate: ISSUE_DATE,
       type: 'SET_POWER_LIMIT',
@@ -81,13 +82,13 @@ describe('createNxtStsToken', () => {
     ).resolves.toBe('tok-clear');
 
     expect(sendTokenRequest).toHaveBeenNthCalledWith(1, {
-      decoderKey: 'dec-1',
+      decoderKey: DECODER_KEY,
       randomNumber: 3,
       issueDate: ISSUE_DATE,
       type: 'CLEAR_TAMPER',
     });
     expect(sendTokenRequest).toHaveBeenNthCalledWith(2, {
-      decoderKey: 'dec-1',
+      decoderKey: DECODER_KEY,
       randomNumber: 3,
       issueDate: ISSUE_DATE,
       type: 'CLEAR_CREDIT',
@@ -158,19 +159,20 @@ describe('createNxtStsToken', () => {
     await expect(
       token.generate({
         issueDateString: ISSUE_DATE,
-        device: { externalReference: 'm-1', decoderKey: '  dec-1  ' },
+        device: { externalReference: 'm-1', decoderKey: `  ${ DECODER_KEY }  ` },
         type: 'CLEAR_TAMPER',
       }),
     ).resolves.toBe('tok-1');
 
     expect(sendTokenRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ decoderKey: 'dec-1' }),
+      expect.objectContaining({ decoderKey: DECODER_KEY }),
     );
   });
 
   it('requires device.decoderKey', async () => {
+    const sendTokenRequest = vi.fn();
     const token = createNxtStsToken({
-      client: mockClient(vi.fn()),
+      client: mockClient(sendTokenRequest),
     });
 
     await expect(
@@ -192,6 +194,41 @@ describe('createNxtStsToken', () => {
     ).rejects.toEqual(
       new NxtStsError('[NXT STS TOKEN SERVICE] device.decoderKey is required'),
     );
+    expect(sendTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects decoderKey that is not exactly 16 hex characters', async () => {
+    const sendTokenRequest = vi.fn();
+    const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
+    const expected = new NxtStsError(
+      '[NXT STS TOKEN SERVICE] device.decoderKey must be exactly 16 hex characters',
+    );
+
+    await expect(
+      token.generate({
+        ...shared,
+        device: { externalReference: 'm-1', decoderKey: '0123456789ABCDE' },
+        type: 'CLEAR_TAMPER',
+      }),
+    ).rejects.toEqual(expected);
+
+    await expect(
+      token.generate({
+        ...shared,
+        device: { externalReference: 'm-1', decoderKey: '0123456789ABCDEF0' },
+        type: 'CLEAR_TAMPER',
+      }),
+    ).rejects.toEqual(expected);
+
+    await expect(
+      token.generate({
+        ...shared,
+        device: { externalReference: 'm-1', decoderKey: '0123456789ABCDZZ' },
+        type: 'CLEAR_TAMPER',
+      }),
+    ).rejects.toEqual(expected);
+
+    expect(sendTokenRequest).not.toHaveBeenCalled();
   });
 
   it('throws when the vendor returns no token', async () => {

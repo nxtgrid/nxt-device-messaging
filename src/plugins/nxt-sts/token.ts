@@ -15,6 +15,9 @@ import { NxtStsError } from './lib/repo.js';
 /** Exclusive upper bound passed to legacy `generateRandomNumber` (yields 0..11). */
 const STS_RANDOM_NUMBER_MAX = 12;
 
+/** Same shape as nxt-sts `TokenRequest.decoderKey` (16 hex chars = 8 bytes). */
+const STS_DECODER_KEY_HEX = /^[0-9A-Fa-f]{16}$/;
+
 type CreateNxtStsTokenDeps = {
   readonly client: NxtStsClient;
 };
@@ -36,6 +39,23 @@ function assertIsoDateTime(issueDateString: string): void {
 }
 
 /**
+ * Require a non-empty trimmed decoder key matching the STS hex length rule.
+ *
+ * @param decoderKey - Trimmed {@link GenerateTokenInput.device.decoderKey}
+ * @throws {@link NxtStsError} when missing or not exactly 16 hex characters
+ */
+function assertDecoderKey(decoderKey: string | undefined): asserts decoderKey is string {
+  if (decoderKey === undefined || decoderKey === '') {
+    throw new NxtStsError('[NXT STS TOKEN SERVICE] device.decoderKey is required');
+  }
+  if (!STS_DECODER_KEY_HEX.test(decoderKey)) {
+    throw new NxtStsError(
+      '[NXT STS TOKEN SERVICE] device.decoderKey must be exactly 16 hex characters',
+    );
+  }
+}
+
+/**
  * Build the token facet for `nxt-sts`.
  *
  * @param deps - HTTP client (base URL from secrets)
@@ -48,9 +68,7 @@ export function createNxtStsToken(
   const generate = async (input: GenerateTokenInput): Promise<string> => {
     const { type, issueDateString, device } = input;
     const decoderKey = device.decoderKey?.trim();
-    if (decoderKey === undefined || decoderKey === '') {
-      throw new NxtStsError('[NXT STS TOKEN SERVICE] device.decoderKey is required');
-    }
+    assertDecoderKey(decoderKey);
     assertIsoDateTime(issueDateString);
 
     const body: NxtStsTokenRequest = {
