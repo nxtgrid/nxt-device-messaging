@@ -1,0 +1,138 @@
+/**
+ * @fileoverview `calin-api-v2` plugin factory (Unit 9 — Phase 2).
+ *
+ * PULL adapter for the CALIN HTTP API V2. Unit 9.1 lands SPI wiring (secrets,
+ * admission, initial queue, tuning, catalog). Vendor I/O ports in 9.2–9.5.
+ *
+ * Enable: add `{ "id": "calin-api-v2" }` to config `plugins[]` and set
+ * `CALIN_API_V2_*` env (see `.env.example`). Missing secrets fail at construct.
+ */
+
+import type { DeviceMessagingConfig } from '../../config/schema.js';
+import type {
+  CreateDeviceMessage,
+  DeviceMessage,
+  EnqueueableCommandType,
+  FailureContext,
+  GenerateTokenInput,
+  ParsedIncomingEvent,
+} from '../../lib/device-message/types.js';
+import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
+import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
+import type {
+  Admission,
+  DeviceMessagingPlugin,
+  InitialQueueKeyInput,
+  PluginTuning,
+} from '../plugin.interface.js';
+import { loadCalinApiV2Secrets } from './lib/secrets.js';
+
+type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
+
+/** Config / registry id. */
+export const CALIN_API_V2_ID = 'calin-api-v2' as const;
+
+/** Admission-node label in initial-queue keys (`queue:calin-api-v2:dcu:…`). */
+const CALIN_API_V2_NODE_KIND = 'dcu' as const;
+
+/**
+ * Outbound command types this plugin implements.
+ * Commented rows match legacy “not implemented” maps (kept for the port).
+ */
+const CALIN_API_V2_SUPPORTED_COMMAND_TYPES = [
+  'READ_CREDIT',
+  'READ_VOLTAGE',
+  'READ_POWER',
+  'READ_CURRENT',
+  'READ_POWER_LIMIT',
+  'READ_VERSION',
+  'READ_DATE',
+  // 'READ_POWER_DOWN_COUNT' — not implemented on CALIN API V2
+  'TURN_ON',
+  'TURN_OFF',
+  'SET_DATE',
+  // 'SET_TIME' — not implemented on CALIN API V2
+  'TOP_UP_KWH',
+  'SET_POWER_LIMIT',
+  'CLEAR_TAMPER',
+  'CLEAR_CREDIT',
+  'DELIVER_PREEXISTING_TOKEN',
+] as const satisfies readonly EnqueueableCommandType[];
+
+/**
+ * Default stage timeouts / poll delay (legacy delivery defaults).
+ * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
+ */
+const CALIN_API_V2_DEFAULT_TUNING: PluginTuning = {
+  nsInFlightTimeoutMs: 20_000,
+  relayNodeInFlightTimeoutMs: 900_000,
+  deviceInFlightTimeoutMs: 12_000,
+  initialPollDelayMs: 10_000,
+};
+
+const CALIN_API_V2_ADMISSION: Admission = {
+  strategy: 'concurrency',
+  maxInFlight: 5,
+};
+
+/**
+ * Build the `calin-api-v2` {@link DeviceMessagingPlugin}.
+ *
+ * Validates secrets at construct (ADR-002 §6). Vendor I/O facets are stubs until
+ * Units 9.2–9.5 (client, outgoing, incoming, token).
+ *
+ * @param entry - Config `plugins[]` entry for this id
+ */
+export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+  loadCalinApiV2Secrets();
+
+  const tuning = mergePluginTuning(CALIN_API_V2_DEFAULT_TUNING, entry);
+
+  const initialQueueKey = (input: InitialQueueKeyInput): string => {
+    const relayNodeId = input.device.relayNode?.id;
+    const dcuPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+    return buildInitialQueueKey(CALIN_API_V2_ID, CALIN_API_V2_NODE_KIND, dcuPart);
+  };
+
+  /** Enqueue requires a DCU id — do not park on `…:dcu:unassigned`. */
+  const validateEnqueue = (create: CreateDeviceMessage): string | undefined => {
+    if (create.device.relayNode?.id == null) {
+      return 'device.relayNode.id is required';
+    }
+    return undefined;
+  };
+
+  const sendOne = async (_message: DeviceMessage): Promise<string> => {
+    throw new Error('[calin-api-v2] outgoing not ported yet (Unit 9.3)');
+  };
+
+  const parseError = (err: unknown): FailureContext => {
+    if (err instanceof Error) {
+      return { reason: err.message };
+    }
+    return { reason: String(err) };
+  };
+
+  const fetchStatus = async (
+    _message: DeviceMessage,
+  ): Promise<ParsedIncomingEvent | null> => {
+    throw new Error('[calin-api-v2] incoming not ported yet (Unit 9.4)');
+  };
+
+  const generate = async (_input: GenerateTokenInput): Promise<string> => {
+    throw new Error('[calin-api-v2] token not ported yet (Unit 9.5)');
+  };
+
+  return {
+    id: CALIN_API_V2_ID,
+    deliveryPattern: 'PULL',
+    supportedCommandTypes: CALIN_API_V2_SUPPORTED_COMMAND_TYPES,
+    admission: CALIN_API_V2_ADMISSION,
+    tuning,
+    initialQueueKey,
+    validateEnqueue,
+    outgoing: { sendOne, parseError },
+    incoming: { fetchStatus },
+    token: { generate },
+  };
+}

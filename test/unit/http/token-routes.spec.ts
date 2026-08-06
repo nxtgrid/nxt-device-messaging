@@ -44,12 +44,12 @@ describe('POST /token/generate', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/token/generate',
-      payload: { ...generateBody, pluginId: 'calin-api-v2' },
+      payload: { ...generateBody, pluginId: 'calin-chirpstack' },
     });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
-      error: 'Unknown or disabled pluginId: calin-api-v2',
+      error: 'Unknown or disabled pluginId: calin-chirpstack',
     });
 
     await app.close();
