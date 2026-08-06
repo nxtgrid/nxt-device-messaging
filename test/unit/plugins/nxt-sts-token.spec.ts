@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('createNxtStsToken', () => {
   it('TOP_UP_KWH posts type and kwh through to STS', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5); // → randomNumber 6
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // → randomNumber 8 (max 16)
     const sendTokenRequest = vi.fn().mockResolvedValue({ token: 'tok-topup' });
     const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
 
@@ -38,7 +38,7 @@ describe('createNxtStsToken', () => {
 
     expect(sendTokenRequest).toHaveBeenCalledWith({
       decoderKey: DECODER_KEY,
-      randomNumber: 6,
+      randomNumber: 8,
       issueDate: ISSUE_DATE,
       type: 'TOP_UP_KWH',
       kwh: 10,
@@ -68,7 +68,7 @@ describe('createNxtStsToken', () => {
   });
 
   it('CLEAR_TAMPER and CLEAR_CREDIT pass type through without payload fields', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.25); // → 3
+    vi.spyOn(Math, 'random').mockReturnValue(0.25); // → 4 (max 16)
     const sendTokenRequest = vi.fn()
       .mockResolvedValueOnce({ token: 'tok-tamper' })
       .mockResolvedValueOnce({ token: 'tok-clear' });
@@ -83,13 +83,13 @@ describe('createNxtStsToken', () => {
 
     expect(sendTokenRequest).toHaveBeenNthCalledWith(1, {
       decoderKey: DECODER_KEY,
-      randomNumber: 3,
+      randomNumber: 4,
       issueDate: ISSUE_DATE,
       type: 'CLEAR_TAMPER',
     });
     expect(sendTokenRequest).toHaveBeenNthCalledWith(2, {
       decoderKey: DECODER_KEY,
-      randomNumber: 3,
+      randomNumber: 4,
       issueDate: ISSUE_DATE,
       type: 'CLEAR_CREDIT',
     });

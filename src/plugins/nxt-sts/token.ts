@@ -12,8 +12,11 @@ import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type { NxtStsClient, NxtStsTokenRequest } from './lib/repo.js';
 import { NxtStsError } from './lib/repo.js';
 
-/** Exclusive upper bound passed to legacy `generateRandomNumber` (yields 0..11). */
-const STS_RANDOM_NUMBER_MAX = 12;
+/**
+ * Exclusive upper bound for STS RND (4-bit field → 0..15).
+ * Matches nxt-sts `TokenRequest.randomNumber` / IEC 62055-41.
+ */
+const STS_RANDOM_NUMBER_MAX = 16;
 
 /** Same shape as nxt-sts `TokenRequest.decoderKey` (16 hex chars = 8 bytes). */
 const STS_DECODER_KEY_HEX = /^[0-9A-Fa-f]{16}$/;
