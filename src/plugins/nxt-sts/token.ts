@@ -41,8 +41,8 @@ export function createNxtStsToken(
 
   const generate = async (input: GenerateTokenInput): Promise<string> => {
     const { type, issueDateString, device } = input;
-    const decoderKey = device.decoderKey;
-    if (decoderKey === undefined || decoderKey.trim() === '') {
+    const decoderKey = device.decoderKey?.trim();
+    if (decoderKey === undefined || decoderKey === '') {
       throw new NxtStsError('[NXT STS TOKEN SERVICE] device.decoderKey is required');
     }
 
@@ -56,7 +56,7 @@ export function createNxtStsToken(
     };
 
     const { token } = await client.sendTokenRequest(body);
-    if (!token) {
+    if (typeof token !== 'string' || token === '') {
       throw new NxtStsError('[NXT STS TOKEN SERVICE] Failed to generate token');
     }
     return token;

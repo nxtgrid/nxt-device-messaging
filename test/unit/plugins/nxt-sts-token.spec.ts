@@ -92,6 +92,24 @@ describe('createNxtStsToken', () => {
     });
   });
 
+  it('trims surrounding whitespace on decoderKey before sending', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const sendTokenRequest = vi.fn().mockResolvedValue({ token: 'tok-1' });
+    const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
+
+    await expect(
+      token.generate({
+        issueDateString: '2026-08-05',
+        device: { externalReference: 'm-1', decoderKey: '  dec-1  ' },
+        type: 'CLEAR_TAMPER',
+      }),
+    ).resolves.toBe('tok-1');
+
+    expect(sendTokenRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ decoderKey: 'dec-1' }),
+    );
+  });
+
   it('requires device.decoderKey', async () => {
     const token = createNxtStsToken({
       client: mockClient(vi.fn()),
@@ -121,6 +139,18 @@ describe('createNxtStsToken', () => {
   it('throws when the vendor returns no token', async () => {
     const token = createNxtStsToken({
       client: mockClient(vi.fn().mockResolvedValue({})),
+    });
+
+    await expect(
+      token.generate({ ...shared, type: 'CLEAR_CREDIT' }),
+    ).rejects.toEqual(
+      new NxtStsError('[NXT STS TOKEN SERVICE] Failed to generate token'),
+    );
+  });
+
+  it('throws when the vendor returns a non-string token', async () => {
+    const token = createNxtStsToken({
+      client: mockClient(vi.fn().mockResolvedValue({ token: 42 })),
     });
 
     await expect(
