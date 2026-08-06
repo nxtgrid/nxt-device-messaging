@@ -19,12 +19,12 @@ export type NxtStsTokenResponse = {
   readonly token?: string;
 };
 
-/** Request body for `POST /token` (vendor vocabulary — `TOP_UP`, not wire `TOP_UP_KWH`). */
+/** Request body for STS `POST /token` (aligned with wire generate-token types). */
 export type NxtStsTokenRequest = {
   readonly decoderKey: string;
   readonly randomNumber: number;
   readonly issueDate: string;
-  readonly type: 'TOP_UP' | 'SET_POWER_LIMIT' | 'CLEAR_CREDIT' | 'CLEAR_TAMPER';
+  readonly type: 'TOP_UP_KWH' | 'SET_POWER_LIMIT' | 'CLEAR_CREDIT' | 'CLEAR_TAMPER';
   readonly kwh?: number;
   readonly powerLimit?: number;
 };

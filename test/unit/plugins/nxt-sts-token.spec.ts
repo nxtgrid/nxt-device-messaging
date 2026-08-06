@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('createNxtStsToken', () => {
-  it('TOP_UP_KWH maps to vendor TOP_UP and posts kwh', async () => {
+  it('TOP_UP_KWH posts type and kwh through to STS', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5); // → randomNumber 6
     const sendTokenRequest = vi.fn().mockResolvedValue({ token: 'tok-topup' });
     const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
@@ -37,7 +37,7 @@ describe('createNxtStsToken', () => {
       decoderKey: 'dec-1',
       randomNumber: 6,
       issueDate: '2026-08-05',
-      type: 'TOP_UP',
+      type: 'TOP_UP_KWH',
       kwh: 10,
     });
   });

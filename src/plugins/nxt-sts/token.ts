@@ -2,7 +2,8 @@
  * @fileoverview `nxt-sts` token facet (Unit 8.2).
  *
  * Port of legacy `adapters/nxt-sts/_token.service.ts`.
- * Wire type is `TOP_UP_KWH` (vendor STS API still expects `TOP_UP`).
+ * Wire generate-token types match the STS `POST /token` `type` field
+ * (`TOP_UP_KWH`, etc.).
  */
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
@@ -17,17 +18,6 @@ const STS_RANDOM_NUMBER_MAX = 12;
 type CreateNxtStsTokenDeps = {
   readonly client: NxtStsClient;
 };
-
-/**
- * Map wire generate-token `type` to the STS vendor enum.
- *
- * @param type - Wire {@link GenerateTokenInput} discriminant
- */
-function toVendorTokenType(
-  type: GenerateTokenInput['type'],
-): NxtStsTokenRequest['type'] {
-  return type === 'TOP_UP_KWH' ? 'TOP_UP' : type;
-}
 
 /**
  * Build the token facet for `nxt-sts`.
@@ -50,7 +40,7 @@ export function createNxtStsToken(
       decoderKey,
       randomNumber: generateRandomNumber(STS_RANDOM_NUMBER_MAX),
       issueDate: issueDateString,
-      type: toVendorTokenType(type),
+      type,
       ...(type === 'TOP_UP_KWH' ? { kwh: input.payload.kwh } : {}),
       ...(type === 'SET_POWER_LIMIT' ? { powerLimit: input.payload.powerLimit } : {}),
     };

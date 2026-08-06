@@ -1176,3 +1176,16 @@ Import ledger unit numbers updated. No code change.
 
 **Next:** Phase 2 **Unit 9** — `calin-api-v2` from `legacy/.../adapters/calin-api-v2/`
 at baseline `db5c2ac`.
+
+### 2026-08-06 — session: `nxt-sts` posts `TOP_UP_KWH` through (Step A)
+
+**Supersedes** session 26 lock “Wire `TOP_UP_KWH` → STS body `type: 'TOP_UP'`”.
+
+`nxt-sts` now accepts canonical wire `TOP_UP_KWH` (deprecated alias `TOP_UP` remains on
+that service for older callers). The messaging plugin drops `toVendorTokenType` and posts
+`type` through unchanged. `NxtStsTokenRequest['type']` includes `TOP_UP_KWH`.
+
+**Still open (plugin call-path follow-ups, discuss one at a time):** `issueDate` interop,
+`decoderKey` shape, error/logging hygiene, optional fetch timeout / RND range.
+
+**Next:** Unit 9 when ready; or continue nxt-sts plugin hardening steps after review.

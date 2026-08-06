@@ -11,7 +11,7 @@ const sampleBody = {
   decoderKey: 'key-1',
   randomNumber: 6,
   issueDate: '2026-08-05',
-  type: 'TOP_UP' as const,
+  type: 'TOP_UP_KWH' as const,
   kwh: 10,
 };
 
