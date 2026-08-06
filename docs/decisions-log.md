@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking Unit 8; order = v1 → nxt-sts → chirpstack → v2 — session 24b)* | —          |
+| —   | *(none blocking Unit 9; order = v1 → nxt-sts → v2 → chirpstack — session 26b)* | —          |
 
 
 
@@ -32,7 +32,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | ~~D1~~ | `queueKey → pluginId` → **C embed** `pluginId` **in key** (session 18b; reverts 18/B)                                | —                                        | —                                                                                                                                                                         | 006 |
 | D2     | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey`                       | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
 | ~~D3~~ | ~~Wire named admission into~~ `distribute` → **landed** on `OutgoingService.distributeToNetworkServers` (session 19) | —                                        | —                                                                                                                                                                         | 006 |
-| D4     | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.)                                                               | Plugin units 8–9                         | Plugin-owned; no core constant. Wire parent is `relayNode` (D6); **Unit 7 locked** `kind` = `dcu` for `calin-api-v1`                                                      | 006 |
+| D4     | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.)                                                               | Plugin units 9–10                        | Plugin-owned; no core constant. Wire parent is `relayNode` (D6); **Unit 7** `kind` = `dcu`; **Unit 8** token-only uses filler `kind` = `none`                          | 006 |
 | ~~D5~~ | ~~Stage timeouts → plugin~~ `tuning` → **landed** (session 23c)                                                      | —                                        | —                                                                                                                                                                         | 002 |
 | ~~D6~~ | ~~Wire parent-node name~~ → `device.relayNode` **landed** (session 23c)                                              | —                                        | —                                                                                                                                                                         | 003 |
 
@@ -48,7 +48,8 @@ engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12�
 plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
-Phase 2 **Unit 7** (`calin-api-v1`) is **done**. Next is **Unit 8** (`nxt-sts`).
+Phase 2 **Units 7–8** (`calin-api-v1`, `nxt-sts`) are **done**. Next is **Unit 9**
+(`calin-api-v2`).
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1128,3 +1129,50 @@ in-flight HTTP call.
 
 Do **not** treat short AbortSignal as a Unit 7 must-fix. `NS_SLOW` is the intentional
 stand-in until field evidence says otherwise.
+
+### 2026-08-05 — session 26: Unit 8 closed (`nxt-sts`)
+
+**Phase 2 Unit 8 done.** Token-only STS generator plugin on the SPI.
+
+**Landed slices:**
+
+| Step | Scope |
+|---|---|
+| 8.1 | Scaffold: factory, secrets (`NXT_STS_URL`), catalog, token-only SPI placeholders, `.env.example` |
+| 8.1a | Shared `requireEnvKeys` in `_shared/`; migrate v1 + nxt-sts secrets loaders |
+| 8.2 | `generateRandomNumber` in `_shared/`; `lib/repo.ts` native `fetch`; `token.ts` mint + `TOP_UP_KWH` → vendor `TOP_UP`; require `device.decoderKey`; unit tests |
+| 8.3 | This ritual (plan / AGENTS / ledger / log / ADR-002 env row) |
+
+**Locks (do not re-litigate without maintainer):**
+
+- Env: **`NXT_STS_URL`** (not legacy `STS_GENERATOR_API`)
+- HTTP: native **`fetch`** (same Unit 7 lock)
+- Wire `TOP_UP_KWH` → STS body `type: 'TOP_UP'`; other generate types pass through
+- `device.decoderKey` required at plugin (optional on wire schema)
+- Token-only SPI placeholders kept (empty `supportedCommandTypes`, throw `sendOne`, unused
+  tuning/admission/`queue:nxt-sts:none:na`) — SPI amend for real omission deferred
+- `config.example.json` stays stubs-only; enable via `plugins[]` + `NXT_STS_URL`
+- Failures throw **`NxtStsError`** (missing decoderKey, empty token, transport)
+
+**Still open (unchanged):** D2 / thorough cleanup suite; PULL poll↔retry orphan race;
+token-only SPI discriminant (optional follow-up); Unit 7 fetch-abort / NS zombie notes.
+
+**Next:** amended session 26b — Unit 9 is `calin-api-v2` (not ChirpStack).
+
+### 2026-08-05 — session 26b: `calin-api-v2` before ChirpStack
+
+**Amendment:** final Phase 2 order:
+
+
+| Unit   | Plugin             | Why                                                  |
+| ------ | ------------------ | ---------------------------------------------------- |
+| **7**  | `calin-api-v1`     | Controllable PULL testing; first real SPI validation |
+| **8**  | `nxt-sts`          | Token generate needed to exercise token commands     |
+| **9**  | `calin-api-v2`     | Second HTTP CALIN variant; easier after v1           |
+| **10** | `calin-chirpstack` | PUSH; harder to drive externally                     |
+
+
+Import ledger unit numbers updated. No code change.
+
+**Next:** Phase 2 **Unit 9** — `calin-api-v2` from `legacy/.../adapters/calin-api-v2/`
+at baseline `db5c2ac`.

@@ -6,6 +6,8 @@
  * via Vitest `vi.stubEnv`.
  */
 
+import { requireEnvKeys } from '../../_shared/require-env-keys.js';
+
 /** Required environment keys for this plugin. */
 export const CALIN_API_V1_ENV_KEYS = [
   'CALIN_API_V1_URL',
@@ -17,8 +19,6 @@ export const CALIN_API_V1_ENV_KEYS = [
   'CALIN_API_V1_MAINTENANCE_USERNAME',
   'CALIN_API_V1_MAINTENANCE_PASSWORD',
 ] as const;
-
-type CalinApiV1EnvKey = (typeof CALIN_API_V1_ENV_KEYS)[number];
 
 /** Validated secrets for the CALIN API V1 plugin. */
 export type CalinApiV1Secrets = {
@@ -36,30 +36,10 @@ export type CalinApiV1Secrets = {
  * Read and validate {@link CALIN_API_V1_ENV_KEYS} from `process.env`.
  *
  * @returns Validated secrets
- * Values are trimmed. Blank / whitespace-only counts as missing.
- *
  * @throws If any required key is missing or blank (`MISSING …`)
  */
 export function loadCalinApiV1Secrets(): CalinApiV1Secrets {
-  const values = {} as Record<CalinApiV1EnvKey, string>;
-  const missing: CalinApiV1EnvKey[] = [];
-
-  for (const key of CALIN_API_V1_ENV_KEYS) {
-    const value = process.env[key];
-    const trimmed = value?.trim();
-    if (trimmed === undefined || trimmed === '') {
-      missing.push(key);
-    }
-    else {
-      values[key] = trimmed;
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `MISSING env for plugin "calin-api-v1": ${ missing.join(', ') }`,
-    );
-  }
+  const values = requireEnvKeys('calin-api-v1', CALIN_API_V1_ENV_KEYS);
 
   return {
     apiBaseUrl: values.CALIN_API_V1_URL,
