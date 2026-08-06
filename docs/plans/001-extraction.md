@@ -6,8 +6,8 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
-**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–8 (`calin-api-v1`,
-`nxt-sts`) done. Next: Phase 2 Unit 9 (`calin-api-v2`)**
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–9 (`calin-api-v1`,
+`nxt-sts`, `calin-api-v2`) done. Next: Phase 2 Unit 10 (`calin-chirpstack`)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -48,14 +48,15 @@ need them (same pattern as Intermezzo enqueue/get).
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
-| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Units 7–8 done; next Unit 9** |
+| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Units 7–9 done; next Unit 10** |
 | **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
-**Phase 1b is closed.** Phase 2 **Units 7–8** (`calin-api-v1`, `nxt-sts`) are **done**.
-Next is **Unit 9** (`calin-api-v2`). Phase 4 still owns ADR-005 observability hygiene
-(metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
+**Phase 1b is closed.** Phase 2 **Units 7–9** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`)
+are **done**. Next is **Unit 10** (`calin-chirpstack`). Phase 4 still owns ADR-005
+observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
+already in Phase 0.
 
 ## Port units
 
@@ -182,8 +183,9 @@ ChirpStack** (second HTTP CALIN variant, easier after v1); `calin-chirpstack` la
 - [x] **Unit 8 — `nxt-sts` token plugin** (46 lines). `HttpService` → native `fetch`.
       Needed before ChirpStack so token-generate / deliver-token paths can be exercised.
       Also lands `generateRandomNumber` + shared `requireEnvKeys`. Landed session 26.
-- [ ] **Unit 9 — `calin-api-v2`** (~500 lines). Second HTTP CALIN PULL variant; port after v1.
+- [x] **Unit 9 — `calin-api-v2`** (~500 lines). Second HTTP CALIN PULL variant; port after v1.
       Source: `adapters/calin-api-v2/` (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
+      Landed 9.1–9.6 (session 27).
 - [ ] **Unit 10 — `calin-chirpstack`** (~1,200 lines). Source folder is still
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
@@ -230,10 +232,10 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `adapters/calin-api-v1/_token.service.ts` | 97 | 7 | **ported** → `src/plugins/calin-api-v1/token.ts` (Unit 7.5; `TOP_UP_KWH`) |
 | `adapters/calin-api-v1/lib/repo.ts` | 133 | 7 | **ported** → `src/plugins/calin-api-v1/lib/repo.ts` (fetch; Unit 7.2) |
 | `adapters/nxt-sts/_token.service.ts` | 46 | 8 | **ported** → `src/plugins/nxt-sts/` (`token.ts` + `lib/repo.ts` fetch; Unit 8) |
-| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 9 | pending |
-| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 9 | pending |
-| `adapters/calin-api-v2/_token.service.ts` | 82 | 9 | pending |
-| `adapters/calin-api-v2/lib/repo.ts` | 212 | 9 | pending — **see coupling note below** |
+| `adapters/calin-api-v2/_outgoing.service.ts` | 196 | 9 | **ported** → `src/plugins/calin-api-v2/outgoing.ts` (Unit 9.3) |
+| `adapters/calin-api-v2/_incoming.service.ts` | 198 | 9 | **ported** → `src/plugins/calin-api-v2/incoming.ts` (Unit 9.4; camelCase `response.data`) |
+| `adapters/calin-api-v2/_token.service.ts` | 82 | 9 | **ported** → `src/plugins/calin-api-v2/token.ts` (Unit 9.5; `TOP_UP_KWH`; `crypto.randomUUID`) |
+| `adapters/calin-api-v2/lib/repo.ts` | 212 | 9 | **ported** → `src/plugins/calin-api-v2/lib/repo.ts` (fetch + login cache; Unit 9.2) — **see coupling note below** |
 | `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 10 | pending |
 | `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 10 | pending |
 | `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 10 | pending |
