@@ -2,7 +2,8 @@
  * @fileoverview `calin-api-v2` plugin factory (Unit 9 — Phase 2).
  *
  * PULL adapter for the CALIN HTTP API V2. Unit 9.1 lands SPI wiring (secrets,
- * admission, initial queue, tuning, catalog). Vendor I/O ports in 9.2–9.5.
+ * admission, initial queue, tuning, catalog). Client + outgoing in 9.2–9.3;
+ * incoming / token in 9.4–9.5.
  *
  * Enable: add `{ "id": "calin-api-v2" }` to config `plugins[]` and set
  * `CALIN_API_V2_*` env (see `.env.example`). Missing secrets fail at construct.
@@ -11,11 +12,7 @@
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
   CreateDeviceMessage,
-  DeviceMessage,
   EnqueueableCommandType,
-  FailureContext,
-  GenerateTokenInput,
-  ParsedIncomingEvent,
 } from '../../lib/device-message/types.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
@@ -25,7 +22,9 @@ import type {
   InitialQueueKeyInput,
   PluginTuning,
 } from '../plugin.interface.js';
+import { createCalinApiV2Client } from './lib/repo.js';
 import { loadCalinApiV2Secrets } from './lib/secrets.js';
+import { createCalinApiV2Outgoing } from './outgoing.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -78,13 +77,20 @@ const CALIN_API_V2_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v2` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Vendor I/O facets are stubs until
- * Units 9.3–9.5; `lib/repo.ts` client lands in 9.2 for those facets.
+ * Validates secrets at construct (ADR-002 §6). Outgoing is wired (Unit 9.3);
+ * incoming / token stay stubs until 9.4–9.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
 export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
-  loadCalinApiV2Secrets();
+  const secrets = loadCalinApiV2Secrets();
+  const client = createCalinApiV2Client({
+    apiBaseUrl: secrets.apiBaseUrl,
+    adminUsername: secrets.adminUsername,
+    adminPassword: secrets.adminPassword,
+    companyName: secrets.companyName,
+  });
+  const outgoing = createCalinApiV2Outgoing({ secrets, client });
 
   const tuning = mergePluginTuning(CALIN_API_V2_DEFAULT_TUNING, entry);
 
@@ -102,24 +108,11 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     return undefined;
   };
 
-  const sendOne = async (_message: DeviceMessage): Promise<string> => {
-    throw new Error('[calin-api-v2] outgoing not ported yet (Unit 9.3)');
-  };
-
-  const parseError = (err: unknown): FailureContext => {
-    if (err instanceof Error) {
-      return { reason: err.message };
-    }
-    return { reason: String(err) };
-  };
-
-  const fetchStatus = async (
-    _message: DeviceMessage,
-  ): Promise<ParsedIncomingEvent | null> => {
+  const fetchStatus = async (): Promise<null> => {
     throw new Error('[calin-api-v2] incoming not ported yet (Unit 9.4)');
   };
 
-  const generate = async (_input: GenerateTokenInput): Promise<string> => {
+  const generate = async (): Promise<string> => {
     throw new Error('[calin-api-v2] token not ported yet (Unit 9.5)');
   };
 
@@ -131,7 +124,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     tuning,
     initialQueueKey,
     validateEnqueue,
-    outgoing: { sendOne, parseError },
+    outgoing,
     incoming: { fetchStatus },
     token: { generate },
   };

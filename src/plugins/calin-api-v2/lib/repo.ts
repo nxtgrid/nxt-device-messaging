@@ -166,11 +166,11 @@ export function createCalinApiV2Client(deps: {
         if (typeof freshToken !== 'string' || freshToken === '') {
           if (i === FETCH_RETRIES - 1) {
             console.error(
-              '⚠️ Calin login is failing. We may have to restart the server.',
+              '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
             );
           }
           console.error(
-            '[CALIN V2 API LOGIN] Didn\'t receive a login token,',
+            '[CALIN API-V2 LOGIN] Didn\'t receive a login token,',
             data?.reason,
           );
           cachedToken = undefined;
@@ -180,13 +180,13 @@ export function createCalinApiV2Client(deps: {
         const expMs = readJwtExpMs(freshToken);
         if (expMs === undefined) {
           console.error(
-            '[CALIN V2 API LOGIN] Login token missing readable exp claim',
+            '[CALIN API-V2 LOGIN] Login token missing readable exp claim',
           );
           cachedToken = undefined;
           break;
         }
 
-        console.info('[CALIN V2 API LOGIN] Got a login token');
+        console.info('[CALIN API-V2 LOGIN] Got a login token');
         cachedToken = { token: freshToken, expMs };
         break;
       }
@@ -194,10 +194,10 @@ export function createCalinApiV2Client(deps: {
         const detail = typeof err === 'object' && err !== null && 'cause' in err
           ? (err as { cause?: unknown }).cause
           : err;
-        console.error('[CALIN_V2 LOGIN] Got a direct error:', detail);
+        console.error('[CALIN API-V2 LOGIN] Got a direct error:', detail);
         if (i === FETCH_RETRIES - 1) {
           console.error(
-            '⚠️ Calin login is failing. We may have to restart the server.',
+            '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
           );
         }
       }
@@ -211,7 +211,7 @@ export function createCalinApiV2Client(deps: {
       await fetchToken();
     }
     if (cachedToken === undefined) {
-      throw new CalinApiV2Error('CALIN API V2 failed to get a token');
+      throw new CalinApiV2Error('CALIN API-V2 failed to get a token');
     }
     return cachedToken;
   };
@@ -234,14 +234,14 @@ export function createCalinApiV2Client(deps: {
 
       if (response.status === 401) {
         console.info(
-          '[CALIN API V2] Unauthorized, going to retry by fetching new token first',
+          '[CALIN API-V2] Unauthorized, going to retry by fetching new token first',
         );
         return { ok: false, unauthorized: true };
       }
 
       if (!response.ok) {
         console.error(
-          '[CALIN API V2] Fetch error with statusText:',
+          '[CALIN API-V2] Fetch error with statusText:',
           response.statusText,
         );
         return { ok: false, unauthorized: false };
@@ -250,15 +250,15 @@ export function createCalinApiV2Client(deps: {
       const data = await response.json() as CalinApiV2Response & UnexpectedCodeProbe;
       if (data.code !== 0 || data.reason !== 'success') {
         console.info(`
-          =============================================================
-          CALIN V2 responsed with something other than code 0 'success'
-          =============================================================
+          =================================================================
+          CALIN API-V2 responsed with something other than code 0 'success'
+          =================================================================
         `, data);
       }
       return { ok: true, data };
     }
     catch (err) {
-      const baseMsg = '[CALIN API V2] Fetch error';
+      const baseMsg = '[CALIN API-V2] Fetch error';
       if (
         typeof err === 'object'
         && err !== null
@@ -296,14 +296,14 @@ export function createCalinApiV2Client(deps: {
         break;
       }
       if (i === FETCH_RETRIES - 1) {
-        throw new CalinApiV2Error('CALIN API V2 is down');
+        throw new CalinApiV2Error('CALIN API-V2 is down');
       }
     }
 
     cachedToken = undefined;
     await fetchToken();
     if (cachedToken === undefined) {
-      throw new CalinApiV2Error('[CALIN API V2] Can\'t log in, API may be down');
+      throw new CalinApiV2Error('[CALIN API-V2] Can\'t log in, API may be down');
     }
     token = cachedToken;
 
@@ -313,14 +313,14 @@ export function createCalinApiV2Client(deps: {
         return outcome.data as T;
       }
       if (outcome.unauthorized) {
-        console.error('[CALIN API V2] Fetch error even after retry', '401');
+        console.error('[CALIN API-V2] Fetch error even after retry', '401');
       }
       if (i === FETCH_RETRIES - 1) {
-        throw new CalinApiV2Error('CALIN API V2 is down');
+        throw new CalinApiV2Error('CALIN API-V2 is down');
       }
     }
 
-    throw new CalinApiV2Error('CALIN API V2 is down');
+    throw new CalinApiV2Error('CALIN API-V2 is down');
   };
 
   return { sendRequest };

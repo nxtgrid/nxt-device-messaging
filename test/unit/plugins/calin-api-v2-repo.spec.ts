@@ -167,7 +167,7 @@ describe('createCalinApiV2Client', () => {
 
     const client = createCalinApiV2Client(CLIENT_DEPS);
     await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
-      new CalinApiV2Error('CALIN API V2 failed to get a token'),
+      new CalinApiV2Error('CALIN API-V2 failed to get a token'),
     );
   });
 
@@ -180,7 +180,7 @@ describe('createCalinApiV2Client', () => {
 
     const client = createCalinApiV2Client(CLIENT_DEPS);
     await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
-      new CalinApiV2Error('CALIN API V2 is down'),
+      new CalinApiV2Error('CALIN API-V2 is down'),
     );
   });
 });
