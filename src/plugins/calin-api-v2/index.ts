@@ -2,8 +2,8 @@
  * @fileoverview `calin-api-v2` plugin factory (Unit 9 — Phase 2).
  *
  * PULL adapter for the CALIN HTTP API V2. Unit 9.1 lands SPI wiring (secrets,
- * admission, initial queue, tuning, catalog). Client + outgoing in 9.2–9.3;
- * incoming / token in 9.4–9.5.
+ * admission, initial queue, tuning, catalog). Client + outgoing + incoming in
+ * 9.2–9.4; token in 9.5.
  *
  * Enable: add `{ "id": "calin-api-v2" }` to config `plugins[]` and set
  * `CALIN_API_V2_*` env (see `.env.example`). Missing secrets fail at construct.
@@ -22,6 +22,7 @@ import type {
   InitialQueueKeyInput,
   PluginTuning,
 } from '../plugin.interface.js';
+import { createCalinApiV2Incoming } from './incoming.js';
 import { createCalinApiV2Client } from './lib/repo.js';
 import { loadCalinApiV2Secrets } from './lib/secrets.js';
 import { createCalinApiV2Outgoing } from './outgoing.js';
@@ -77,8 +78,8 @@ const CALIN_API_V2_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v2` {@link DeviceMessagingPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Outgoing is wired (Unit 9.3);
- * incoming / token stay stubs until 9.4–9.5.
+ * Validates secrets at construct (ADR-002 §6). Outgoing + incoming are wired
+ * (Units 9.3–9.4); token stays a stub until 9.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
@@ -91,6 +92,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     companyName: secrets.companyName,
   });
   const outgoing = createCalinApiV2Outgoing({ secrets, client });
+  const incoming = createCalinApiV2Incoming({ secrets, client });
 
   const tuning = mergePluginTuning(CALIN_API_V2_DEFAULT_TUNING, entry);
 
@@ -108,10 +110,6 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     return undefined;
   };
 
-  const fetchStatus = async (): Promise<null> => {
-    throw new Error('[calin-api-v2] incoming not ported yet (Unit 9.4)');
-  };
-
   const generate = async (): Promise<string> => {
     throw new Error('[calin-api-v2] token not ported yet (Unit 9.5)');
   };
@@ -125,7 +123,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): DeviceMessagin
     initialQueueKey,
     validateEnqueue,
     outgoing,
-    incoming: { fetchStatus },
+    incoming,
     token: { generate },
   };
 }
