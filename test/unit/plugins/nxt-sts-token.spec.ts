@@ -4,8 +4,10 @@ import type { NxtStsClient } from '#src/plugins/nxt-sts/lib/repo.js';
 import { NxtStsError } from '#src/plugins/nxt-sts/lib/repo.js';
 import { createNxtStsToken } from '#src/plugins/nxt-sts/token.js';
 
+const ISSUE_DATE = '2026-08-05T10:30:00';
+
 const shared = {
-  issueDateString: '2026-08-05',
+  issueDateString: ISSUE_DATE,
   device: { externalReference: 'm-1', decoderKey: 'dec-1' },
 } as const;
 
@@ -36,7 +38,7 @@ describe('createNxtStsToken', () => {
     expect(sendTokenRequest).toHaveBeenCalledWith({
       decoderKey: 'dec-1',
       randomNumber: 6,
-      issueDate: '2026-08-05',
+      issueDate: ISSUE_DATE,
       type: 'TOP_UP_KWH',
       kwh: 10,
     });
@@ -58,7 +60,7 @@ describe('createNxtStsToken', () => {
     expect(sendTokenRequest).toHaveBeenCalledWith({
       decoderKey: 'dec-1',
       randomNumber: 0,
-      issueDate: '2026-08-05',
+      issueDate: ISSUE_DATE,
       type: 'SET_POWER_LIMIT',
       powerLimit: 5000,
     });
@@ -81,15 +83,71 @@ describe('createNxtStsToken', () => {
     expect(sendTokenRequest).toHaveBeenNthCalledWith(1, {
       decoderKey: 'dec-1',
       randomNumber: 3,
-      issueDate: '2026-08-05',
+      issueDate: ISSUE_DATE,
       type: 'CLEAR_TAMPER',
     });
     expect(sendTokenRequest).toHaveBeenNthCalledWith(2, {
       decoderKey: 'dec-1',
       randomNumber: 3,
-      issueDate: '2026-08-05',
+      issueDate: ISSUE_DATE,
       type: 'CLEAR_CREDIT',
     });
+  });
+
+  it('accepts issueDate with fractional seconds and UTC suffix', async () => {
+    const sendTokenRequest = vi.fn().mockResolvedValue({ token: 'tok-1' });
+    const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
+    const issueDateString = '2026-07-07T10:12:54.289Z';
+
+    await expect(
+      token.generate({
+        ...shared,
+        issueDateString,
+        type: 'CLEAR_TAMPER',
+      }),
+    ).resolves.toBe('tok-1');
+
+    expect(sendTokenRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ issueDate: issueDateString }),
+    );
+  });
+
+  it('rejects date-only issueDateString before calling STS', async () => {
+    const sendTokenRequest = vi.fn();
+    const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
+
+    await expect(
+      token.generate({
+        ...shared,
+        issueDateString: '2026-08-05',
+        type: 'CLEAR_TAMPER',
+      }),
+    ).rejects.toEqual(
+      new NxtStsError(
+        '[NXT STS TOKEN SERVICE] issueDateString must be an ISO 8601 datetime '
+          + '(e.g. "2024-03-15T10:30:00"), not a date-only string',
+      ),
+    );
+    expect(sendTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects unparseable issueDateString before calling STS', async () => {
+    const sendTokenRequest = vi.fn();
+    const token = createNxtStsToken({ client: mockClient(sendTokenRequest) });
+
+    await expect(
+      token.generate({
+        ...shared,
+        issueDateString: 'not-a-dateTxx',
+        type: 'CLEAR_TAMPER',
+      }),
+    ).rejects.toEqual(
+      new NxtStsError(
+        '[NXT STS TOKEN SERVICE] issueDateString must be an ISO 8601 datetime '
+          + '(e.g. "2024-03-15T10:30:00"), not a date-only string',
+      ),
+    );
+    expect(sendTokenRequest).not.toHaveBeenCalled();
   });
 
   it('trims surrounding whitespace on decoderKey before sending', async () => {
@@ -99,7 +157,7 @@ describe('createNxtStsToken', () => {
 
     await expect(
       token.generate({
-        issueDateString: '2026-08-05',
+        issueDateString: ISSUE_DATE,
         device: { externalReference: 'm-1', decoderKey: '  dec-1  ' },
         type: 'CLEAR_TAMPER',
       }),
@@ -117,7 +175,7 @@ describe('createNxtStsToken', () => {
 
     await expect(
       token.generate({
-        issueDateString: '2026-08-05',
+        issueDateString: ISSUE_DATE,
         device: { externalReference: 'm-1' },
         type: 'CLEAR_TAMPER',
       }),
@@ -127,7 +185,7 @@ describe('createNxtStsToken', () => {
 
     await expect(
       token.generate({
-        issueDateString: '2026-08-05',
+        issueDateString: ISSUE_DATE,
         device: { externalReference: 'm-1', decoderKey: '   ' },
         type: 'CLEAR_TAMPER',
       }),

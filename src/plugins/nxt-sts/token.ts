@@ -20,6 +20,22 @@ type CreateNxtStsTokenDeps = {
 };
 
 /**
+ * nxt-sts rejects date-only strings; require an ISO 8601 datetime before POST.
+ *
+ * @param issueDateString - Wire {@link GenerateTokenInput.issueDateString}
+ * @throws {@link NxtStsError} when the value is not a parseable datetime
+ */
+function assertIsoDateTime(issueDateString: string): void {
+  // Date-only values parse in JS `Date.parse` but fail STS `LocalDateTime` parsing.
+  if (!issueDateString.includes('T') || Number.isNaN(Date.parse(issueDateString))) {
+    throw new NxtStsError(
+      '[NXT STS TOKEN SERVICE] issueDateString must be an ISO 8601 datetime '
+        + '(e.g. "2024-03-15T10:30:00"), not a date-only string',
+    );
+  }
+}
+
+/**
  * Build the token facet for `nxt-sts`.
  *
  * @param deps - HTTP client (base URL from secrets)
@@ -35,6 +51,7 @@ export function createNxtStsToken(
     if (decoderKey === undefined || decoderKey === '') {
       throw new NxtStsError('[NXT STS TOKEN SERVICE] device.decoderKey is required');
     }
+    assertIsoDateTime(issueDateString);
 
     const body: NxtStsTokenRequest = {
       decoderKey,

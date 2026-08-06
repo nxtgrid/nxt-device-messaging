@@ -10,7 +10,7 @@ const API_BASE = 'https://sts.example';
 const sampleBody = {
   decoderKey: 'key-1',
   randomNumber: 6,
-  issueDate: '2026-08-05',
+  issueDate: '2026-08-05T10:30:00',
   type: 'TOP_UP_KWH' as const,
   kwh: 10,
 };
