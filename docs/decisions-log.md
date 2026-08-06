@@ -1176,3 +1176,43 @@ Import ledger unit numbers updated. No code change.
 
 **Next:** Phase 2 **Unit 9** — `calin-api-v2` from `legacy/.../adapters/calin-api-v2/`
 at baseline `db5c2ac`.
+
+### 2026-08-06 — session: `nxt-sts` posts `TOP_UP_KWH` through (Step A)
+
+**Supersedes** session 26 lock “Wire `TOP_UP_KWH` → STS body `type: 'TOP_UP'`”.
+
+`nxt-sts` now accepts canonical wire `TOP_UP_KWH` (deprecated alias `TOP_UP` remains on
+that service for older callers). The messaging plugin drops `toVendorTokenType` and posts
+`type` through unchanged. `NxtStsTokenRequest['type']` includes `TOP_UP_KWH`.
+
+**Still open (plugin call-path follow-ups, discuss one at a time):** `issueDate` interop,
+`decoderKey` shape, error/logging hygiene, optional fetch timeout / RND range.
+
+**Next:** Unit 9 when ready; or continue nxt-sts plugin hardening steps after review.
+
+### 2026-08-06 — session: `nxt-sts` call-path closed; deferred sanitization
+
+**STS ↔ messaging interop (done this session):**
+
+| Step | Scope |
+|---|---|
+| A | Post `TOP_UP_KWH` through (no vendor map) |
+| B | Reject non-ISO-datetime `issueDateString` in plugin before fetch |
+| C | Require `device.decoderKey` = 16 hex chars in plugin before fetch |
+| RND | `STS_RANDOM_NUMBER_MAX` 12 → 16 (full STS 4-bit field 0..15) |
+
+**Supersedes** the “Still open” list on the Step A note above for those items.
+
+**Deferred — later nxt-device-messaging sanitization pass** (not STS vocabulary /
+interop; do not block Unit 9):
+
+| Item | Where / notes |
+|---|---|
+| Redact secrets in client error logs (`decoderKey`, etc.) | `plugins/nxt-sts/lib/repo.ts`; audit CALIN clients if they log request bodies |
+| Map plugin/vendor token errors to useful HTTP statuses | `http/token-routes.ts` (+ shared pattern for other plugins); prefer a dedicated HTTP/API chunk |
+| Fetch timeout (`AbortSignal`) | `nxt-sts` client; see also Unit 7 CALIN fetch-abort notes |
+| Trailing-slash base URL normalize | Plugin HTTP clients (`NXT_STS_URL`, CALIN URLs) |
+
+Token-only SPI placeholders remain deferred as already locked in session 26.
+
+**Next:** Phase 2 **Unit 9** (`calin-api-v2`) when ready.
