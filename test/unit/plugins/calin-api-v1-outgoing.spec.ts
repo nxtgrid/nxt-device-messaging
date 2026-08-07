@@ -148,7 +148,11 @@ describe('createCalinApiV1Outgoing', () => {
         commandType: 'SET_DATE',
         requestData: { payload: { year: 2026, month: 2, day: 30 } },
       })),
-    ).rejects.toThrow('Invalid payload for setting date');
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      message: 'Invalid payload for setting date',
+      skipRetry: true,
+    });
 
     expect(sendRequest).not.toHaveBeenCalled();
   });
@@ -161,14 +165,21 @@ describe('createCalinApiV1Outgoing', () => {
 
     await expect(
       outgoing.sendOne(baseMessage({ commandType: 'TOP_UP_KWH' })),
-    ).rejects.toThrow(/without a token/);
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      message: expect.stringMatching(/without a token/),
+      skipRetry: true,
+    });
 
     await expect(
       outgoing.sendOne(baseMessage({
         commandType: 'TOP_UP_KWH',
         requestData: { token: '   ' },
       })),
-    ).rejects.toThrow(/without a token/);
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      skipRetry: true,
+    });
   });
 
   it('sendOne TOP_UP_KWH posts COMM_RemoteToken', async () => {
@@ -231,21 +242,48 @@ describe('createCalinApiV1Outgoing', () => {
     });
   });
 
+  it('does not treat Object.prototype keys as read commands', async () => {
+    const sendRequest = vi.fn();
+    const outgoing = createCalinApiV1Outgoing({
+      secrets: adminSecrets,
+      client: mockClient(sendRequest),
+    });
+
+    // `constructor` is `in` the map via the prototype chain, but not an own key.
+    await expect(
+      outgoing.sendOne(baseMessage({
+        commandType: 'constructor' as DeviceMessage['commandType'],
+      })),
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      message: 'Not implemented',
+      skipRetry: true,
+    });
+    expect(sendRequest).not.toHaveBeenCalled();
+  });
+
   it('parseError maps CalinApiV1Error including skipRetry for code 99', () => {
     const outgoing = createCalinApiV1Outgoing({
       secrets: adminSecrets,
       client: mockClient(vi.fn()),
     });
 
-    expect(outgoing.parseError(new CalinApiV1Error('boom', 99))).toEqual({
+    expect(outgoing.parseError(new CalinApiV1Error('boom', { code: 99 }))).toEqual({
       reason: 'boom',
       errorCode: 99,
       skipRetry: true,
     });
-    expect(outgoing.parseError(new CalinApiV1Error('tmp', 'ECONNRESET'))).toEqual({
+    expect(outgoing.parseError(new CalinApiV1Error('tmp', { code: 'ECONNRESET' }))).toEqual({
       reason: 'tmp',
       errorCode: 'ECONNRESET',
       skipRetry: false,
+    });
+    expect(outgoing.parseError(
+      new CalinApiV1Error('bad payload', { skipRetry: true }),
+    )).toEqual({
+      reason: 'bad payload',
+      errorCode: undefined,
+      skipRetry: true,
     });
     expect(outgoing.parseError(new Error('plain'))).toEqual({
       reason: 'plain',

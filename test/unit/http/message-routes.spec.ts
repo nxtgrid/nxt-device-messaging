@@ -54,11 +54,11 @@ describe('message command routes (enqueue / get / cancel)', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/message/enqueue',
-      payload: { ...enqueueBody, pluginId: 'calin-api-v2' },
+      payload: { ...enqueueBody, pluginId: 'calin-chirpstack' },
     });
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
-      error: 'Unknown or disabled pluginId: calin-api-v2',
+      error: 'Unknown or disabled pluginId: calin-chirpstack',
     });
 
     await app.close();

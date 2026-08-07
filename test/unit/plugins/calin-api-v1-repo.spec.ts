@@ -120,7 +120,7 @@ describe('createCalinApiV1Client', () => {
     ).rejects.toEqual(
       new CalinApiV1Error(
         '[CALIN API-V1] could not be reached, connection was refused',
-        'ECONNREFUSED',
+        { code: 'ECONNREFUSED' },
       ),
     );
   });

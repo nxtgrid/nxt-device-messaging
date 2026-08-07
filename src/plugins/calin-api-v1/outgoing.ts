@@ -71,9 +71,9 @@ type CalinApiV1ControlTask = (typeof CalinApiV1ControlMap)[ImplementedMessageCon
 type CalinApiV1WriteTask = (typeof CalinApiV1WriteMap)[ImplementedMessageWriteTypes];
 
 /** Type guard: checks at runtime AND narrows the type for TypeScript. */
-const isCalinApiV1ReadCommand = (commandType: string): commandType is ImplementedMessageReadTypes => commandType in CalinApiV1ReadMap;
-const isCalinApiV1ControlCommand = (commandType: string): commandType is ImplementedMessageControlTypes => commandType in CalinApiV1ControlMap;
-const isCalinApiV1WriteCommand = (commandType: string): commandType is ImplementedMessageWriteTypes => commandType in CalinApiV1WriteMap;
+const isCalinApiV1ReadCommand = (commandType: string): commandType is ImplementedMessageReadTypes => Object.hasOwn(CalinApiV1ReadMap, commandType);
+const isCalinApiV1ControlCommand = (commandType: string): commandType is ImplementedMessageControlTypes => Object.hasOwn(CalinApiV1ControlMap, commandType);
+const isCalinApiV1WriteCommand = (commandType: string): commandType is ImplementedMessageWriteTypes => Object.hasOwn(CalinApiV1WriteMap, commandType);
 
 type CreateCalinApiV1OutgoingDeps = {
   readonly secrets: Pick<CalinApiV1Secrets, 'companyName' | 'adminUsername' | 'adminPassword'>;
@@ -103,7 +103,7 @@ export function createCalinApiV1Outgoing(
       || !Number.isSafeInteger(month)
       || !Number.isSafeInteger(day)
     ) {
-      throw new Error('Invalid payload for setting date');
+      throw new CalinApiV1Error('Invalid payload for setting date', { skipRetry: true });
     }
     // Normalize 2-digit years to 20xx. The Date constructor would otherwise
     // treat values 0-99 as 1900-1999, silently producing the wrong weekday.
@@ -119,7 +119,7 @@ export function createCalinApiV1Outgoing(
       || utc.getUTCMonth() !== month - 1
       || utc.getUTCDate() !== day
     ) {
-      throw new Error('Invalid payload for setting date');
+      throw new CalinApiV1Error('Invalid payload for setting date', { skipRetry: true });
     }
     const weekday = utc.getUTCDay();
     const yy = String(fullYear % 100).padStart(2, '0');
@@ -136,100 +136,84 @@ export function createCalinApiV1Outgoing(
     return CalinApiV1ReadMap[commandType];
   };
 
-  const _requestRead = async (taskType: CalinApiV1ReadTask, meterNo: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV1CommResponse>(
-      '/COMM_RemoteReading',
-      {
-        ...commApiData,
-        MeterNo: meterNo,
-        DataItem: taskType,
-      },
-    );
+  /**
+   * Create a COMM task and return its vendor TaskNo.
+   * Shared by read / control / write / token-delivery paths.
+   */
+  const _createCommTask = async (opts: {
+    readonly path: string;
+    readonly fields: Record<string, string | number | boolean>;
+    /** Override the default missing-TaskNo message (e.g. immediate token reject). */
+    readonly missingTaskIdMessage?: (res: CalinApiV1CommResponse) => string | undefined;
+  }): Promise<string> => {
+    const res = await client.sendRequest<CalinApiV1CommResponse>(opts.path, {
+      ...commApiData,
+      ...opts.fields,
+    });
 
     const taskId = res.Result?.TaskNo;
 
     if (!taskId) {
-      const errorMessage = `CALIN API-V1 did not schedule task because: ${ res.Reason ?? 'unknown' }`;
-      throw new CalinApiV1Error(errorMessage, toSafeNumberOrNull(res.ResultCode));
+      const errorMessage = opts.missingTaskIdMessage?.(res)
+        ?? `CALIN API-V1 did not schedule task because: ${ res.Reason ?? 'unknown' }`;
+      throw new CalinApiV1Error(errorMessage, {
+        code: toSafeNumberOrNull(res.ResultCode),
+      });
     }
 
     return taskId;
   };
 
-  const _requestControl = async (taskType: CalinApiV1ControlTask, meterNo: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV1CommResponse>(
-      '/COMM_RemoteControl',
-      {
-        ...commApiData,
-        MeterNo: meterNo,
-        DataItem: taskType,
-      },
-    );
+  const _requestRead = (
+    taskType: CalinApiV1ReadTask,
+    meterNo: string,
+  ): Promise<string> => _createCommTask({
+    path: '/COMM_RemoteReading',
+    fields: { MeterNo: meterNo, DataItem: taskType },
+  });
 
-    const taskId = res.Result?.TaskNo;
+  const _requestControl = (
+    taskType: CalinApiV1ControlTask,
+    meterNo: string,
+  ): Promise<string> => _createCommTask({
+    path: '/COMM_RemoteControl',
+    fields: { MeterNo: meterNo, DataItem: taskType },
+  });
 
-    if (!taskId) {
-      const errorMessage = `CALIN API V1 did not schedule task because: ${ res.Reason ?? 'unknown' }`;
-      throw new CalinApiV1Error(errorMessage, toSafeNumberOrNull(res.ResultCode));
-    }
+  const _requestWrite = (
+    taskType: CalinApiV1WriteTask,
+    data: string,
+    meterNo: string,
+  ): Promise<string> => _createCommTask({
+    path: '/COMM_RemoteWrite',
+    fields: { MeterNo: meterNo, DataItem: taskType, Data: data },
+  });
 
-    return taskId;
-  };
-
-  const _requestWrite = async (taskType: CalinApiV1WriteTask, data: string, meterNo: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV1CommResponse>(
-      '/COMM_RemoteWrite',
-      {
-        ...commApiData,
-        MeterNo: meterNo,
-        DataItem: taskType,
-        Data: data,
-      },
-    );
-
-    const taskId = res.Result?.TaskNo;
-
-    if (!taskId) {
-      const errorMessage = `CALIN API V1 did not schedule task because: ${ res.Reason ?? 'unknown' }`;
-      throw new CalinApiV1Error(errorMessage, toSafeNumberOrNull(res.ResultCode));
-    }
-
-    return taskId;
-  };
-
-  const _requestTokenDelivery = async (token: string, meterNo: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV1CommResponse>(
-      '/COMM_RemoteToken',
-      {
-        ...commApiData,
-        MeterNo: meterNo,
-        Token: token,
-      },
-    );
-
-    const taskId = res.Result?.TaskNo;
-    if (!taskId) {
-      const errorMessage = res.ResultCode === '99'
-        ? `Token ${ token } was immediately rejected for meter ${ meterNo }, possibly already delivered`
-        : `CALIN API V1 did not schedule task because: ${ res.Reason ?? 'unknown' }`;
-      throw new CalinApiV1Error(errorMessage, toSafeNumberOrNull(res.ResultCode));
-    }
-
-    return taskId;
-  };
+  const _requestTokenDelivery = (
+    token: string,
+    meterNo: string,
+  ): Promise<string> => _createCommTask({
+    path: '/COMM_RemoteToken',
+    fields: { MeterNo: meterNo, Token: token },
+    missingTaskIdMessage: res => (res.ResultCode === '99'
+      ? `Token ${ token } was immediately rejected for meter ${ meterNo }, possibly already delivered`
+      : undefined),
+  });
 
   const _parsePayload = (
     commandType: DeviceMessage['commandType'],
     payload: NonNullable<DeviceMessage['requestData']>['payload'],
   ): string => {
     if (!payload) {
-      throw new Error('Can\'t perform a write request without a payload');
+      throw new CalinApiV1Error('Can\'t perform a write request without a payload', {
+        skipRetry: true,
+      });
     }
     switch (commandType) {
       case 'SET_DATE':
         return _formatDate(payload as SetDatePayload);
       default:
-        throw new Error('Payload parser not implemented');
+        throw new CalinApiV1Error('Payload parser not implemented', { skipRetry: true });
     }
   };
 
@@ -255,12 +239,14 @@ export function createCalinApiV1Outgoing(
       // Enqueue Zod leaves `requestData.token` optional (incl. ''); mint paths
       // are expected to set it, but Redis/replay can still arrive without one.
       if (typeof token !== 'string' || token.trim() === '') {
-        throw new Error('Can\'t perform a token delivery without a token');
+        throw new CalinApiV1Error('Can\'t perform a token delivery without a token', {
+          skipRetry: true,
+        });
       }
       return _requestTokenDelivery(token, externalReference);
     }
 
-    throw new Error('Not implemented');
+    throw new CalinApiV1Error('Not implemented', { skipRetry: true });
   };
 
   const parseError = (err: unknown): FailureContext => {
@@ -268,8 +254,8 @@ export function createCalinApiV1Outgoing(
       return {
         reason: err.message,
         errorCode: err.code ?? undefined,
-        // For error code 99 (rejected tokens) we can fail immediately
-        skipRetry: err.code === 99,
+        // Permanent local failures set skipRetry; vendor ResultCode 99 (e.g. rejected token) too
+        skipRetry: err.skipRetry || err.code === 99,
       };
     }
     if (err instanceof Error) {

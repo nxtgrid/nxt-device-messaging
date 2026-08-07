@@ -1,0 +1,6 @@
+reviews:
+  auto_review:
+    enabled: true
+    # Use ".*" to match all branches and review every PR regardless of target
+    base_branches:
+      - ".*"
