@@ -59,13 +59,13 @@ type CalinApiV2WriteTask = (typeof CalinApiV2WriteMap)[ImplementedMessageWriteTy
 /** Type guard: checks at runtime AND narrows the type for TypeScript. */
 const isCalinApiV2ReadCommand = (
   commandType: string,
-): commandType is ImplementedMessageReadTypes => commandType in CalinApiV2ReadMap;
+): commandType is ImplementedMessageReadTypes => Object.hasOwn(CalinApiV2ReadMap, commandType);
 const isCalinApiV2ControlCommand = (
   commandType: string,
-): commandType is ImplementedMessageControlTypes => commandType in CalinApiV2ControlMap;
+): commandType is ImplementedMessageControlTypes => Object.hasOwn(CalinApiV2ControlMap, commandType);
 const isCalinApiV2WriteCommand = (
   commandType: string,
-): commandType is ImplementedMessageWriteTypes => commandType in CalinApiV2WriteMap;
+): commandType is ImplementedMessageWriteTypes => Object.hasOwn(CalinApiV2WriteMap, commandType);
 
 type CreateCalinApiV2OutgoingDeps = {
   readonly secrets: Pick<CalinApiV2Secrets, 'companyName' | 'customerId'>;
@@ -89,7 +89,7 @@ export function createCalinApiV2Outgoing(
       || !Number.isSafeInteger(month)
       || !Number.isSafeInteger(day)
     ) {
-      throw new Error('Invalid payload for setting date');
+      throw new CalinApiV2Error('Invalid payload for setting date', { skipRetry: true });
     }
     // Normalize 2-digit years to 20xx so we never emit "0024-..." for year=24.
     const fullYear = year < 100 ? 2000 + year : year;
@@ -99,7 +99,7 @@ export function createCalinApiV2Outgoing(
       || utc.getUTCMonth() !== month - 1
       || utc.getUTCDate() !== day
     ) {
-      throw new Error('Invalid payload for setting date');
+      throw new CalinApiV2Error('Invalid payload for setting date', { skipRetry: true });
     }
     const yyyy = String(fullYear).padStart(4, '0');
     const mm = String(month).padStart(2, '0');
@@ -108,101 +108,90 @@ export function createCalinApiV2Outgoing(
     return `${ yyyy }-${ mm }-${ dd } 00:00:00`;
   };
 
-  const _requestRead = async (protocolId: CalinApiV2ReadTask, meterId: string): Promise<string> => {
+  /**
+   * Create a remote meter task and return its vendor id.
+   * Shared by read / control / write / token-delivery paths.
+   */
+  const _createTask = async (opts: {
+    readonly path: string;
+    readonly protocolId:
+      | CalinApiV2ReadTask
+      | CalinApiV2ControlTask
+      | CalinApiV2WriteTask
+      | typeof CALIN_API_V2_TOKEN_DELIVERY_PROTOCOL_ID;
+    readonly meterId: string;
+    readonly data?: string;
+  }): Promise<string> => {
     const res = await client.sendRequest<CalinApiV2CreateTaskResponse>(
-      '/API/RemoteMeterTask/CreateReadingTask',
+      opts.path,
       [ {
-        meterId,
-        protocolId,
+        meterId: opts.meterId,
+        protocolId: opts.protocolId,
+        ...(opts.data !== undefined ? { data: opts.data } : {}),
         customerId: secrets.customerId,
         company: secrets.companyName,
       } ],
     );
 
     const taskId = res.result?.[0]?.id;
-
     if (!taskId) {
-      const errorMessage = `CALIN API-V2 did not schedule task because: ${ res.reason ?? 'unknown' }`;
-      throw new CalinApiV2Error(errorMessage);
+      throw new CalinApiV2Error(
+        `CALIN API-V2 did not schedule task because: ${ res.reason ?? 'unknown' }`,
+      );
     }
-
     return taskId;
   };
 
-  const _requestControl = async (protocolId: CalinApiV2ControlTask, meterId: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV2CreateTaskResponse>(
-      '/API/RemoteMeterTask/CreateControlTask',
-      [ {
-        meterId,
-        protocolId,
-        customerId: secrets.customerId,
-        company: secrets.companyName,
-      } ],
-    );
+  const _requestRead = (
+    protocolId: CalinApiV2ReadTask,
+    meterId: string,
+  ): Promise<string> => _createTask({
+    path: '/API/RemoteMeterTask/CreateReadingTask',
+    protocolId,
+    meterId,
+  });
 
-    const taskId = res.result?.[0]?.id;
+  const _requestControl = (
+    protocolId: CalinApiV2ControlTask,
+    meterId: string,
+  ): Promise<string> => _createTask({
+    path: '/API/RemoteMeterTask/CreateControlTask',
+    protocolId,
+    meterId,
+  });
 
-    if (!taskId) {
-      const errorMessage = `CALIN API-V2 did not schedule task because: ${ res.reason ?? 'unknown' }`;
-      throw new CalinApiV2Error(errorMessage);
-    }
+  const _requestWrite = (
+    protocolId: CalinApiV2WriteTask,
+    data: string,
+    meterId: string,
+  ): Promise<string> => _createTask({
+    path: '/API/RemoteMeterTask/CreateSettingTask',
+    protocolId,
+    meterId,
+    data,
+  });
 
-    return taskId;
-  };
-
-  const _requestWrite = async (protocolId: CalinApiV2WriteTask, data: string, meterId: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV2CreateTaskResponse>(
-      '/API/RemoteMeterTask/CreateSettingTask',
-      [ {
-        meterId,
-        protocolId,
-        data,
-        customerId: secrets.customerId,
-        company: secrets.companyName,
-      } ],
-    );
-
-    const taskId = res.result?.[0]?.id;
-
-    if (!taskId) {
-      const errorMessage = `CALIN API-V2 did not schedule task because: ${ res.reason ?? 'unknown' }`;
-      throw new CalinApiV2Error(errorMessage);
-    }
-
-    return taskId;
-  };
-
-  const _requestTokenDelivery = async (token: string, meterId: string): Promise<string> => {
-    const res = await client.sendRequest<CalinApiV2CreateTaskResponse>(
-      '/API/RemoteMeterTask/CreateTokenTask',
-      [ {
-        meterId,
-        protocolId: CALIN_API_V2_TOKEN_DELIVERY_PROTOCOL_ID,
-        data: token,
-        customerId: secrets.customerId,
-        company: secrets.companyName,
-      } ],
-    );
-
-    const taskId = res.result?.[0]?.id;
-
-    if (!taskId) {
-      const errorMessage = `CALIN API-V2 did not schedule task because: ${ res.reason ?? 'unknown' }`;
-      throw new CalinApiV2Error(errorMessage);
-    }
-
-    return taskId;
-  };
+  const _requestTokenDelivery = (
+    token: string,
+    meterId: string,
+  ): Promise<string> => _createTask({
+    path: '/API/RemoteMeterTask/CreateTokenTask',
+    protocolId: CALIN_API_V2_TOKEN_DELIVERY_PROTOCOL_ID,
+    meterId,
+    data: token,
+  });
 
   const _parsePayload = (commandType: DeviceMessage['commandType'], payload: NonNullable<DeviceMessage['requestData']>['payload']): string => {
     if (!payload) {
-      throw new Error('Can\'t perform a write request without a payload');
+      throw new CalinApiV2Error('Can\'t perform a write request without a payload', {
+        skipRetry: true,
+      });
     }
     switch (commandType) {
       case 'SET_DATE':
         return _formatDate(payload as SetDatePayload);
       default:
-        throw new Error('Payload parser not implemented');
+        throw new CalinApiV2Error('Payload parser not implemented', { skipRetry: true });
     }
   };
 
@@ -227,12 +216,14 @@ export function createCalinApiV2Outgoing(
       // Enqueue Zod leaves `requestData.token` optional (incl. ''); mint paths
       // are expected to set it, but Redis/replay can still arrive without one.
       if (typeof token !== 'string' || token.trim() === '') {
-        throw new Error('Can\'t perform a token delivery without a token');
+        throw new CalinApiV2Error('Can\'t perform a token delivery without a token', {
+          skipRetry: true,
+        });
       }
       return _requestTokenDelivery(token, externalReference);
     }
 
-    throw new Error('Not implemented');
+    throw new CalinApiV2Error('Not implemented', { skipRetry: true });
   };
 
   const parseError = (err: unknown): FailureContext => {
@@ -240,6 +231,7 @@ export function createCalinApiV2Outgoing(
       return {
         reason: err.message,
         errorCode: err.code,
+        skipRetry: err.skipRetry,
       };
     }
     if (err instanceof Error) {

@@ -10,14 +10,26 @@
  * coupling stays out of scope here (plan coupling note).
  */
 
-/** Vendor / transport failure from {@link createCalinApiV2Client}. */
+/** Options for {@link CalinApiV2Error}. */
+export type CalinApiV2ErrorOptions = {
+  readonly code?: number;
+  /** When true, outgoing `parseError` sets `skipRetry` (unrecoverable). */
+  readonly skipRetry?: boolean;
+};
+
+/**
+ * Vendor / transport / local failure for CALIN API V2.
+ * Use `{ skipRetry: true }` for permanent validation failures (bad payload, etc.).
+ */
 export class CalinApiV2Error extends Error {
-  constructor(
-    message: string,
-    public readonly code?: number,
-  ) {
+  readonly code?: number;
+  readonly skipRetry: boolean;
+
+  constructor(message: string, options: CalinApiV2ErrorOptions = {}) {
     super(message);
     this.name = 'CalinApiV2Error';
+    this.code = options.code;
+    this.skipRetry = options.skipRetry ?? false;
   }
 }
 
@@ -43,17 +55,25 @@ export type CalinApiV2DataItem =
   | 'Token'
 ;
 
+/**
+ * Create-task body. Happy path is `code === 0` / `reason === 'success'`; the
+ * client still returns other values (logs only) so callers must not assume success.
+ */
 export type CalinApiV2CreateTaskResponse = {
-  code: 0;
-  reason: 'success';
+  code: number;
+  reason: string;
   result?: {
     id: string;
   }[];
 };
 
+/**
+ * Poll / token body. Same `code` / `reason` caveat as
+ * {@link CalinApiV2CreateTaskResponse}.
+ */
 export type CalinApiV2TaskDataResponse = {
-  code: 0;
-  reason: 'success';
+  code: number;
+  reason: string;
   result?: {
     token?: string;
     data?: {
@@ -140,68 +160,79 @@ export function createCalinApiV2Client(deps: {
   } as const;
 
   let cachedToken: CachedToken | undefined;
+  /** Single-flight login so concurrent callers share one `/API/User/Login`. */
+  let fetchTokenInFlight: Promise<void> | undefined;
 
   const fetchToken = async (): Promise<void> => {
-    for (let i = 0; i < FETCH_RETRIES; i++) {
-      try {
-        const response = await fetch(`${ apiBaseUrl }/API/User/Login`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify(loginCredentials),
-          signal: AbortSignal.timeout(CUSTOM_LOGIN_TIMEOUT_MS),
-        });
+    if (fetchTokenInFlight !== undefined) {
+      return fetchTokenInFlight;
+    }
 
-        let data: LoginResponseBody | undefined;
+    fetchTokenInFlight = (async () => {
+      for (let i = 0; i < FETCH_RETRIES; i++) {
         try {
-          data = await response.json() as LoginResponseBody;
-        }
-        catch {
-          data = undefined;
-        }
+          const response = await fetch(`${ apiBaseUrl }/API/User/Login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify(loginCredentials),
+            signal: AbortSignal.timeout(CUSTOM_LOGIN_TIMEOUT_MS),
+          });
 
-        const freshToken = data?.result?.token;
-        if (typeof freshToken !== 'string' || freshToken === '') {
+          let data: LoginResponseBody | undefined;
+          try {
+            data = await response.json() as LoginResponseBody;
+          }
+          catch {
+            data = undefined;
+          }
+
+          const freshToken = data?.result?.token;
+          if (typeof freshToken !== 'string' || freshToken === '') {
+            // No retry: empty/rejected login body will not improve on another attempt.
+            console.error(
+              '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
+            );
+            console.error(
+              '[CALIN API-V2 LOGIN] Didn\'t receive a login token,',
+              data?.reason,
+            );
+            cachedToken = undefined;
+            break;
+          }
+
+          const expMs = readJwtExpMs(freshToken);
+          if (expMs === undefined) {
+            console.error(
+              '[CALIN API-V2 LOGIN] Login token missing readable exp claim',
+            );
+            cachedToken = undefined;
+            break;
+          }
+
+          console.info('[CALIN API-V2 LOGIN] Got a login token');
+          cachedToken = { token: freshToken, expMs };
+          break;
+        }
+        catch (err) {
+          const detail = typeof err === 'object' && err !== null && 'cause' in err
+            ? (err as { cause?: unknown }).cause
+            : err;
+          console.error('[CALIN API-V2 LOGIN] Got a direct error:', detail);
           if (i === FETCH_RETRIES - 1) {
             console.error(
               '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
             );
           }
-          console.error(
-            '[CALIN API-V2 LOGIN] Didn\'t receive a login token,',
-            data?.reason,
-          );
-          cachedToken = undefined;
-          break;
-        }
-
-        const expMs = readJwtExpMs(freshToken);
-        if (expMs === undefined) {
-          console.error(
-            '[CALIN API-V2 LOGIN] Login token missing readable exp claim',
-          );
-          cachedToken = undefined;
-          break;
-        }
-
-        console.info('[CALIN API-V2 LOGIN] Got a login token');
-        cachedToken = { token: freshToken, expMs };
-        break;
-      }
-      catch (err) {
-        const detail = typeof err === 'object' && err !== null && 'cause' in err
-          ? (err as { cause?: unknown }).cause
-          : err;
-        console.error('[CALIN API-V2 LOGIN] Got a direct error:', detail);
-        if (i === FETCH_RETRIES - 1) {
-          console.error(
-            '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
-          );
         }
       }
-    }
+    })().finally(() => {
+      fetchTokenInFlight = undefined;
+    });
+
+    return fetchTokenInFlight;
   };
 
   const ensureToken = async (): Promise<CachedToken> => {
@@ -313,7 +344,11 @@ export function createCalinApiV2Client(deps: {
         return outcome.data as T;
       }
       if (outcome.unauthorized) {
-        console.error('[CALIN API-V2] Fetch error even after retry', '401');
+        // Fresh token already minted for this wave — further 401s are auth, not stale JWT.
+        console.error('[CALIN API-V2] Unauthorized even after token refresh');
+        throw new CalinApiV2Error(
+          '[CALIN API-V2] Unauthorized after token refresh',
+        );
       }
       if (i === FETCH_RETRIES - 1) {
         throw new CalinApiV2Error('CALIN API-V2 is down');

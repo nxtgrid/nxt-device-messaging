@@ -135,12 +135,14 @@ describe('createCalinApiV2Outgoing', () => {
         commandType: 'SET_DATE',
         requestData: { payload: { year: 2026, month: 2, day: 30 } },
       })),
-    ).rejects.toThrow('Invalid payload for setting date');
+    ).rejects.toEqual(
+      new CalinApiV2Error('Invalid payload for setting date', { skipRetry: true }),
+    );
 
     expect(sendRequest).not.toHaveBeenCalled();
   });
 
-  it('sendOne token commands reject missing / blank token', async () => {
+  it('sendOne token commands reject missing / blank token as permanent', async () => {
     const outgoing = createCalinApiV2Outgoing({
       secrets: taskSecrets,
       client: mockClient(vi.fn()),
@@ -148,7 +150,11 @@ describe('createCalinApiV2Outgoing', () => {
 
     await expect(
       outgoing.sendOne(baseMessage({ commandType: 'TOP_UP_KWH' })),
-    ).rejects.toThrow(/without a token/);
+    ).rejects.toEqual(
+      new CalinApiV2Error('Can\'t perform a token delivery without a token', {
+        skipRetry: true,
+      }),
+    );
 
     await expect(
       outgoing.sendOne(baseMessage({
@@ -184,10 +190,10 @@ describe('createCalinApiV2Outgoing', () => {
     );
   });
 
-  it('throws CalinApiV2Error when result id is missing', async () => {
+  it('throws CalinApiV2Error when result id is missing, surfacing vendor reason', async () => {
     const sendRequest = vi.fn().mockResolvedValue({
-      code: 0,
-      reason: 'success',
+      code: 1,
+      reason: 'meter offline',
     } satisfies CalinApiV2CreateTaskResponse);
     const outgoing = createCalinApiV2Outgoing({
       secrets: taskSecrets,
@@ -198,20 +204,46 @@ describe('createCalinApiV2Outgoing', () => {
       outgoing.sendOne(baseMessage({ commandType: 'READ_CREDIT' })),
     ).rejects.toMatchObject({
       name: 'CalinApiV2Error',
-      message: /did not schedule task because: success/,
+      message: /did not schedule task because: meter offline/,
     });
   });
 
-  it('parseError maps CalinApiV2Error and plain Error', () => {
+  it('does not treat Object.prototype keys as read commands', async () => {
+    const sendRequest = vi.fn();
+    const outgoing = createCalinApiV2Outgoing({
+      secrets: taskSecrets,
+      client: mockClient(sendRequest),
+    });
+
+    // `constructor` is `in` the map via the prototype chain, but not an own key.
+    await expect(
+      outgoing.sendOne(baseMessage({
+        commandType: 'constructor' as DeviceMessage['commandType'],
+      })),
+    ).rejects.toEqual(
+      new CalinApiV2Error('Not implemented', { skipRetry: true }),
+    );
+    expect(sendRequest).not.toHaveBeenCalled();
+  });
+
+  it('parseError maps CalinApiV2Error skipRetry / code and plain Error', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const outgoing = createCalinApiV2Outgoing({
       secrets: taskSecrets,
       client: mockClient(vi.fn()),
     });
 
-    expect(outgoing.parseError(new CalinApiV2Error('boom', 42))).toEqual({
+    expect(
+      outgoing.parseError(new CalinApiV2Error('bad payload', { skipRetry: true })),
+    ).toEqual({
+      reason: 'bad payload',
+      errorCode: undefined,
+      skipRetry: true,
+    });
+    expect(outgoing.parseError(new CalinApiV2Error('boom', { code: 42 }))).toEqual({
       reason: 'boom',
       errorCode: 42,
+      skipRetry: false,
     });
     expect(outgoing.parseError(new Error('plain'))).toEqual({
       reason: 'plain',

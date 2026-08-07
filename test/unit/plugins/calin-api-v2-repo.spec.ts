@@ -103,10 +103,36 @@ describe('createCalinApiV2Client', () => {
     expect(fetchMock.mock.calls[2]?.[0]).toBe(`${ API_BASE }/API/b`);
   });
 
-  it('refreshes when the cached token is near expiry', async () => {
-    const almostExpired = Math.floor(Date.now() / 1000) + 0; // exp skew is 1s
+  it('shares one in-flight login across concurrent callers', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/API/User/Login')) {
+        await new Promise<void>(resolve => {
+          setTimeout(resolve, 20);
+        });
+        return loginOk();
+      }
+      return jsonResponse({ code: 0, reason: 'success' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createCalinApiV2Client(CLIENT_DEPS);
+    await Promise.all([
+      client.sendRequest('/API/a', { x: 1 }),
+      client.sendRequest('/API/b', { y: 2 }),
+    ]);
+
+    expect(fetchMock.mock.calls.filter(call =>
+      String(call[0]).endsWith('/API/User/Login'),
+    )).toHaveLength(1);
+  });
+
+  it('refreshes when the cached token is within the expiry skew window', async () => {
+    // Still valid, but fewer than TOKEN_EXPIRY_SKEW_MS (1s) remain → must refresh.
+    const withinSkewSeconds = Date.now() / 1000 + 0.5;
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(loginOk(almostExpired))
+      .mockResolvedValueOnce(loginOk(withinSkewSeconds))
       .mockResolvedValueOnce(jsonResponse({ code: 0, reason: 'success' }))
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(jsonResponse({ code: 0, reason: 'success' }));
@@ -142,6 +168,25 @@ describe('createCalinApiV2Client', () => {
     )).toHaveLength(2);
   });
 
+  it('throws a distinct auth error when 401 persists after token refresh', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(jsonResponse({}, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createCalinApiV2Client(CLIENT_DEPS);
+    await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
+      new CalinApiV2Error('[CALIN API-V2] Unauthorized after token refresh'),
+    );
+
+    // login, authorized 401, re-login, authorized 401 — no further identical retries
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it('returns data when vendor code/reason are unexpected (logs only)', async () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.stubGlobal(
@@ -171,6 +216,23 @@ describe('createCalinApiV2Client', () => {
     );
   });
 
+  it('throws when login returns a token with unreadable exp', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({
+        code: 0,
+        reason: 'success',
+        result: { token: 'not-a-jwt' },
+      })),
+    );
+
+    const client = createCalinApiV2Client(CLIENT_DEPS);
+    await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
+      new CalinApiV2Error('CALIN API-V2 failed to get a token'),
+    );
+  });
+
   it('throws CalinApiV2Error after repeated transport failures', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn()
@@ -182,5 +244,24 @@ describe('createCalinApiV2Client', () => {
     await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
       new CalinApiV2Error('CALIN API-V2 is down'),
     );
+  });
+
+  it('throws after 401 refresh when the retry wave hits transport failures', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
+      .mockResolvedValueOnce(loginOk())
+      .mockRejectedValue(new Error('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createCalinApiV2Client(CLIENT_DEPS);
+    await expect(client.sendRequest('/API/x', { a: 1 })).rejects.toEqual(
+      new CalinApiV2Error('CALIN API-V2 is down'),
+    );
+
+    // login, authorized 401, re-login, then FETCH_RETRIES (3) transport attempts
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 });

@@ -38,11 +38,11 @@ function taskData(opts: {
   status: 0 | 1 | 2 | 3;
   name?: CalinApiV2DataItem;
   data?: number | string;
-  reason?: CalinApiV2TaskDataResponse['reason'] | 'nope';
+  reason?: string;
 }): CalinApiV2TaskDataResponse {
   return {
     code: 0,
-    reason: (opts.reason ?? 'success') as CalinApiV2TaskDataResponse['reason'],
+    reason: opts.reason ?? 'success',
     result: {
       data: [ {
         name: opts.name ?? 'Current Credit Balance',
@@ -168,6 +168,60 @@ describe('createCalinApiV2Incoming', () => {
       baseMessage({ commandType: 'SET_DATE' }),
     );
     expect(event?.response?.data).toEqual({ dateAccepted: true });
+  });
+
+  it('maps Relay On/Off Connected to turnOnAccepted', async () => {
+    const incoming = createCalinApiV2Incoming({
+      secrets: companySecrets,
+      client: mockClient(vi.fn().mockResolvedValue(
+        taskData({
+          status: 1,
+          name: 'Relay On/Off',
+          data: 'Connected',
+        }),
+      )),
+    });
+
+    const event = await incoming.fetchStatus!(
+      baseMessage({ commandType: 'TURN_ON' }),
+    );
+    expect(event?.response?.data).toEqual({ turnOnAccepted: true });
+  });
+
+  it('maps Relay On/Off Disconnected to turnOffAccepted', async () => {
+    const incoming = createCalinApiV2Incoming({
+      secrets: companySecrets,
+      client: mockClient(vi.fn().mockResolvedValue(
+        taskData({
+          status: 1,
+          name: 'Relay On/Off',
+          data: 'Disconnected',
+        }),
+      )),
+    });
+
+    const event = await incoming.fetchStatus!(
+      baseMessage({ commandType: 'TURN_OFF' }),
+    );
+    expect(event?.response?.data).toEqual({ turnOffAccepted: true });
+  });
+
+  it('maps unrecognized Relay On/Off data to turnOffAccepted', async () => {
+    const incoming = createCalinApiV2Incoming({
+      secrets: companySecrets,
+      client: mockClient(vi.fn().mockResolvedValue(
+        taskData({
+          status: 1,
+          name: 'Relay On/Off',
+          data: 'unknown-state',
+        }),
+      )),
+    });
+
+    const event = await incoming.fetchStatus!(
+      baseMessage({ commandType: 'TURN_OFF' }),
+    );
+    expect(event?.response?.data).toEqual({ turnOffAccepted: true });
   });
 
   it('maps status 2 to EXECUTION_FAILURE', async () => {
