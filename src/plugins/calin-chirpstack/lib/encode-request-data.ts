@@ -1,0 +1,321 @@
+/**
+ * @fileoverview Encode enqueueable commands as CALIN downlink bytes.
+ *
+ * Port of legacy `adapters/calin-lorawan/lib/encode-request-data.ts`.
+ * Wire token command is `TOP_UP_KWH` (via {@link isTokenCommand}).
+ */
+
+import { isTokenCommand } from '../../../lib/device-message/command-types.js';
+import type {
+  CommandType,
+  PhaseEnum,
+  SetDatePayload,
+  SetTimePayload,
+} from '../../../lib/device-message/types.js';
+import { CalinMetaBytes } from './types.js';
+
+type RequestPayload = SetDatePayload | SetTimePayload;
+
+type ToEncode = {
+  /** Hex string device id (e.g. meter serial used in the CALIN address). */
+  deviceIdentifier: string;
+  devicePhase: PhaseEnum;
+  requestType: CommandType;
+  /** Hex token string when delivering a token command. */
+  token?: string;
+  /** Required for SET_DATE / SET_TIME. */
+  payload?: RequestPayload;
+};
+
+type CommandConfig = {
+  controlCode: number;
+  dataIdentifier: number[];
+  rawWriteData: number[];
+  requiresPassword: boolean;
+};
+
+/**
+ * Encode a command into CALIN frame bytes for ChirpStack enqueue.
+ *
+ * @returns Byte array, or `null` when the command / payload cannot be encoded
+ */
+export function encodeRequestData({
+  deviceIdentifier,
+  devicePhase,
+  requestType,
+  token,
+  payload,
+}: ToEncode): number[] | null {
+  // For READ_POWER_LIMIT we use DLMS, which is made of fixed strings anyway
+  if (requestType === 'READ_POWER_LIMIT') {
+    return encodeDlms(requestType) ?? null;
+  }
+
+  // Parse hex string representing Device EUI into bytes (6 bytes, little-endian)
+  const deviceEuiBytes = deviceIdentifier
+    .padStart(12, '0') // Ensure 12 hex digits (6 bytes)
+    .match(/.{2}/g)! // Split into byte pairs (safe after padStart ensures even length)
+    .map(hexPair => parseInt(hexPair, 16))
+    .reverse();
+
+  const frameHeader = [
+    CalinMetaBytes.HEADER_BYTE,
+    ...deviceEuiBytes,
+    0x68, // Second frame header
+  ];
+
+  const passwordBytes = [ 0x00, 0x00, 0x00, 0x00 ];
+
+  const commandConfig = determineCommandConfig({
+    requestType,
+    token,
+    devicePhase,
+    payload,
+  });
+  if (!commandConfig) return null;
+
+  const { controlCode, dataIdentifier, rawWriteData, requiresPassword } = commandConfig;
+
+  const dataIdentifierBytes = dataIdentifier
+    .map(byte => (byte + 0x33) & 0xFF)
+    .reverse();
+
+  const writeBytes = requiresPassword
+    ? [
+      ...passwordBytes.map(byte => (byte + 0x33) & 0xFF).reverse(),
+      ...rawWriteData.map(byte => (byte + 0x33) & 0xFF).reverse(),
+    ]
+    : rawWriteData;
+
+  const dataSize = 0x02 + writeBytes.length;
+
+  const frameBody = [
+    ...frameHeader,
+    controlCode,
+    dataSize,
+    ...dataIdentifierBytes,
+    ...writeBytes,
+  ];
+
+  const checksum = frameBody.reduce((sum, byte) => sum + byte, 0) % 256;
+
+  return [
+    ...frameBody,
+    checksum,
+    CalinMetaBytes.END_BYTE,
+  ];
+}
+
+function determineCommandConfig({
+  requestType,
+  token,
+  devicePhase,
+  payload,
+}: {
+  requestType: CommandType;
+  token?: string;
+  devicePhase: PhaseEnum;
+  payload?: RequestPayload;
+}): CommandConfig | null {
+  if (isTokenCommand(requestType)) {
+    if (!token) return null;
+
+    const rawWriteData = token
+      .match(/.{2}/g)!
+      .map(hexPair => parseInt(hexPair, 16))
+      .map(byte => (byte + 0x33) & 0xFF)
+      .reverse();
+
+    return {
+      controlCode: 0x00, // Token
+      dataIdentifier: [ 0xa1, 0x20 ],
+      rawWriteData,
+      requiresPassword: false,
+    };
+  }
+
+  switch (requestType) {
+    case 'TURN_ON':
+      return {
+        controlCode: 0x04,
+        dataIdentifier: [ 0xc0, 0x3d ],
+        rawWriteData: [ 0x96 ],
+        requiresPassword: true,
+      };
+    case 'TURN_OFF':
+      return {
+        controlCode: 0x04,
+        dataIdentifier: [ 0xc0, 0x3c ],
+        rawWriteData: [ 0x35 ],
+        requiresPassword: true,
+      };
+    case 'SET_DATE': {
+      if (!isSetDatePayload(payload)) return null;
+      return {
+        controlCode: 0x04,
+        dataIdentifier: [ 0xc0, 0x10 ],
+        rawWriteData: encodeDateBytes(payload),
+        requiresPassword: true,
+      };
+    }
+    case 'SET_TIME': {
+      if (!isSetTimePayload(payload)) return null;
+      return {
+        controlCode: 0x04,
+        dataIdentifier: [ 0xc0, 0x11 ],
+        rawWriteData: encodeTimeBytes(payload),
+        requiresPassword: true,
+      };
+    }
+    case 'READ_CREDIT':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: [ 0xe4, 0x21 ],
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    // case 'READ_FRAUD_STATUS':
+    // case 'READ_STATUS':
+    // case 'READ_TOTAL_ACTIVE_KWH':
+    case 'READ_DATE':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: [ 0xc0, 0x10 ],
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    case 'READ_TIME':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: [ 0xc0, 0x11 ],
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    case 'READ_VOLTAGE':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: readVoltageByPhase(devicePhase),
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    case 'READ_POWER':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: readPowerByPhase(devicePhase),
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    case 'READ_CURRENT':
+      return {
+        controlCode: 0x01,
+        dataIdentifier: readCurrentByPhase(devicePhase),
+        rawWriteData: [],
+        requiresPassword: false,
+      };
+    default:
+      return null;
+  }
+}
+
+function encodeDlms(requestType: CommandType): number[] | undefined {
+  switch (requestType) {
+    case 'READ_POWER_LIMIT':
+      return [
+        0x00, 0x01, 0x00, 0x66, 0x00, 0x01, 0x00, 0x0D, 0xC0, 0x01, 0xC1, 0x00,
+        0x47, 0x00, 0x00, 0x11, 0x00, 0x00, 0xFF, 0x03, 0x00,
+      ];
+  }
+}
+
+function readCurrentByPhase(phase: PhaseEnum): number[] {
+  switch (phase) {
+    case 'A':
+      return [ 0xB6, 0x21 ];
+    case 'B':
+      return [ 0xB6, 0x22 ];
+    case 'C':
+      return [ 0xB6, 0x23 ];
+  }
+}
+
+function readPowerByPhase(phase: PhaseEnum): number[] {
+  switch (phase) {
+    case 'A':
+      return [ 0xB6, 0x30 ];
+    case 'B':
+      return [ 0xB6, 0x31 ];
+    case 'C':
+      return [ 0xB6, 0x32 ];
+  }
+}
+
+function readVoltageByPhase(phase: PhaseEnum): number[] {
+  switch (phase) {
+    case 'A':
+      return [ 0xB6, 0x11 ];
+    case 'B':
+      return [ 0xB6, 0x12 ];
+    case 'C':
+      return [ 0xB6, 0x13 ];
+  }
+}
+
+function isSetDatePayload(payload?: RequestPayload): payload is SetDatePayload {
+  return !!payload
+    && typeof (payload as SetDatePayload).year === 'number'
+    && typeof (payload as SetDatePayload).month === 'number'
+    && typeof (payload as SetDatePayload).day === 'number';
+}
+
+/**
+ * Encodes a date as 4 BCD bytes in the natural (year-first) order.
+ *
+ * The encoder pipeline applies (+0x33) per byte and then reverses the array,
+ * so the meter receives bytes 12-15 as [weekday, day, month, year] — the
+ * same layout the meter uses when reporting its date in READ_DATE responses.
+ */
+function encodeDateBytes({ year, month, day }: SetDatePayload): number[] {
+  const fullYear = year < 100 ? 2000 + year : year;
+  // Use UTC: DTO carries grid-local calendar values; treat as literal date.
+  const weekday = new Date(Date.UTC(fullYear, month - 1, day)).getUTCDay();
+  return [
+    toBcd(fullYear % 100),
+    toBcd(month),
+    toBcd(day),
+    toBcd(weekday),
+  ];
+}
+
+function isSetTimePayload(payload?: RequestPayload): payload is SetTimePayload {
+  return !!payload
+    && typeof (payload as SetTimePayload).hour === 'number'
+    && typeof (payload as SetTimePayload).minute === 'number'
+    && (
+      (payload as SetTimePayload).second === undefined
+      || typeof (payload as SetTimePayload).second === 'number'
+    );
+}
+
+/**
+ * Encodes a time-of-day as 3 BCD bytes in the natural (hour-first) order.
+ * Pipeline (+0x33 + reverse) yields meter layout [second, minute, hour].
+ */
+function encodeTimeBytes({
+  hour,
+  minute,
+  second = 0,
+}: SetTimePayload): number[] {
+  return [
+    toBcd(hour),
+    toBcd(minute),
+    toBcd(second),
+  ];
+}
+
+/** Encodes a 0–99 decimal value as a single BCD byte (e.g. 26 → 0x26). */
+function toBcd(value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > 99) {
+    throw new Error(`BCD value must be an integer in [0, 99], got: ${ value }`);
+  }
+  return (Math.floor(value / 10) << 4) | (value % 10);
+}

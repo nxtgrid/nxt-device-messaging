@@ -2,8 +2,9 @@
  * @fileoverview `calin-chirpstack` plugin factory (Unit 10 — Phase 2).
  *
  * PUSH adapter: CALIN meter framing over ChirpStack (legacy folder
- * `adapters/calin-lorawan/`). Unit 10.1 lands SPI wiring (secrets, admission,
- * initial queue, tuning, catalog). Vendor I/O ports in 10.2–10.5.
+ * `adapters/calin-lorawan/`). Unit 10.1 SPI wiring; 10.2 shared gRPC client;
+ * 10.3 encode/decode/correlate/connectivity helpers. Outgoing / incoming
+ * bodies in 10.4–10.5.
  *
  * ChirpStack gRPC secrets stay vendor-scoped (`CHIRPSTACK_*`) in
  * `_shared/chirpstack-repository/` — loaded when that client is created.
