@@ -5,8 +5,8 @@
  * may serve more than one LoRaWAN brand plugin. Reads `process.env` only; tests
  * stub via Vitest `vi.stubEnv`.
  *
- * The gRPC client itself lands in Unit 10.2; this loader is shared from 10.1 so
- * `calin-chirpstack` can fail fast at construct when secrets are missing.
+ * Loaded by {@link createChirpstackClient} (same folder `index.ts`) when the
+ * shared repo is initialized — not by manufacturer plugin factories.
  */
 
 import { requireEnvKeys } from '../require-env-keys.js';

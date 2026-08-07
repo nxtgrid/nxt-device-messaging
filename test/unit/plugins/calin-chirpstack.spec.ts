@@ -76,6 +76,7 @@ describe('loadChirpstackSecrets', () => {
 
 describe('createCalinChirpstackPlugin', () => {
   it('builds PUSH + spacing + queue:calin-chirpstack:network:…', () => {
+    stubValidChirpstackEnv();
     const plugin = createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID });
     expect(plugin.id).toBe(CALIN_CHIRPSTACK_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
@@ -99,14 +100,17 @@ describe('createCalinChirpstackPlugin', () => {
     expect(plugin.validateEnqueue).toBeUndefined();
   });
 
-  it('constructs without ChirpStack env (secrets load with the gRPC client)', () => {
+  it('fails construct when ChirpStack client secrets are missing', () => {
     for (const key of CHIRPSTACK_ENV_KEYS) {
       vi.stubEnv(key, '');
     }
-    expect(() => createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID })).not.toThrow();
+    expect(() => createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID })).toThrow(
+      /MISSING env for plugin "chirpstack"/,
+    );
   });
 
   it('merges config tuning over defaults', () => {
+    stubValidChirpstackEnv();
     const plugin = createCalinChirpstackPlugin({
       id: CALIN_CHIRPSTACK_ID,
       tuning: { deviceInFlightTimeoutMs: 30_000 },
@@ -118,6 +122,7 @@ describe('createCalinChirpstackPlugin', () => {
   });
 
   it('rejects unknown or invalid tuning keys', () => {
+    stubValidChirpstackEnv();
     expect(() => createCalinChirpstackPlugin({
       id: CALIN_CHIRPSTACK_ID,
       tuning: { notAKnob: 1 },
@@ -130,6 +135,7 @@ describe('createCalinChirpstackPlugin', () => {
   });
 
   it('wires placeholder outgoing and incoming facets', async () => {
+    stubValidChirpstackEnv();
     const plugin = createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID });
     expect(plugin.outgoing.sendOne).toBeTypeOf('function');
     expect(plugin.incoming.handle).toBeTypeOf('function');
@@ -137,7 +143,8 @@ describe('createCalinChirpstackPlugin', () => {
     expect(() => plugin.incoming.handle?.({})).toThrow(/Unit 10\.5/);
   });
 
-  it('registers via PLUGIN_CATALOG', () => {
+  it('registers via PLUGIN_CATALOG when env is present', () => {
+    stubValidChirpstackEnv();
     const registry = createPluginRegistry([ { id: CALIN_CHIRPSTACK_ID } ]);
     expect(registry.get(CALIN_CHIRPSTACK_ID)?.deliveryPattern).toBe('PUSH');
   });

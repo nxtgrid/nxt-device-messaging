@@ -6,15 +6,16 @@
  * initial queue, tuning, catalog). Vendor I/O ports in 10.2–10.5.
  *
  * ChirpStack gRPC secrets stay vendor-scoped (`CHIRPSTACK_*`) in
- * `_shared/chirpstack-repository/` — loaded when that client is created
- * (Unit 10.2), not in this factory.
+ * `_shared/chirpstack-repository/` — loaded when that client is created.
  *
  * Enable: add `{ "id": "calin-chirpstack" }` to config `plugins[]` and set
- * `CHIRPSTACK_*` env (see `.env.example`).
+ * `CHIRPSTACK_*` env (see `.env.example`). Missing secrets fail when the
+ * shared client is constructed.
  */
 
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { EnqueueableCommandType } from '../../lib/device-message/types.js';
+import { createChirpstackClient } from '../_shared/chirpstack-repository/index.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
@@ -78,12 +79,13 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 /**
  * Build the `calin-chirpstack` {@link DeviceMessagingPlugin}.
  *
- * Outgoing / incoming are placeholders until Units 10.4 / 10.5. ChirpStack
- * secrets are validated when the shared gRPC client is created (Unit 10.2).
+ * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing /
+ * incoming send/handle bodies are placeholders until Units 10.4 / 10.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
 export function createCalinChirpstackPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+  const client = createChirpstackClient();
   const tuning = mergePluginTuning(CALIN_CHIRPSTACK_DEFAULT_TUNING, entry);
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
@@ -102,7 +104,7 @@ export function createCalinChirpstackPlugin(entry: PluginConfigEntry): DeviceMes
     admission: CALIN_CHIRPSTACK_ADMISSION,
     tuning,
     initialQueueKey,
-    outgoing: createCalinChirpstackOutgoing(),
+    outgoing: createCalinChirpstackOutgoing({ client }),
     incoming: createCalinChirpstackIncoming(),
   };
 }
