@@ -1252,3 +1252,43 @@ pass (redact logs, HTTP status mapping, fetch timeout, trailing-slash URL).
 
 **Next:** Phase 2 **Unit 10** — `calin-chirpstack` from `legacy/.../adapters/calin-lorawan/`
 at baseline `db5c2ac` (plugin id/folder `calin-chirpstack` per ADR-003 §3).
+
+### 2026-08-07 — session 28: Unit 9 / v1 polish closed
+
+Post–Unit 9 review follow-ups on `calin-api-v2`, then the agreed carry-overs onto
+`calin-api-v1`. No new port unit; Phase 2 still next = Unit 10.
+
+**Landed (v2):**
+
+- Widened vendor `code` / `reason` types beyond success literals
+- Fixed dead login-failure warning; create-task skips idempotency retries
+- Loop B: fail fast on post-refresh 401 with a distinct error
+- `Object.hasOwn` in command guards; extracted `_createTask` in outgoing
+- Login single-flight; skew / relay coverage nits
+- Permanent failures via `CalinApiV2Error({ skipRetry: true })` (one error type)
+
+**Landed (v1 carry-over):**
+
+- `Object.hasOwn` in command guards
+- Widened vendor response types
+- Extracted `_createCommTask` in outgoing
+- `CalinApiV1Error` options bag `{ code?, skipRetry? }`; permanent local failures
+  (missing/blank token, missing write payload, invalid `SET_DATE`, unimplemented
+  parser / `Not implemented`) set `skipRetry: true`; `parseError` uses
+  `err.skipRetry || err.code === 99`
+
+**Also:** `config.testing.json` slimmed to plugin ids only
+(`calin-api-v1`, `calin-api-v2`, `nxt-sts`).
+
+**Locks (do not re-litigate without maintainer):**
+
+- Plugin vendor errors use an options bag with optional `skipRetry` for permanent
+  local failures; v1 still maps vendor ResultCode `99` → skip-retry in `parseError`
+- Unit 9 locks from session 27 unchanged
+
+**Still open (unchanged):** D2 / thorough cleanup suite; PULL poll↔retry orphan race;
+token-only SPI discriminant; Unit 7 fetch-abort / NS zombie notes; nxt-sts sanitization
+pass; `meter-installs` coupling (plan note).
+
+**Next:** Phase 2 **Unit 10** — `calin-chirpstack` from `legacy/.../adapters/calin-lorawan/`
+at baseline `db5c2ac` (plugin id/folder `calin-chirpstack` per ADR-003 §3).

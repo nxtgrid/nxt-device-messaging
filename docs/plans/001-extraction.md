@@ -185,7 +185,7 @@ ChirpStack** (second HTTP CALIN variant, easier after v1); `calin-chirpstack` la
       Also lands `generateRandomNumber` + shared `requireEnvKeys`. Landed session 26.
 - [x] **Unit 9 — `calin-api-v2`** (~500 lines). Second HTTP CALIN PULL variant; port after v1.
       Source: `adapters/calin-api-v2/` (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
-      Landed 9.1–9.6 (session 27).
+      Landed 9.1–9.6 (session 27); v2/v1 polish (session 28 — see decisions log).
 - [ ] **Unit 10 — `calin-chirpstack`** (~1,200 lines). Source folder is still
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
