@@ -57,15 +57,9 @@ type CalinApiV2ControlTask = (typeof CalinApiV2ControlMap)[ImplementedMessageCon
 type CalinApiV2WriteTask = (typeof CalinApiV2WriteMap)[ImplementedMessageWriteTypes];
 
 /** Type guard: checks at runtime AND narrows the type for TypeScript. */
-const isCalinApiV2ReadCommand = (
-  commandType: string,
-): commandType is ImplementedMessageReadTypes => Object.hasOwn(CalinApiV2ReadMap, commandType);
-const isCalinApiV2ControlCommand = (
-  commandType: string,
-): commandType is ImplementedMessageControlTypes => Object.hasOwn(CalinApiV2ControlMap, commandType);
-const isCalinApiV2WriteCommand = (
-  commandType: string,
-): commandType is ImplementedMessageWriteTypes => Object.hasOwn(CalinApiV2WriteMap, commandType);
+const isCalinApiV2ReadCommand = (commandType: string): commandType is ImplementedMessageReadTypes => Object.hasOwn(CalinApiV2ReadMap, commandType);
+const isCalinApiV2ControlCommand = (commandType: string): commandType is ImplementedMessageControlTypes => Object.hasOwn(CalinApiV2ControlMap, commandType);
+const isCalinApiV2WriteCommand = (commandType: string): commandType is ImplementedMessageWriteTypes => Object.hasOwn(CalinApiV2WriteMap, commandType);
 
 type CreateCalinApiV2OutgoingDeps = {
   readonly secrets: Pick<CalinApiV2Secrets, 'companyName' | 'customerId'>;

@@ -203,7 +203,7 @@ describe('createCalinApiV1Incoming', () => {
     const incoming = createCalinApiV1Incoming({
       secrets: adminSecrets,
       client: mockClient(vi.fn().mockRejectedValue(
-        new CalinApiV1Error('[CALIN API-V1] is down', 'ECONNRESET'),
+        new CalinApiV1Error('[CALIN API-V1] is down', { code: 'ECONNRESET' }),
       )),
     });
 

@@ -8,14 +8,27 @@
 
 import { toSafeNumberOrNull } from '../../_shared/to-safe-number-or-null.js';
 
-/** Vendor / transport failure from {@link createCalinApiV1Client}. */
+/** Options for {@link CalinApiV1Error}. */
+export type CalinApiV1ErrorOptions = {
+  readonly code?: number | string | null;
+  /** When true, outgoing `parseError` sets `skipRetry` (unrecoverable). */
+  readonly skipRetry?: boolean;
+};
+
+/**
+ * Vendor / transport / local failure for CALIN API V1.
+ * Use `{ skipRetry: true }` for permanent validation failures (bad payload, etc.).
+ * Vendor ResultCode `99` is also treated as skip-retry in outgoing `parseError`.
+ */
 export class CalinApiV1Error extends Error {
-  constructor(
-    message: string,
-    public readonly code?: number | string | null,
-  ) {
+  readonly code?: number | string | null;
+  readonly skipRetry: boolean;
+
+  constructor(message: string, options: CalinApiV1ErrorOptions = {}) {
     super(message);
     this.name = 'CalinApiV1Error';
+    this.code = options.code;
+    this.skipRetry = options.skipRetry ?? false;
   }
 }
 
@@ -43,6 +56,11 @@ export type CalinApiV1DataItem =
   | 'Token'
 ;
 
+/**
+ * COMM task body. Happy path is `ResultCode === '00'` / `Reason === 'OK'`
+ * (`'99'` is also common for rejected tokens); the client still returns other
+ * values (logs only) so callers must not assume success.
+ */
 export type CalinApiV1CommResponse = {
   Result?: {
     TaskNo: string;
@@ -50,20 +68,28 @@ export type CalinApiV1CommResponse = {
     DataItem: CalinApiV1DataItem;
     Data: string;
   };
-  ResultCode: '00' | '99';
-  Reason: 'OK' | 'other error';
+  ResultCode: string;
+  Reason: string;
 };
 
+/**
+ * POS mint body. Happy path is `result_code === 0` / `reason === 'OK'`;
+ * same caveat as {@link CalinApiV1CommResponse}.
+ */
 export type CalinApiV1PosResponse = {
   result?: { token: string; };
-  result_code: 0;
-  reason: 'OK';
+  result_code: number;
+  reason: string;
 };
 
+/**
+ * Maintenance mint body. Same `result_code` / `reason` caveat as
+ * {@link CalinApiV1PosResponse}.
+ */
 export type CalinApiV1MaintenanceResponse = {
   result?: string;
-  result_code: 0;
-  reason: 'OK';
+  result_code: number;
+  reason: string;
 };
 
 type CalinApiV1Response =
@@ -130,7 +156,7 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         const message = '[CALIN API-V1] responded with a HTML page..';
         const code = toSafeNumberOrNull(response.status);
         console.error(message, code);
-        throw new CalinApiV1Error(message, code);
+        throw new CalinApiV1Error(message, { code });
       }
 
       if (!response.ok) {
@@ -149,7 +175,7 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         const message = `[CALIN API-V1] is down: ${ String(responseMessage) }`;
         const code = toSafeNumberOrNull(response.status);
         console.error(message, code);
-        throw new CalinApiV1Error(message, code);
+        throw new CalinApiV1Error(message, { code });
       }
 
       const data = await response.json() as T & UnexpectedCodeProbe;
@@ -212,7 +238,7 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
       }
 
       console.error(message, code);
-      throw new CalinApiV1Error(message, code);
+      throw new CalinApiV1Error(message, { code });
     }
   };
 
