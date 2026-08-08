@@ -17,16 +17,22 @@ import type {
   LorawanCalinUpEvent,
 } from './types.js';
 
+/** Internal structure for storing partial data in the map. */
 type CorrelationEntry = {
   queueItemId?: string;
   decoded?: DecodedLorawanCalinEvent;
   device?: DeviceMessageDevice;
+  /** For Time-To-Live (TTL). */
   timestamp: number;
 };
 
+/** Core of the system: maps deduplicationId → partial data. */
 const pendingCorrelations = new Map<string, CorrelationEntry>();
 
-/** Events should correlate within milliseconds; 10s TTL is generous. */
+/**
+ * Garbage collection for stale correlation entries.
+ * Events should correlate within milliseconds; 10s TTL is very generous.
+ */
 const CORRELATION_TTL_MS = 10_000;
 const GC_INTERVAL_MS = 30_000;
 

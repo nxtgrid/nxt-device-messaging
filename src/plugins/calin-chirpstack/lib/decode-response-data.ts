@@ -143,6 +143,8 @@ export function decodeResponseData(
   const parser = DATA_PROCESSOR_MAP[dataIdentifier as keyof typeof DATA_PROCESSOR_MAP];
   const data = parser(bytes);
 
+  // Special case read report — meter sends these automatically; we did not
+  // dispatch a command to ask for one
   if (dataIdentifier === '0xC111') {
     return {
       status: 'EXECUTION_SUCCESS',
@@ -167,37 +169,68 @@ export function decodeResponseData(
   };
 }
 
+/**
+ * Decoder functions
+ */
+
 /** Currently only implements READ_POWER_LIMIT. */
 function decodeDlms(bytes: Buffer): Record<string, unknown> {
   const last4Bytes = bytes.subarray(-4);
   return {
-    powerLimit: hexArrayToNumber(last4Bytes), // Watt
+    powerLimit: hexArrayToNumber(last4Bytes), // Power limit in Watt
   };
 }
 
 const decodeReadVoltage = (phase: PhaseEnum) => (bytes: Buffer) => ({
-  // Voltage (3 bytes, little-endian, BCD: XXXX.XX V)
+  // Voltage (3 bytes, little-endian, BCD format: XXXX.XX V)
+  // Note: Documentation suggests 4 bytes, but testing shows 3 bytes are used
   voltage: bcdToInteger(bytes.subarray(13, 16).map(subtract33H)) / 100,
   phase,
 });
 
 const decodeReadPower = (phase: PhaseEnum) => (bytes: Buffer) => ({
+  // Power: bytes 12-15 (4 bytes, BCD format, divided by 10 for watts)
   power: bcdToInteger(bytes.subarray(12, 16).map(subtract33H)) / 10,
   phase,
 });
 
 const decodeReadCurrent = (phase: PhaseEnum) => (bytes: Buffer) => ({
+  // Current: bytes 12-13 (2 bytes, BCD format, divided by 100 for amperes)
+  // Note: Similar to voltage which uses 3 bytes, current uses 2 bytes
   current: bcdToInteger(bytes.subarray(12, 14).map(subtract33H)) / 100,
   phase,
 });
 
+// Processes Total Active kWh Register data (DI: 0x9010) — not wired yet
+// function processTotalActiveKwhRead(bytes: Buffer) {
+//   // Total Active Kwh Register (4 bytes, little-endian, BCD format: XXXXXX.XX kWh)
+//   // Data located at bytes 12-15 (0-indexed)
+//   // Note: Documentation suggests 4 bytes, but testing shows otherwise
+//   const totalActiveKwh = bcdToInteger(bytes.subarray(12, 16).map(subtract33H)) / 100;
+//   return {
+//     totalActiveKwh: `${ totalActiveKwh } kWh`,
+//   };
+// }
+
+/** Remaining credit: amount, credit level, relay status. */
 const decodeReadCredit = (bytes: Buffer) => ({
+  // Credit left: bytes 12-15 (4 bytes, BCD format, divided by 100 for kWh)
   kwhCreditAvailable: bcdToInteger(bytes.subarray(12, 16).map(subtract33H)) / 100,
+  // Credit level: byte 16
   creditLevel: subtract33H(bytes[16]!),
+  // Relay status: byte 17
   isOn: subtract33H(bytes[17]!) === 0,
+  // Note: Alternative bit-flag form would be: !!(relayStatus & 0b00000001)
 });
 
+/** Automatic periodic report (DI: 0xC111). */
 const decodeReadReport = (bytes: Buffer) => {
+  // Rejected layout (year at byte 13 …): kept for archaeology
+  // const freezeTimeYear = parseDateTimeByte(bytes[13]);
+  // …
+
+  // Extract freeze time: year (byte 17), month (byte 16), day (byte 15),
+  // hour (byte 14), minute (byte 13)
   const freezeTimeYear = '20' + parseDateTimeByte(bytes[17]!);
   const freezeTimeMonth = parseDateTimeByte(bytes[16]!);
   const freezeTimeDay = parseDateTimeByte(bytes[15]!);
@@ -205,14 +238,20 @@ const decodeReadReport = (bytes: Buffer) => {
   const freezeTimeMinute = parseDateTimeByte(bytes[13]!);
   const freezeTime = `${ freezeTimeYear }-${ freezeTimeMonth }-${ freezeTimeDay } ${ freezeTimeHour }:${ freezeTimeMinute }`;
 
+  // Source 1: consumption (bytes 18-21) / remaining purchase (bytes 22-25)
   const consumptionSource1 = reverseAndCombine(bytes.subarray(18, 22)) / 100;
   const purchaseRemainSource1 = processFloatFromBytes(bytes.subarray(22, 26));
+  // Source 2: consumption (bytes 26-29) / remaining purchase (bytes 30-33)
   const consumptionSource2 = reverseAndCombine(bytes.subarray(26, 30)) / 100;
   const purchaseRemainSource2 = processFloatFromBytes(bytes.subarray(30, 34));
+  // Interval demand: bytes 34-37
   const intervalDemand = reverseAndCombine(bytes.subarray(34, 38));
+  // Voltage: bytes 38-39 (÷10 V)
   const voltage = reverseAndCombine(bytes.subarray(38, 40)) / 10;
+  // Current: bytes 40-43 (÷1000 A)
   const current = reverseAndCombine(bytes.subarray(40, 44)) / 1000;
 
+  // Meter status byte (byte 44): bit flags
   const meterStatus = subtract33H(bytes[44]!);
 
   return {
@@ -237,35 +276,71 @@ const decodeReadReport = (bytes: Buffer) => {
   };
 };
 
+/** Read meter date (DI: 0xC010). */
 const decodeReadDate = (bytes: Buffer) => {
+  // Date: weekday (byte 12), day (13), month (14), year (15, 2-digit)
+  // Weekday is available at byte 12 (0 = Sunday) but is not returned
+  // const weekday = subtract33H(bytes[12]);
   const day = parseDateTimeByte(bytes[13]!);
   const month = parseDateTimeByte(bytes[14]!);
   const year = '20' + parseDateTimeByte(bytes[15]!);
   return { day, month, year };
 };
 
+/** Read meter time (DI: 0xC011). */
 const decodeReadTime = (bytes: Buffer) => {
+  // Time: second (byte 12), minute (13), hour (14)
   const hour = bcdToString([ subtract33H(bytes[14]!) ]);
   const minute = bcdToString([ subtract33H(bytes[13]!) ]);
   const second = bcdToString([ subtract33H(bytes[12]!) ]);
   return { hour, minute, second };
 };
 
+// Processes Meter Running Status data (DI: 0xEFF5) — not wired yet
+// function decodeMeterRunningStatus(bytes: Buffer) {
+//   // Meter status bytes: bytes 12-13 (status_0 and status_1)
+//   // Note: Documentation suggests reverse for LE, but testing uses as-is
+//   const meterStatus0 = subtract33H(bytes[12]);
+//   const meterStatus1 = subtract33H(bytes[13]);
+//   // status_0: bit3 relay_open, bit5 gen_set, bit6 currency_type
+//   // status_1: bit0 prepaid_type, bit1 credit_low, bit2 friendly_mode, bit3 credit_use_out
+//   return {
+//     relayOpen: !!(meterStatus0 & 0b00001000),
+//     genSet: !!(meterStatus0 & 0b00100000),
+//     currencyType: !!(meterStatus0 & 0b01000000),
+//     prepaidType: !!(meterStatus1 & 0b00000001),
+//     creditLow: !!(meterStatus1 & 0b00000010),
+//     friendlyMode: !!(meterStatus1 & 0b00000100),
+//     creditUseOut: !!(meterStatus1 & 0b00001000),
+//   };
+// }
+
 const DATA_PROCESSOR_MAP = {
+  // Meter voltage
   '0xB611': decodeReadVoltage('A'),
   '0xB612': decodeReadVoltage('B'),
   '0xB613': decodeReadVoltage('C'),
+
+  // Meter power
   '0xB630': decodeReadPower('A'),
   '0xB631': decodeReadPower('B'),
   '0xB632': decodeReadPower('C'),
+
+  // Meter current
   '0xB621': decodeReadCurrent('A'),
   '0xB622': decodeReadCurrent('B'),
   '0xB623': decodeReadCurrent('C'),
+
   '0xE421': decodeReadCredit,
   '0xC111': decodeReadReport,
+
   '0xC010': decodeReadDate,
   '0xC011': decodeReadTime,
+
+  /** Total Active kWh Register data identifier (0x9010) */
   // '0x9010': processTotalActiveKwhRead,
+
+  /** Meter Running Status data identifier (0xEFF5) */
   // '0xEFF5': decodeMeterRunningStatus,
 } as const;
 

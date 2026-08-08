@@ -4,6 +4,9 @@
  * Port of legacy `adapters/calin-lorawan/lib/types.ts`. Field names on our decoded
  * / correlator side are camelCase (ADR-003); ChirpStack webhook payloads keep
  * vendor casing (`deviceInfo`, `devEui`, …).
+ *
+ * `LorawanCalinJoinEvent` (and siblings) document the vendor shapes even when a
+ * handler only needs a subset of fields — keep them for local development.
  */
 
 import type {
@@ -19,9 +22,12 @@ export type GatewayInfoFromChirpStack = {
   rssi: number;
 };
 
-/** Join notification (devAddr assigned; no uplink payload). */
+/** Join notification — meter joined; NS assigned `devAddr`; no uplink payload. */
 export type LorawanCalinJoinEvent = {
+  // Identifiers
   deduplicationId: string;
+
+  // Device
   deviceInfo: {
     devEui: string;
   };
@@ -30,8 +36,11 @@ export type LorawanCalinJoinEvent = {
 
 /** Downlink tx-ack — gateway confirmed it radiated the frame. */
 export type LorawanCalinDownEvent = {
+  // Identifiers
   queueItemId?: string;
   downlinkId: string;
+
+  // Device
   deviceInfo: {
     devEui: string;
   };
@@ -39,22 +48,37 @@ export type LorawanCalinDownEvent = {
 
 /** Confirmed-data uplink ACK from the meter (may race the data uplink). */
 export type LorawanCalinAckEvent = {
+  // Identifiers
   queueItemId: string;
   deduplicationId: string;
+
+  // Device
   deviceInfo: {
     devEui: string;
   };
+
+  // Acknowledgement
   acknowledged: boolean;
 };
 
 /** Data uplink carrying base64 CALIN frame bytes. */
 export type LorawanCalinUpEvent = {
+  // Identifiers
   deduplicationId: string;
+
+  // Device
   deviceInfo: {
     devEui: string;
   };
   devAddr: string;
+
+  // Gateway
   rxInfo: GatewayInfoFromChirpStack[];
+
+  // Acknowledgement
+  // confirmed: boolean; needed?
+
+  // Response data
   data: string;
 };
 
@@ -82,6 +106,7 @@ export const CalinMetaBytes = {
   END_BYTE: 0x16,
 } as const;
 
+// Status / exception bytes seen on the wire (reference — not yet decoded as a map):
 // 0F 超功率    power limit breached
 // 24 电量用完  credit exhausted
 // 26 强制拉闸  remote switched off

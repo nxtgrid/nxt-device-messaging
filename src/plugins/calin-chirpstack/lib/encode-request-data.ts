@@ -135,24 +135,26 @@ function determineCommandConfig({
   }
 
   switch (requestType) {
-    case 'TURN_ON':
+    // Control operations
+    case 'TURN_ON': // Close the meter relay (provide power)
       return {
-        controlCode: 0x04,
+        controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x3d ],
         rawWriteData: [ 0x96 ],
         requiresPassword: true,
       };
-    case 'TURN_OFF':
+    case 'TURN_OFF': // Open the meter relay (stop power output)
       return {
-        controlCode: 0x04,
+        controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x3c ],
         rawWriteData: [ 0x35 ],
         requiresPassword: true,
       };
+    // Write operations
     case 'SET_DATE': {
       if (!isSetDatePayload(payload)) return null;
       return {
-        controlCode: 0x04,
+        controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x10 ],
         rawWriteData: encodeDateBytes(payload),
         requiresPassword: true,
@@ -161,36 +163,55 @@ function determineCommandConfig({
     case 'SET_TIME': {
       if (!isSetTimePayload(payload)) return null;
       return {
-        controlCode: 0x04,
+        controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x11 ],
         rawWriteData: encodeTimeBytes(payload),
         requiresPassword: true,
       };
     }
-    case 'READ_CREDIT':
+    // Reading operations
+    case 'READ_CREDIT': // Credit remaining on meter
       return {
-        controlCode: 0x01,
+        controlCode: 0x01, // Reading
         dataIdentifier: [ 0xe4, 0x21 ],
         rawWriteData: [],
         requiresPassword: false,
       };
     // case 'READ_FRAUD_STATUS':
+    //   return {
+    //     controlCode: 0x01, // Reading
+    //     dataIdentifier: [ 0xef, 0xf6 ],
+    //     rawWriteData: [],
+    //     requiresPassword: false,
+    //   };
     // case 'READ_STATUS':
-    // case 'READ_TOTAL_ACTIVE_KWH':
+    //   return {
+    //     controlCode: 0x01, // Reading
+    //     dataIdentifier: [ 0xef, 0xf5 ],
+    //     rawWriteData: [],
+    //     requiresPassword: false,
+    //   };
     case 'READ_DATE':
       return {
-        controlCode: 0x01,
+        controlCode: 0x01, // Reading
         dataIdentifier: [ 0xc0, 0x10 ],
         rawWriteData: [],
         requiresPassword: false,
       };
     case 'READ_TIME':
       return {
-        controlCode: 0x01,
+        controlCode: 0x01, // Reading
         dataIdentifier: [ 0xc0, 0x11 ],
         rawWriteData: [],
         requiresPassword: false,
       };
+    // case 'READ_TOTAL_ACTIVE_KWH': // Total Active kWh Register
+    //   return {
+    //     controlCode: 0x01, // Reading
+    //     dataIdentifier: [ 0x90, 0x10 ],
+    //     rawWriteData: [],
+    //     requiresPassword: false,
+    //   };
     case 'READ_VOLTAGE':
       return {
         controlCode: 0x01,

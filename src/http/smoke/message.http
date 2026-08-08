@@ -110,3 +110,17 @@ Content-Type: application/json
     "kwh": 10
   }
 }
+
+### Ingress calin-chirpstack tx-ack (no Bearer — needs plugin enabled + CHIRPSTACK_*)
+# ChirpStack posts here after a downlink is radiated. Replace queueItemId with
+# the deliveryQueueId from enqueue→send for a real round-trip.
+POST {{baseUrl}}/ingress/calin-chirpstack
+Content-Type: application/json
+
+{
+  "downlinkId": "1",
+  "queueItemId": "REPLACE_WITH_DELIVERY_QUEUE_ID",
+  "deviceInfo": {
+    "devEui": "0000047003333771"
+  }
+}

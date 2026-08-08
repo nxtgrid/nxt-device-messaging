@@ -2,9 +2,8 @@
  * @fileoverview `calin-chirpstack` plugin factory (Unit 10 — Phase 2).
  *
  * PUSH adapter: CALIN meter framing over ChirpStack (legacy folder
- * `adapters/calin-lorawan/`). Unit 10.1 SPI wiring; 10.2 shared gRPC client;
- * 10.3 encode/decode/correlate/connectivity helpers. Outgoing / incoming
- * bodies in 10.4–10.5.
+ * `adapters/calin-lorawan/`). Units 10.1–10.5: SPI, shared gRPC client,
+ * encode/decode/correlate, outgoing, incoming.
  *
  * ChirpStack gRPC secrets stay vendor-scoped (`CHIRPSTACK_*`) in
  * `_shared/chirpstack-repository/` — loaded when that client is created.
@@ -80,8 +79,8 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 /**
  * Build the `calin-chirpstack` {@link DeviceMessagingPlugin}.
  *
- * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing is
- * wired (Unit 10.4); incoming handle is a placeholder until Unit 10.5.
+ * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing and
+ * incoming are fully wired (Units 10.4–10.5).
  *
  * @param entry - Config `plugins[]` entry for this id
  */
