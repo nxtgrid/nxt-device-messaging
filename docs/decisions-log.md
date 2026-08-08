@@ -81,7 +81,7 @@ Each needs to land somewhere before it can be dropped from this list.
 | `nxt-backend` ADR-012's step-4 sequence is missing three device-messaging items: the ChirpStack integration URL flip, an in-flight drain of the old Valkey, and provisioning this service's own Valkey plus config and secrets ahead of the window                                                                                                                                                                                                                                                                                                                                                                                      | Cutover addendum                                                                              |
 | Under wholesale cutover this service carries **zero production traffic until cutover day** — so ADR-010's self-identified riskiest interface (the outbound webhook) is first exercised inside a window with no rollback past it (`nxt-backend` ADR-012 decision 5). Needs the rehearsal step attached                                                                                                                                                                                                                                                                                                                                   | Cutover addendum                                                                              |
 | **Open question for the cutover addendum:** does the early adopter (`nxt-backend` roadmap deployment consumer #3) run CALIN meters and ChirpStack? If so they are the natural first production user *before* the company, which retires most of the above risk                                                                                                                                                                                                                                                                                                                                                                          | Ask the maintainer when authoring                                                             |
-| **ChirpStack HTTP integration appends** `?event=up\|join\|ack\|txack` **(and siblings).** Official docs route on that query param. Legacy tiamat `POST /chirpstack/calin` and this service’s `POST /ingress/:pluginId` pass **body only**; `calin-chirpstack` classifies via body field heuristics. Risk: protobuf JSON may omit empty `data`, so a data-less **up** can look like **join** (`devAddr` present). **Deferred** until ops confirms `event` on real webhooks, then thread query/meta through ingress → SPI `handle` and switch on it. Do not re-litigate as a local `incoming.ts`-only quick win.                                                                 | Phase 3 ingress polish / post-ops confirmation                                                |
+| ~~**ChirpStack** `?event=` **routing**~~ — ops confirmed (`event: 'up'`, also `status` / `log`); SPI `handle(event, meta?)` with `IncomingHandleMeta.query`; ingress flattens query; `calin-chirpstack` switches on `txack`/`ack`/`join`/`up`, fail-closed when missing/unhandled                                                                                                                                                                                                                                                                                                                                                                                                                          | ✅ session 31                                                                                 |
 
 
 ---
@@ -1358,3 +1358,22 @@ no HA design). Plan Deferred row and correlator fileoverview point at it. Multi-
 work waits on ADR-007 triggers (operator needs >1 replica, etc.).
 
 **Next:** continue Unit 10 review comments / Phase 3 when prompted.
+
+### 2026-08-08 — session 31: ChirpStack `?event=` routing landed
+
+**Ops confirmation:** deployed tiamat logged
+`[CHIRPSTACK INGRESS] query { event: 'up' }` (also `status` / `log`). Full ChirpStack
+set: `up` / `join` / `ack` / `txack` / `status` / `log` / `location` / `integration`.
+
+**Landed:**
+
+- SPI: `IncomingHandleMeta` + `handle(event, meta?)`; engine forwards; ingress flattens
+  query into `{ query }`
+- `calin-chirpstack`: switch on `meta.query.event` — handle `txack` / `ack` / `join` /
+  `up`; missing or other events → `null` (fail closed; no body-heuristic fallback)
+- Smoke: `POST /ingress/calin-chirpstack?event=txack`
+- Carried finding closed
+
+**Locks:** rely on ChirpStack always sending `?event=`; do not fall back to body shape.
+
+**Next:** Phase 3 when prompted / remaining review nits if any.

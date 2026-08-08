@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createCalinChirpstackIncoming } from '#src/plugins/calin-chirpstack/incoming.js';
 import { eventCorrelator } from '#src/plugins/calin-chirpstack/lib/correlate-request-response.js';
+import type { IncomingHandleMeta } from '#src/plugins/plugin.interface.js';
 
 afterEach(() => {
   eventCorrelator.clear();
@@ -12,13 +13,15 @@ const DEV_EUI = '0000047003333771';
 /** 11-digit meter serial after stripping 5 leading DevEUI pad digits. */
 const METER_REF = '47003333771';
 
+const meta = (event: string): IncomingHandleMeta => ({ query: { event } });
+
 describe('createCalinChirpstackIncoming', () => {
   const incoming = createCalinChirpstackIncoming();
 
   it('returns null for non-objects / missing deviceInfo', () => {
-    expect(incoming.handle?.(null)).toBeNull();
-    expect(incoming.handle?.({})).toBeNull();
-    expect(incoming.handle?.({ deviceInfo: {} })).toBeNull();
+    expect(incoming.handle?.(null, meta('txack'))).toBeNull();
+    expect(incoming.handle?.({}, meta('txack'))).toBeNull();
+    expect(incoming.handle?.({ deviceInfo: {} }, meta('txack'))).toBeNull();
   });
 
   it('returns null when DevEUI is not 16 hex digits', () => {
@@ -26,15 +29,27 @@ describe('createCalinChirpstackIncoming', () => {
       downlinkId: 'dl-1',
       queueItemId: 'q-1',
       deviceInfo: { devEui: '47003333771' },
-    })).toBeNull();
+    }, meta('txack'))).toBeNull();
   });
 
-  it('handleDown maps tx-ack to SENT_TO_DEVICE', () => {
+  it('returns null when ?event= is missing or unhandled', () => {
+    const body = {
+      downlinkId: 'dl-1',
+      queueItemId: 'q-1',
+      deviceInfo: { devEui: DEV_EUI },
+    };
+    expect(incoming.handle?.(body)).toBeNull();
+    expect(incoming.handle?.(body, { query: {} })).toBeNull();
+    expect(incoming.handle?.(body, meta('status'))).toBeNull();
+    expect(incoming.handle?.(body, meta('log'))).toBeNull();
+  });
+
+  it('handleDown maps txack to SENT_TO_DEVICE', () => {
     expect(incoming.handle?.({
       downlinkId: 'dl-1',
       queueItemId: 'q-1',
       deviceInfo: { devEui: DEV_EUI },
-    })).toEqual({
+    }, meta('txack'))).toEqual({
       deliveryQueueId: 'q-1',
       deliveryStatus: 'SENT_TO_DEVICE',
       device: {
@@ -49,7 +64,7 @@ describe('createCalinChirpstackIncoming', () => {
       deduplicationId: 'd-join',
       deviceInfo: { devEui: DEV_EUI },
       devAddr: '01020304',
-    })).toEqual({
+    }, meta('join'))).toEqual({
       deliveryStatus: 'DELIVERY_SUCCESSFUL',
       commandType: 'JOIN_NETWORK',
       response: {
@@ -70,7 +85,7 @@ describe('createCalinChirpstackIncoming', () => {
       deduplicationId: 'd-fail',
       deviceInfo: { devEui: DEV_EUI },
       acknowledged: false,
-    })).toMatchObject({
+    }, meta('ack'))).toMatchObject({
       deliveryQueueId: 'q-fail',
       deliveryStatus: 'DELIVERY_FAILED',
       failureContext: {
@@ -89,7 +104,7 @@ describe('createCalinChirpstackIncoming', () => {
       deduplicationId: 'd-1',
       deviceInfo: { devEui: DEV_EUI },
       acknowledged: true,
-    })).toBeNull();
+    }, meta('ack'))).toBeNull();
 
     // Token-failure fixture from decode tests (always-decodable CALIN frame)
     const combined = incoming.handle?.({
@@ -100,7 +115,7 @@ describe('createCalinChirpstackIncoming', () => {
         { gatewayId: 'gw-1', snr: 8, rssi: -95 },
       ],
       data: 'aCM2MwNwBGjAATTIFg==',
-    });
+    }, meta('up'));
 
     expect(combined).toMatchObject({
       deliveryQueueId: 'q-1',
@@ -129,6 +144,6 @@ describe('createCalinChirpstackIncoming', () => {
       devAddr: 'addr',
       rxInfo: [],
       data: Buffer.from([ 0x11, 0x22, 0x33, 0x16 ]).toString('base64'),
-    })).toBeNull();
+    }, meta('up'))).toBeNull();
   });
 });

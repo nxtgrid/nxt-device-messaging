@@ -4,11 +4,15 @@
  * Port of legacy `adapters/calin-lorawan/_incoming.service.ts`. Normalizes
  * ChirpStack HTTP-integration events into {@link ParsedIncomingEvent}.
  *
+ * Routes on ChirpStack's `?event=` query param (HTTP integration contract), not
+ * body-field heuristics. Handled: `txack` / `ack` / `join` / `up`. Missing or
+ * other events (`status`, `log`, `location`, `integration`, …) → `null`.
+ *
  * The sequence from ChirpStack is:
  * 1) Queueing with gRPC, returns queueItemId
- * 2) tx-ack event: Gateway confirms it sent it 'out' (with downlinkId and queueItemId)
- * 3) up event: Meter responds with data (with deduplicationId)
- * 4) ack event: Meter confirms it received (with queueItemId and deduplicationId)
+ * 2) txack: Gateway confirms it sent it 'out' (with downlinkId and queueItemId)
+ * 3) up: Meter responds with data (with deduplicationId)
+ * 4) ack: Meter confirms it received (with queueItemId and deduplicationId)
  *
  * In reality, in ChirpStack 3 and 4 happen simultaneously and can be in reverse
  * order, which is why we have the correlator to match them, regardless of
@@ -20,7 +24,7 @@ import type {
   ParsedIncomingEvent,
   RelayNodeInfo,
 } from '../../lib/device-message/types.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugin.interface.js';
 import { selectGatewayWithBestSignal } from './lib/connectivity-helpers.js';
 import { eventCorrelator } from './lib/correlate-request-response.js';
 import { decodeResponseData } from './lib/decode-response-data.js';
@@ -46,7 +50,10 @@ const METER_REFERENCE_OFFSET = 5;
  * @returns Incoming SPI with `handle` for ChirpStack webhook payloads
  */
 export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming'] {
-  const handle = (event: unknown): ParsedIncomingEvent | null => {
+  const handle = (
+    event: unknown,
+    meta?: IncomingHandleMeta,
+  ): ParsedIncomingEvent | null => {
     if (!isRecord(event)) return null;
 
     const deviceInfo = event.deviceInfo;
@@ -60,49 +67,39 @@ export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming
     const meterExternalReference = devEui.substring(METER_REFERENCE_OFFSET);
     if (!meterExternalReference) return null;
 
-    // TODO(revisit): ChirpStack HTTP integration appends ?event=up|join|ack|txack.
-    // We classify by body shape only (legacy parity) until ops confirms the query
-    // param and ingress threads it into handle (see decisions-log carried finding).
-    // Risk: a data-less up can look like join (devAddr present, data omitted).
+    switch (meta?.query.event) {
+      /**
+       * Downlink (txack)
+       * Gateway confirmed the message was radiated to the meter
+       */
+      case 'txack':
+        return handleDown(event as LorawanCalinDownEvent, meterExternalReference);
 
-    /**
-     * Downlink (tx-ack) event
-     * Gateway confirmed the message was sent to meter
-     */
-    if ('downlinkId' in event) {
-      return handleDown(event as LorawanCalinDownEvent, meterExternalReference);
+      /**
+       * Confirmed-downlink (n)ack
+       * Meter acknowledged it received (and handled) the message
+       */
+      case 'ack':
+        return handleAck(event as LorawanCalinAckEvent, meterExternalReference);
+
+      /**
+       * Join
+       * Meter joined the network; NS assigned a device address — no uplink payload
+       */
+      case 'join':
+        return handleJoin(event as LorawanCalinJoinEvent, meterExternalReference);
+
+      /**
+       * Uplink
+       * Meter response data (may race with ack — correlator matches either order)
+       */
+      case 'up':
+        return handleUp(event as LorawanCalinUpEvent, meterExternalReference);
+
+      default:
+        // Missing event, or status / log / location / integration / unknown
+        return null;
     }
-
-    /**
-     * Ack uplink event
-     * Meter acknowledged it received (and handled) the message
-     */
-    if ('acknowledged' in event) {
-      return handleAck(event as LorawanCalinAckEvent, meterExternalReference);
-    }
-
-    /**
-     * Join event
-     * Meter joined the network
-     * Meter was assigned a device address by the NS => no other data
-     */
-    if ('devAddr' in event && !('data' in event)) {
-      return handleJoin(event as LorawanCalinJoinEvent, meterExternalReference);
-    }
-
-    /**
-     * Uplink event
-     * Following the meter ack, this contains the meter's response data
-     */
-    if ('data' in event) {
-      return handleUp(event as LorawanCalinUpEvent, meterExternalReference);
-    }
-
-    /**
-     * Other events
-     * (no handler — drop)
-     */
-    return null;
   };
 
   return { handle };

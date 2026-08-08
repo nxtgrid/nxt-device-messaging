@@ -111,10 +111,11 @@ Content-Type: application/json
   }
 }
 
-### Ingress calin-chirpstack tx-ack (no Bearer — needs plugin enabled + CHIRPSTACK_*)
-# ChirpStack posts here after a downlink is radiated. Replace queueItemId with
-# the deliveryQueueId from enqueue→send for a real round-trip.
-POST {{baseUrl}}/ingress/calin-chirpstack
+### Ingress calin-chirpstack txack (no Bearer — needs plugin enabled + CHIRPSTACK_*)
+# ChirpStack HTTP integration appends ?event= (up|join|ack|txack|…). Routing uses
+# that query param — body-only posts are ignored. Replace queueItemId with the
+# deliveryQueueId from enqueue→send for a real round-trip.
+POST {{baseUrl}}/ingress/calin-chirpstack?event=txack
 Content-Type: application/json
 
 {
