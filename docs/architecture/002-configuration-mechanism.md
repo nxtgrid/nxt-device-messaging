@@ -36,7 +36,7 @@ The module as inherited is neither.
 |---|---|
 | Runtime | `NXT_ENV` |
 | Redis | `HERMES_HOST`, `HERMES_PORT`, `HERMES_USERNAME`, `HERMES_PASSWORD` |
-| calin-lorawan | `CHIRPSTACK_API_URL`, `CHIRPSTACK_API_TOKEN`, `CHIRPSTACK_APPLICATION_ID`, `CHIRPSTACK_PROFILE_ID`, `CHIRPSTACK_APP_KEY` |
+| calin-chirpstack (ChirpStack gRPC client in `_shared/chirpstack-repository/`) | Vendor-scoped **`CHIRPSTACK_*`** (Unit 10; not plugin-id-prefixed): `CHIRPSTACK_API_URL`, `CHIRPSTACK_API_TOKEN`, `CHIRPSTACK_APPLICATION_ID`, `CHIRPSTACK_PROFILE_ID`, `CHIRPSTACK_APP_KEY` |
 | calin-api-v1 | Legacy `CALIN_V1_*` → **this service** `CALIN_API_V1_*` (plugin-id aligned; Unit 7): `CALIN_API_V1_URL`, `CALIN_API_V1_COMPANY_NAME`, `CALIN_API_V1_ADMIN_USERNAME`, `CALIN_API_V1_ADMIN_PASSWORD`, `CALIN_API_V1_POS_USERNAME`, `CALIN_API_V1_POS_PASSWORD`, `CALIN_API_V1_MAINTENANCE_USERNAME`, `CALIN_API_V1_MAINTENANCE_PASSWORD` |
 | calin-api-v2 | Legacy `CALIN_V2_*` → **this service** `CALIN_API_V2_*` (plugin-id aligned; Unit 9): `CALIN_API_V2_URL` (was `CALIN_V2_API`), `CALIN_API_V2_COMPANY_NAME`, `CALIN_API_V2_CUSTOMER_ID`, `CALIN_API_V2_ADMIN_USERNAME`, `CALIN_API_V2_ADMIN_PASSWORD` (was `CALIN_V2_PASSWORD`), `CALIN_API_V2_POS_PASSWORD` |
 | nxt-sts | Legacy `STS_GENERATOR_API` → **this service** `NXT_STS_URL` (plugin-id aligned; Unit 8) |
@@ -54,7 +54,7 @@ The module as inherited is neither.
 | `LORAWAN_FLOOD_PREVENTION_WINDOW_MS` | 2s | `outgoing.service.ts` | plugin-specific, in a shared file |
 | `MAX_RETRIES` / base / multiplier / cap | 11 / 2s / ×2 / 1h | `lib/retry-helpers.ts` | shared |
 | `MESSAGE_TTL_SECONDS` | 7 days | `lib/redis-repository/index.ts` | shared |
-| `CORRELATION_TTL_MS`, `GC_INTERVAL_MS` | 10s, 30s | calin-lorawan correlator | plugin-internal |
+| `CORRELATION_TTL_MS`, `GC_INTERVAL_MS` | 10s, 30s | `calin-chirpstack` correlator | plugin-internal |
 | `CUSTOM_LOGIN_TIMEOUT_MS`, `FETCH_RETRIES` | 5s, 3 | calin-api-v2 repo | plugin-internal |
 
 Three of those knobs are pattern- or plugin-specific yet live in shared pipeline files. That is

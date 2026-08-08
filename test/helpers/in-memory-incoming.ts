@@ -3,13 +3,17 @@
  */
 
 import type { IncomingService } from '#src/engine/incoming.js';
-import type { DeviceMessagingPlugin } from '#src/plugins/plugin.interface.js';
+import type {
+  DeviceMessagingPlugin,
+  IncomingHandleMeta,
+} from '#src/plugins/plugin.interface.js';
 
 export type InMemoryIncomingServiceOptions = {
   /** Optional spy — called with the resolved plugin from the route. */
   readonly onHandle?: (
     event: unknown,
     plugin: DeviceMessagingPlugin,
+    meta?: IncomingHandleMeta,
   ) => void | Promise<void>;
 };
 
@@ -18,8 +22,12 @@ export function createInMemoryIncomingService(
   options: InMemoryIncomingServiceOptions = {},
 ): IncomingService {
   return {
-    async handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void> {
-      await options.onHandle?.(event, plugin);
+    async handle(
+      event: unknown,
+      plugin: DeviceMessagingPlugin,
+      meta?: IncomingHandleMeta,
+    ): Promise<void> {
+      await options.onHandle?.(event, plugin, meta);
     },
     async pollPullPlugins(): Promise<void> {
       // no-op — HTTP unit tests do not exercise poll

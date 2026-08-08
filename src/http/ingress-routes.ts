@@ -82,7 +82,25 @@ export const ingressRoutes: FastifyPluginAsync<IngressRoutesOpts> = async (app, 
       }
     }
 
-    await opts.incomingService.handle(event, plugin);
+    await opts.incomingService.handle(event, plugin, {
+      query: flattenQuery(request.query),
+    });
     return reply.code(204).send();
   });
 };
+
+/** Flatten Fastify query values to a string map (first value wins for arrays). */
+function flattenQuery(query: unknown): Record<string, string> {
+  if (!query || typeof query !== 'object') return {};
+
+  const out: Record<string, string> = {};
+  for (const [ key, value ] of Object.entries(query as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      out[key] = value;
+    }
+    else if (Array.isArray(value) && typeof value[0] === 'string') {
+      out[key] = value[0];
+    }
+  }
+  return out;
+}

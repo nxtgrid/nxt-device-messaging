@@ -197,14 +197,20 @@ cleanup does **not** pass a key — `messageFullCleanup` and `fromAnyToRetry` re
 SREM the stored field. Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue`
 for tests). Cron / `engine.enabled` still Unit 5.6.
 
-### D4 — Cosmetics
+### D4 — Cosmetics — **landed** (session 29 / Unit 10)
 
-Whether CALIN API keys use `gateway` vs `dcu` as the human `kind` segment is **plugin-local**.
-No uniqueness constraint across plugins (unlike the reverted D1-B kind registry).
+Human `kind` segments are **plugin-local**. No uniqueness constraint across plugins
+(unlike the reverted D1-B kind registry). First-party choices:
+
+| Plugin | `kind` |
+|---|---|
+| `calin-api-v1` / `calin-api-v2` | `dcu` |
+| `nxt-sts` (token-only filler) | `none` |
+| `calin-chirpstack` | `network` |
+| stubs | `network` / `relayNode` |
 
 Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O parent. That does
-**not** force the Redis `kind` segment to be `relayNode`; plugins still choose `dcu` /
-`gateway` / etc. for admission keys.
+**not** force the Redis `kind` segment to be `relayNode`.
 
 ---
 
@@ -216,7 +222,7 @@ Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O par
 | **3–4** | Queue stage keys (`QUEUE_NS_KEY`, PUSH gw/device, PULL awaiting) stay; no topology parse for policy. |
 | **5** | `distribute` uses plugin admission (D3); D1-C parse → `registry.get`. |
 | **6** | SPI: `initialQueueKey`, `admission`, `deliveryPattern`, plus send/incoming/token as already planned. |
-| **7–9** | Each plugin supplies concrete `initialQueueKey` (via helper) + `admission`. |
+| **7–10** | Each plugin supplies concrete `initialQueueKey` (via helper) + `admission` (D4 kinds above). |
 
 ---
 

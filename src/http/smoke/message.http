@@ -110,3 +110,18 @@ Content-Type: application/json
     "kwh": 10
   }
 }
+
+### Ingress calin-chirpstack txack (no Bearer — needs plugin enabled + CHIRPSTACK_*)
+# ChirpStack HTTP integration appends ?event= (up|join|ack|txack|…). Routing uses
+# that query param — body-only posts are ignored. Replace queueItemId with the
+# deliveryQueueId from enqueue→send for a real round-trip.
+POST {{baseUrl}}/ingress/calin-chirpstack?event=txack
+Content-Type: application/json
+
+{
+  "downlinkId": "1",
+  "queueItemId": "REPLACE_WITH_DELIVERY_QUEUE_ID",
+  "deviceInfo": {
+    "devEui": "0000047003333771"
+  }
+}
