@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking Unit 10; order = v1 → nxt-sts → v2 → chirpstack — session 26b)* | —          |
+| —   | *(none blocking Phase 3; Phase 2 Units 7–10 done — session 29)*                 | —          |
 
 
 
@@ -32,7 +32,7 @@ Revisit only in the named unit; record the choice in this log and amend the ADR 
 | ~~D1~~ | `queueKey → pluginId` → **C embed** `pluginId` **in key** (session 18b; reverts 18/B)                                | —                                        | —                                                                                                                                                                         | 006 |
 | D2     | Whether `messageFullCleanup` needs more than `inFlightQueueKeys[]` + `concurrencyRateLimitKey`                       | Remaining cleanup paths / thorough suite | Parameterized options on the Redis repo; derive key via `buildConcurrencyRateLimitKey`; send-fail path passes key when concurrency; incoming success cleanup does not yet | 006 |
 | ~~D3~~ | ~~Wire named admission into~~ `distribute` → **landed** on `OutgoingService.distributeToNetworkServers` (session 19) | —                                        | —                                                                                                                                                                         | 006 |
-| D4     | Plugin-local key vocabulary (`gateway` vs `dcu`, etc.)                                                               | Plugin unit 10                           | Plugin-owned; no core constant. Wire parent is `relayNode` (D6); **Units 7/9** `kind` = `dcu`; **Unit 8** token-only uses filler `kind` = `none`                        | 006 |
+| ~~D4~~ | Plugin-local key vocabulary → **landed** (session 29): Units 7/9 `dcu`; Unit 8 `none`; Unit 10 `network`            | —                                        | —                                                                                                                                                                         | 006 |
 | ~~D5~~ | ~~Stage timeouts → plugin~~ `tuning` → **landed** (session 23c)                                                      | —                                        | —                                                                                                                                                                         | 002 |
 | ~~D6~~ | ~~Wire parent-node name~~ → `device.relayNode` **landed** (session 23c)                                              | —                                        | —                                                                                                                                                                         | 003 |
 
@@ -48,8 +48,8 @@ engine chunk; timer-only paths use stub plugins + enqueue/get. See sessions 12�
 plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
-Phase 2 **Units 7–9** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`) are **done**. Next is
-**Unit 10** (`calin-chirpstack`).
+Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
+**done**. Next is **Phase 3** (ADR-003 polish: webhook HMAC/DLQ, OpenAPI, auth).
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1292,3 +1292,42 @@ pass; `meter-installs` coupling (plan note).
 
 **Next:** Phase 2 **Unit 10** — `calin-chirpstack` from `legacy/.../adapters/calin-lorawan/`
 at baseline `db5c2ac` (plugin id/folder `calin-chirpstack` per ADR-003 §3).
+
+### 2026-08-08 — session 29: Unit 10 closed (`calin-chirpstack`)
+
+**Phase 2 Unit 10 done** (10.1–10.6). Last Phase 2 adapter — PUSH CALIN framing over
+ChirpStack (legacy folder `adapters/calin-lorawan/`).
+
+**Landed slices:**
+
+| Step | Scope |
+|---|---|
+| 10.1 | Scaffold: factory, catalog, PUSH + spacing `2_000`, D4 `kind`=`network`, `networkId ?? 'unassigned'`, no token / no `validateEnqueue`; secrets loader under `_shared/chirpstack-repository/` |
+| 10.2 | Shared gRPC client `src/plugins/_shared/chirpstack-repository/` (`CHIRPSTACK_*`, `@chirpstack/chirpstack-api` + `@grpc/grpc-js`); camelCase `deliveryQueueId` / `isNewRegistration`; `pnpm-workspace.yaml` `allowBuilds.protobufjs` |
+| 10.3 | Plugin `lib/`: types, encode, decode, correlator, connectivity → `relayNode` |
+| 10.4 | `outgoing.ts` — encode + enqueue + `getRemoteStatus` + `parseError`; `CalinChirpstackError({ skipRetry })` for encode fail; FK unregistered-device → `skipRetry` |
+| 10.5 | `incoming.ts` — tx-ack / ack / join / up + correlator; smoke `POST /ingress/calin-chirpstack` |
+| 10.6 | This ritual (plan / AGENTS / ledger / log / ADR-002 env row); D4 closed |
+
+**Locks (do not re-litigate without maintainer):**
+
+- Plugin id/folder **`calin-chirpstack`** (not `calin-lorawan`)
+- ChirpStack client lives in **`src/plugins/_shared/chirpstack-repository/`** (plugin-tier
+  shared; not `src/lib/`); env stays vendor-scoped **`CHIRPSTACK_*`** (not
+  `CALIN_CHIRPSTACK_*`)
+- Secrets load inside `createChirpstackClient()`, not in the manufacturer plugin factory
+  before the client exists
+- Admission: `{ strategy: 'spacing', minIntervalMs: 2_000 }`; D4 `kind` = **`network`**;
+  `initialQueueKey` uses `networkId ?? 'unassigned'`
+- HTTP to ChirpStack is **gRPC** (not `fetch`); Unit 7 ky revisit remains N/A
+- `response.data` / domain fields: **camelCase** (same Units 7/9 lock)
+- `config.example.json` stays stubs-only; enable via `plugins[]` + `CHIRPSTACK_*`
+- `meter-installs` coupling on chirpstack-repository remains **out of scope** (plan note)
+- In-memory correlator: 10s TTL / 30s GC (legacy); process-local, not multi-instance
+
+**Still open (unchanged):** D2 / thorough cleanup suite; PULL poll↔retry orphan race;
+token-only SPI discriminant; Unit 7 fetch-abort / NS zombie notes; nxt-sts sanitization
+pass; `meter-installs` coupling (plan note).
+
+**Next:** **Phase 3** — ADR-003 polish (webhook HMAC/DLQ, OpenAPI, auth hardening).
+Command/ingress/token routes already thin-landed earlier.

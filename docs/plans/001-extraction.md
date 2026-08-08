@@ -6,8 +6,8 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
-**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–9 (`calin-api-v1`,
-`nxt-sts`, `calin-api-v2`) done. Next: Phase 2 Unit 10 (`calin-chirpstack`)**
+**Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–10 (`calin-api-v1`,
+`nxt-sts`, `calin-api-v2`, `calin-chirpstack`) done. Next: Phase 3 (ADR-003 polish)**
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -48,15 +48,14 @@ need them (same pattern as Intermezzo enqueue/get).
 | **0** | Scaffold: Fastify app, config loader (ADR-002), tooling, compose skeleton. No domain code | **Done** |
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
-| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Units 7–9 done; next Unit 10** |
+| **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Done** |
 | **3** | ADR-003 **polish**: webhook HMAC/DLQ, OpenAPI, auth hardening (routes already thin-landed earlier) | Not started; command/ingress/token thin-landed in 1b / Unit 5 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
-**Phase 1b is closed.** Phase 2 **Units 7–9** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`)
-are **done**. Next is **Unit 10** (`calin-chirpstack`). Phase 4 still owns ADR-005
-observability hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs
-already in Phase 0.
+**Phase 1b is closed.** Phase 2 **Units 7–10** are **done**. Next is **Phase 3**
+(ADR-003 polish). Phase 4 still owns ADR-005 observability hygiene (metrics, pino
+sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
 
 ## Port units
 
@@ -186,12 +185,13 @@ ChirpStack** (second HTTP CALIN variant, easier after v1); `calin-chirpstack` la
 - [x] **Unit 9 — `calin-api-v2`** (~500 lines). Second HTTP CALIN PULL variant; port after v1.
       Source: `adapters/calin-api-v2/` (`_outgoing`, `_incoming`, `_token`, `lib/repo`).
       Landed 9.1–9.6 (session 27); v2/v1 polish (session 28 — see decisions log).
-- [ ] **Unit 10 — `calin-chirpstack`** (~1,200 lines). Source folder is still
+- [x] **Unit 10 — `calin-chirpstack`** (~1,200 lines). Source folder was
       `adapters/calin-lorawan/` in `legacy/`; destination plugin id/folder is `calin-chirpstack`
       (ADR-003 §3). `_incoming`, `_outgoing`, `lib/{types, encode-request-data,
       decode-response-data, correlate-request-response, connectivity-helpers}`, plus
-      `lib/chirpstack-repository/` moved in as plugin-internal. `initialQueueKey` must handle
-      the `unassigned` bucket.
+      `lib/chirpstack-repository/` → `src/plugins/_shared/chirpstack-repository/` (shared
+      plugin-tier client; `CHIRPSTACK_*`). `initialQueueKey` handles `unassigned`.
+      Landed 10.1–10.6 (session 29); D4 `kind` = `network`.
 
 ## Import ledger
 
@@ -236,22 +236,23 @@ Paths are relative to `legacy/apps/tiamat/src/modules/device-messages/` unless n
 | `adapters/calin-api-v2/_incoming.service.ts` | 198 | 9 | **ported** → `src/plugins/calin-api-v2/incoming.ts` (Unit 9.4; camelCase `response.data`) |
 | `adapters/calin-api-v2/_token.service.ts` | 82 | 9 | **ported** → `src/plugins/calin-api-v2/token.ts` (Unit 9.5; `TOP_UP_KWH`; `crypto.randomUUID`) |
 | `adapters/calin-api-v2/lib/repo.ts` | 212 | 9 | **ported** → `src/plugins/calin-api-v2/lib/repo.ts` (fetch + login cache; Unit 9.2) — **see coupling note below** |
-| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 10 | pending |
-| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 10 | pending |
-| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 10 | pending |
-| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 10 | pending |
-| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 10 | pending |
-| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 10 | pending |
-| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 10 | pending |
-| `lib/chirpstack-repository/index.ts` → plugin `calin-chirpstack` | 109 | 10 | pending — **see coupling note below** |
+| `adapters/calin-lorawan/_outgoing.service.ts` → plugin `calin-chirpstack` | 77 | 10 | **ported** → `src/plugins/calin-chirpstack/outgoing.ts` (Unit 10.4; `CalinChirpstackError` + `skipRetry`) |
+| `adapters/calin-lorawan/_incoming.service.ts` → plugin `calin-chirpstack` | 135 | 10 | **ported** → `src/plugins/calin-chirpstack/incoming.ts` (Unit 10.5; camelCase; `relayNode`) |
+| `adapters/calin-lorawan/lib/types.ts` → plugin `calin-chirpstack` | 86 | 10 | **ported** → `src/plugins/calin-chirpstack/lib/types.ts` (Unit 10.3) |
+| `adapters/calin-lorawan/lib/encode-request-data.ts` → plugin `calin-chirpstack` | 360 | 10 | **ported** → `src/plugins/calin-chirpstack/lib/encode-request-data.ts` (Unit 10.3; `isTokenCommand` / `TOP_UP_KWH`) |
+| `adapters/calin-lorawan/lib/decode-response-data.ts` → plugin `calin-chirpstack` | 422 | 10 | **ported** → `src/plugins/calin-chirpstack/lib/decode-response-data.ts` (Unit 10.3; camelCase `response.data`) |
+| `adapters/calin-lorawan/lib/correlate-request-response.ts` → plugin `calin-chirpstack` | 113 | 10 | **ported** → `src/plugins/calin-chirpstack/lib/correlate-request-response.ts` (Unit 10.3; TTL GC + `unref`) |
+| `adapters/calin-lorawan/lib/connectivity-helpers.ts` → plugin `calin-chirpstack` | 20 | 10 | **ported** → `src/plugins/calin-chirpstack/lib/connectivity-helpers.ts` (Unit 10.3; → `RelayNodeInfo`) |
+| `lib/chirpstack-repository/index.ts` → `_shared/chirpstack-repository` | 109 | 10 | **ported** → `src/plugins/_shared/chirpstack-repository/` (Unit 10.2; secrets + gRPC client) — **see coupling note below** |
 | `adapters/calin-lorawan/lib/_UNUSED_EXAMPLE_correlate-request-response.redis.ts` | 138 | — | **dropped** — dead code |
 
 ### Coupling note — vendor clients shared with `meter-installs`
 
 Two files in this ledger have consumers **outside** device-messages that stay in `nxt-backend`:
 
-- `lib/chirpstack-repository/index.ts` — `meter-installs/adapters/calin-lorawan/_install.service.ts`
-  uses `registerDevice()` and `setApplicationKeyForDevice()`.
+- `lib/chirpstack-repository/index.ts` (now `src/plugins/_shared/chirpstack-repository/`) —
+  `meter-installs/adapters/calin-lorawan/_install.service.ts` uses `registerDevice()` and
+  `setApplicationKeyForDevice()`.
 - `adapters/calin-api-v2/lib/repo.ts` — `meter-installs/adapters/calin-api-v2/_install.service.ts`
   uses `sendCalinApiV2Request`, `CalinApiV2Error`, and two response types.
 
