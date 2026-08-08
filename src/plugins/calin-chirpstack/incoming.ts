@@ -73,14 +73,16 @@ export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming
        * Gateway confirmed the message was radiated to the meter
        */
       case 'txack':
-        return handleDown(event as LorawanCalinDownEvent, meterExternalReference);
+        if (!isTxackPayload(event)) return null;
+        return handleDown(event, meterExternalReference);
 
       /**
        * Confirmed-downlink (n)ack
        * Meter acknowledged it received (and handled) the message
        */
       case 'ack':
-        return handleAck(event as LorawanCalinAckEvent, meterExternalReference);
+        if (!isAckPayload(event)) return null;
+        return handleAck(event, meterExternalReference);
 
       /**
        * Join
@@ -94,7 +96,8 @@ export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming
        * Meter response data (may race with ack — correlator matches either order)
        */
       case 'up':
-        return handleUp(event as LorawanCalinUpEvent, meterExternalReference);
+        if (!isUpPayload(event)) return null;
+        return handleUp(event, meterExternalReference);
 
       default:
         // Missing event, or status / log / location / integration / unknown
@@ -103,6 +106,23 @@ export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming
   };
 
   return { handle };
+}
+
+/** `txack` — `downlinkId` required; `queueItemId` optional. */
+function isTxackPayload(event: Record<string, unknown>): event is LorawanCalinDownEvent {
+  return typeof event.downlinkId === 'string';
+}
+
+/** `ack` — ids + boolean `acknowledged` (missing would look like nack). */
+function isAckPayload(event: Record<string, unknown>): event is LorawanCalinAckEvent {
+  return typeof event.queueItemId === 'string'
+    && typeof event.deduplicationId === 'string'
+    && typeof event.acknowledged === 'boolean';
+}
+
+/** `up` — `data` string before decode; `rxInfo` array (may be empty). */
+function isUpPayload(event: Record<string, unknown>): event is LorawanCalinUpEvent {
+  return typeof event.data === 'string' && Array.isArray(event.rxInfo);
 }
 
 function handleDown(

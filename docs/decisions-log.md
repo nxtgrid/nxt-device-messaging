@@ -1375,5 +1375,10 @@ set: `up` / `join` / `ack` / `txack` / `status` / `log` / `location` / `integrat
 - Carried finding closed
 
 **Locks:** rely on ChirpStack always sending `?event=`; do not fall back to body shape.
+Documented in **ADR-003** §5 (`calin-chirpstack` — required `?event=`, fail closed).
+
+**Skipped (review follow-up):** dedicated Prometheus counter + alert for missing `event` —
+no `/metrics` / `prom-client` surface yet (ADR-005 Phase 4). Revisit with Phase 4 metrics;
+HTTP 204 + null `handle` behavior stays.
 
 **Next:** Phase 3 when prompted / remaining review nits if any.

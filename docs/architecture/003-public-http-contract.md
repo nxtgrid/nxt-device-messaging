@@ -4,7 +4,8 @@
 **Status:** Accepted — amended 2026-07-30 (command API + domain + Redis hash fields =
 camelCase; Redis key paths + Lua locals = snake_case); amended 2026-08-03 (Unit 6.1:
 service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
-amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`)
+amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`);
+amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -140,6 +141,26 @@ authenticate with a static Bearer key when configured:
 `verifySignature`; opt-out is allowed (ChirpStack HTTP integrations typically have no HMAC).
 The inherited Nest `AuthenticationGuard` on `/chirpstack/calin` is not a vendor signature
 scheme and is not carried over as the ingress model.
+
+HTTP always forwards the request query string to `plugin.incoming.handle` as
+`IncomingHandleMeta.query` (plain string map). Plugins decide whether any query keys are
+required.
+
+#### `calin-chirpstack` — required `?event=` (fail closed)
+
+ChirpStack’s HTTP integration appends `?event=<type>`
+(`up` / `join` / `ack` / `txack` / `status` / `log` / `location` / `integration`).
+This plugin **routes only on that query param**:
+
+| `event` | Handled |
+|---|---|
+| `txack` / `ack` / `join` / `up` | Yes — mapped to the existing handlers |
+| missing, empty, or any other value | No — `handle` returns `null` |
+
+**No fallback to request-body shape** (e.g. inferring join from `devAddr` without `data`).
+Ops confirmed ChirpStack sends `event` in production; missing `event` is treated like an
+unhandled type. Ingress still returns **HTTP 204** when `handle` returns `null` (engine
+no-op) — silence is intentional; do not invent a 4xx that would make ChirpStack retry.
 
 ### 6. Outbound result webhook replaces `subscribe()`
 

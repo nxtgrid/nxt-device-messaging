@@ -146,4 +146,35 @@ describe('createCalinChirpstackIncoming', () => {
       data: Buffer.from([ 0x11, 0x22, 0x33, 0x16 ]).toString('base64'),
     }, meta('up'))).toBeNull();
   });
+
+  it('returns null for txack without downlinkId', () => {
+    expect(incoming.handle?.({
+      queueItemId: 'q-1',
+      deviceInfo: { devEui: DEV_EUI },
+    }, meta('txack'))).toBeNull();
+  });
+
+  it('returns null for ack without boolean acknowledged', () => {
+    expect(incoming.handle?.({
+      queueItemId: 'q-1',
+      deduplicationId: 'd-1',
+      deviceInfo: { devEui: DEV_EUI },
+    }, meta('ack'))).toBeNull();
+  });
+
+  it('returns null for up without data or rxInfo array', () => {
+    const base = {
+      deduplicationId: 'd-1',
+      deviceInfo: { devEui: DEV_EUI },
+      devAddr: 'addr',
+    };
+    expect(incoming.handle?.({
+      ...base,
+      rxInfo: [],
+    }, meta('up'))).toBeNull();
+    expect(incoming.handle?.({
+      ...base,
+      data: 'aCM2MwNwBGjAATTIFg==',
+    }, meta('up'))).toBeNull();
+  });
 });
