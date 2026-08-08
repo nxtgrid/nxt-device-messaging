@@ -81,6 +81,7 @@ Each needs to land somewhere before it can be dropped from this list.
 | `nxt-backend` ADR-012's step-4 sequence is missing three device-messaging items: the ChirpStack integration URL flip, an in-flight drain of the old Valkey, and provisioning this service's own Valkey plus config and secrets ahead of the window                                                                                                                                                                                                                                                                                                                                                                                      | Cutover addendum                                                                              |
 | Under wholesale cutover this service carries **zero production traffic until cutover day** — so ADR-010's self-identified riskiest interface (the outbound webhook) is first exercised inside a window with no rollback past it (`nxt-backend` ADR-012 decision 5). Needs the rehearsal step attached                                                                                                                                                                                                                                                                                                                                   | Cutover addendum                                                                              |
 | **Open question for the cutover addendum:** does the early adopter (`nxt-backend` roadmap deployment consumer #3) run CALIN meters and ChirpStack? If so they are the natural first production user *before* the company, which retires most of the above risk                                                                                                                                                                                                                                                                                                                                                                          | Ask the maintainer when authoring                                                             |
+| **ChirpStack HTTP integration appends** `?event=up\|join\|ack\|txack` **(and siblings).** Official docs route on that query param. Legacy tiamat `POST /chirpstack/calin` and this service’s `POST /ingress/:pluginId` pass **body only**; `calin-chirpstack` classifies via body field heuristics. Risk: protobuf JSON may omit empty `data`, so a data-less **up** can look like **join** (`devAddr` present). **Deferred** until ops confirms `event` on real webhooks, then thread query/meta through ingress → SPI `handle` and switch on it. Do not re-litigate as a local `incoming.ts`-only quick win.                                                                 | Phase 3 ingress polish / post-ops confirmation                                                |
 
 
 ---
@@ -1331,3 +1332,29 @@ pass; `meter-installs` coupling (plan note).
 
 **Next:** **Phase 3** — ADR-003 polish (webhook HMAC/DLQ, OpenAPI, auth hardening).
 Command/ingress/token routes already thin-landed earlier.
+
+### 2026-08-08 — session 30: Unit 10 review follow-ups + ChirpStack `?event=` note
+
+**Landed (review hardenings, not behavior rewrites):**
+
+- ChirpStack unary RPCs: shared `UNARY_RPC_DEADLINE_MS = 60_000` via fresh `CallOptions`
+- `registerDevice`: keep swallow-all → `isNewRegistration: false`; richer log
+  (`devEui` / `code` / `details`) until `ALREADY_EXISTS` is observed in the wild
+- Incoming DevEUI → meter ref: `DEV_EUI_LENGTH` / `METER_REFERENCE_OFFSET = 5`
+  (11-digit serials); reject non-16; test uses literal `47003333771`
+
+**Deferred — ChirpStack ingress `?event=` routing (see Carried findings):**
+
+ChirpStack HTTP integration is documented to POST with `?event=`. Maintainer had not
+seen this in practice; will observe on the deployed tiamat instance. Until confirmed +
+SPI/meta is threaded, `calin-chirpstack` keeps body-heuristic classification. Revisit
+with Phase 3 ingress polish or sooner once ops logs show `event`.
+
+**Accepted — ADR-007 (single-replica / single-writer v1):**
+
+Review asked for Redis-backed LoRaWAN correlator for multi-instance ingress. Deferred
+per `nxt-backend` ADR-010 §6; recorded in-repo as **ADR-007** (constraint + triggers,
+no HA design). Plan Deferred row and correlator fileoverview point at it. Multi-replica
+work waits on ADR-007 triggers (operator needs >1 replica, etc.).
+
+**Next:** continue Unit 10 review comments / Phase 3 when prompted.

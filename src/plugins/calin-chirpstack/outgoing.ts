@@ -108,11 +108,12 @@ export function createCalinChirpstackOutgoing(deps: {
       };
     }
 
-    const grpcError = err as GrpcError;
+    const grpcError: GrpcError = (typeof err === 'object' && err !== null)
+      ? err as GrpcError
+      : {};
     const errorCode = grpcError.code;
     const details = grpcError.details;
-    console.info('[PARSE GRPC ERROR] errorCode', errorCode);
-    console.info('[PARSE GRPC ERROR] details', details);
+    console.warn('[PARSE GRPC ERROR] code', errorCode);
 
     // Device not registered in ChirpStack (unrecoverable)
     if (details?.includes('device_queue_item_dev_eui_fkey')) {

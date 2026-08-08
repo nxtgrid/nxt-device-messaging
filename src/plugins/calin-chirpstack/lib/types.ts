@@ -82,7 +82,7 @@ export type LorawanCalinUpEvent = {
   data: string;
 };
 
-/** Discriminated ChirpStack integration event union for this plugin. */
+/** Structurally narrowed ChirpStack integration event union for this plugin. */
 export type LorawanCalinEvent =
   | LorawanCalinJoinEvent
   | LorawanCalinDownEvent

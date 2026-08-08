@@ -90,6 +90,7 @@ export function decodeResponseData(
     console.warn(
       `[LORAWAN CALIN DECODE] Checksum mismatch: Expected ${ computedChecksum } but got ${ receivedChecksum }`,
     );
+    return null;
   }
 
   if (operation === CalinControlCode.SEND_TOKEN_SUCCESS) {
@@ -141,6 +142,14 @@ export function decodeResponseData(
   }
 
   const parser = DATA_PROCESSOR_MAP[dataIdentifier as keyof typeof DATA_PROCESSOR_MAP];
+  const declaredDataSize = bytes[9]!;
+  if (bytes.length < 12 + declaredDataSize) {
+    console.warn(
+      '[LORAWAN CALIN DECODE] Frame shorter than declared data size',
+      dataIdentifier,
+    );
+    return null;
+  }
   const data = parser(bytes);
 
   // Special case read report — meter sends these automatically; we did not
@@ -373,7 +382,7 @@ function processFloatFromBytes(bytes: Buffer): number | null {
 }
 
 function bcdToInteger(bcdArray: Uint8Array): number {
-  const resultStr = Array.from(bcdArray.subarray().reverse())
+  const resultStr = Array.from(bcdArray.slice().reverse())
     .map(byte => {
       const highNibble = (byte >> 4) & 0x0F;
       const lowNibble = byte & 0x0F;

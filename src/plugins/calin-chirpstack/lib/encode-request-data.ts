@@ -51,12 +51,10 @@ export function encodeRequestData({
     return encodeDlms(requestType) ?? null;
   }
 
-  // Parse hex string representing Device EUI into bytes (6 bytes, little-endian)
-  const deviceEuiBytes = deviceIdentifier
-    .padStart(12, '0') // Ensure 12 hex digits (6 bytes)
-    .match(/.{2}/g)! // Split into byte pairs (safe after padStart ensures even length)
-    .map(hexPair => parseInt(hexPair, 16))
-    .reverse();
+  // Meter address: 6 bytes little-endian from hex (pad short 11-digit refs to 12)
+  const deviceEuiBytes = hexToBytes(deviceIdentifier.padStart(12, '0'));
+  if (!deviceEuiBytes || deviceEuiBytes.length !== 6) return null;
+  deviceEuiBytes.reverse();
 
   const frameHeader = [
     CalinMetaBytes.HEADER_BYTE,
@@ -120,9 +118,10 @@ function determineCommandConfig({
   if (isTokenCommand(requestType)) {
     if (!token) return null;
 
-    const rawWriteData = token
-      .match(/.{2}/g)!
-      .map(hexPair => parseInt(hexPair, 16))
+    const tokenBytes = hexToBytes(token);
+    if (!tokenBytes) return null;
+
+    const rawWriteData = tokenBytes
       .map(byte => (byte + 0x33) & 0xFF)
       .reverse();
 
@@ -153,19 +152,23 @@ function determineCommandConfig({
     // Write operations
     case 'SET_DATE': {
       if (!isSetDatePayload(payload)) return null;
+      const rawWriteData = encodeDateBytes(payload);
+      if (!rawWriteData) return null;
       return {
         controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x10 ],
-        rawWriteData: encodeDateBytes(payload),
+        rawWriteData,
         requiresPassword: true,
       };
     }
     case 'SET_TIME': {
       if (!isSetTimePayload(payload)) return null;
+      const rawWriteData = encodeTimeBytes(payload);
+      if (!rawWriteData) return null;
       return {
         controlCode: 0x04, // Writing
         dataIdentifier: [ 0xc0, 0x11 ],
-        rawWriteData: encodeTimeBytes(payload),
+        rawWriteData,
         requiresPassword: true,
       };
     }
@@ -295,16 +298,23 @@ function isSetDatePayload(payload?: RequestPayload): payload is SetDatePayload {
  * so the meter receives bytes 12-15 as [weekday, day, month, year] — the
  * same layout the meter uses when reporting its date in READ_DATE responses.
  */
-function encodeDateBytes({ year, month, day }: SetDatePayload): number[] {
+function encodeDateBytes({ year, month, day }: SetDatePayload): number[] | null {
   const fullYear = year < 100 ? 2000 + year : year;
   // Use UTC: DTO carries grid-local calendar values; treat as literal date.
   const weekday = new Date(Date.UTC(fullYear, month - 1, day)).getUTCDay();
-  return [
-    toBcd(fullYear % 100),
-    toBcd(month),
-    toBcd(day),
-    toBcd(weekday),
-  ];
+  const yearBcd = toBcd(fullYear % 100);
+  const monthBcd = toBcd(month);
+  const dayBcd = toBcd(day);
+  const weekdayBcd = toBcd(weekday);
+  if (
+    yearBcd === null
+    || monthBcd === null
+    || dayBcd === null
+    || weekdayBcd === null
+  ) {
+    return null;
+  }
+  return [ yearBcd, monthBcd, dayBcd, weekdayBcd ];
 }
 
 function isSetTimePayload(payload?: RequestPayload): payload is SetTimePayload {
@@ -325,18 +335,24 @@ function encodeTimeBytes({
   hour,
   minute,
   second = 0,
-}: SetTimePayload): number[] {
-  return [
-    toBcd(hour),
-    toBcd(minute),
-    toBcd(second),
-  ];
+}: SetTimePayload): number[] | null {
+  const hourBcd = toBcd(hour);
+  const minuteBcd = toBcd(minute);
+  const secondBcd = toBcd(second);
+  if (hourBcd === null || minuteBcd === null || secondBcd === null) {
+    return null;
+  }
+  return [ hourBcd, minuteBcd, secondBcd ];
 }
 
 /** Encodes a 0–99 decimal value as a single BCD byte (e.g. 26 → 0x26). */
-function toBcd(value: number): number {
-  if (!Number.isInteger(value) || value < 0 || value > 99) {
-    throw new Error(`BCD value must be an integer in [0, 99], got: ${ value }`);
-  }
+function toBcd(value: number): number | null {
+  if (!Number.isInteger(value) || value < 0 || value > 99) return null;
   return (Math.floor(value / 10) << 4) | (value % 10);
+}
+
+/** Parse an even-length hex string into bytes. Returns `null` when malformed. */
+function hexToBytes(hex: string): number[] | null {
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) return null;
+  return hex.match(/.{2}/g)!.map(pair => parseInt(pair, 16));
 }

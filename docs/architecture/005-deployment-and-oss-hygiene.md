@@ -133,5 +133,6 @@ Nest `Logger` does not apply). Implementation lands in Phase 4; the choice is lo
 - **ADR-004** — pnpm, Node 24, tsup, Vitest, ESLint (what CI and the image build run).
 - **ADR-002** — compose quick start; `REDIS_*` / config artifact.
 - **ADR-003** — consumer HTTP contract; ops routes deliberately separate.
+- **ADR-007** — v1 **single-replica / single-writer** (correlator + timers); multi-replica deferred.
 - **`nxt-sts`** — release workflows, HEALTHCHECK, PaaS health-check README note.
 - **`nxt-backend` ADR-006** — estate toolchain this repo does not inherit.

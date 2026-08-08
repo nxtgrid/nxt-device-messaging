@@ -31,6 +31,15 @@ import type {
   LorawanCalinUpEvent,
 } from './lib/types.js';
 
+/** ChirpStack DevEUI length in hex digits (matches outgoing `padStart(16, '0')`). */
+const DEV_EUI_LENGTH = 16;
+
+/**
+ * Leading DevEUI digits that are not part of the meter serial.
+ * 11-digit meter refs → 5 zero-pad digits; inverse of outgoing padStart.
+ */
+const METER_REFERENCE_OFFSET = 5;
+
 /**
  * Build the PUSH incoming facet.
  *
@@ -45,9 +54,16 @@ export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming
       return null;
     }
 
-    // ChirpStack DevEUI is 16 hex digits; meter serial is the trailing portion
-    const meterExternalReference = deviceInfo.devEui.substring(5);
+    const { devEui } = deviceInfo;
+    if (devEui.length !== DEV_EUI_LENGTH) return null;
+
+    const meterExternalReference = devEui.substring(METER_REFERENCE_OFFSET);
     if (!meterExternalReference) return null;
+
+    // TODO(revisit): ChirpStack HTTP integration appends ?event=up|join|ack|txack.
+    // We classify by body shape only (legacy parity) until ops confirms the query
+    // param and ingress threads it into handle (see decisions-log carried finding).
+    // Risk: a data-less up can look like join (devAddr present, data omitted).
 
     /**
      * Downlink (tx-ack) event

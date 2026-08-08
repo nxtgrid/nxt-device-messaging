@@ -116,6 +116,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
+| 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
 
 ### `nxt-backend` ADRs that constrain this repo
 
@@ -124,7 +125,7 @@ if the ADR does not apply. Cap at 2–3 before proposing an approach.
 
 | `nxt-backend` ADR | Read it when |
 |---|---|
-| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here |
+| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here. §6 single-writer ↔ this repo’s **ADR-007** |
 | **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning; this repo’s **ADR-006** is the actionable admission SPI |
 | **007** — configuration & wiring | Touching config. This repo's ADR-002 adapts it rather than replacing it |
 | **005** — inter-host communication | How consumers integrate; §11 classifies this service as an integrable extracted service |

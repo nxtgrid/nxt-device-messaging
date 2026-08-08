@@ -14,7 +14,7 @@
  * `getDeviceQueue`.
  */
 
-import { Metadata, credentials } from '@grpc/grpc-js';
+import { Metadata, credentials, type CallOptions } from '@grpc/grpc-js';
 import deviceGrpc from '@chirpstack/chirpstack-api/api/device_grpc_pb.js';
 import devicePb from '@chirpstack/chirpstack-api/api/device_pb.js';
 
@@ -25,6 +25,19 @@ const DEVICE_F_PORT = 1;
 
 /** Ask the meter to ACK confirmed downlinks. */
 const CONFIRMED_DOWNLINK = true;
+
+/**
+ * Safety deadline for ChirpStack unary RPCs.
+ *
+ * Caps true never-return hangs without cutting normal NS API latency.
+ * Fresh {@link CallOptions} per call so each RPC gets its own wall clock.
+ */
+const UNARY_RPC_DEADLINE_MS = 60_000;
+
+/** Fresh CallOptions with an absolute deadline for one unary RPC. */
+function unaryCallOptions(): CallOptions {
+  return { deadline: Date.now() + UNARY_RPC_DEADLINE_MS };
+}
 
 /**
  * Build a ChirpStack device client.
@@ -54,7 +67,7 @@ export function createChirpstackClient() {
       enqueueReq.setQueueItem(queueItem);
 
       return new Promise((resolve, reject) => {
-        deviceClient.enqueue(enqueueReq, metadata, (err, res) => {
+        deviceClient.enqueue(enqueueReq, metadata, unaryCallOptions(), (err, res) => {
           if (err) {
             reject(err);
             return;
@@ -68,10 +81,7 @@ export function createChirpstackClient() {
       });
     },
 
-    registerDevice(
-      devEui: string,
-      deviceName: string,
-    ): Promise<{ isNewRegistration: boolean }> {
+    registerDevice(devEui: string, deviceName: string): Promise<{ isNewRegistration: boolean }> {
       const device = new devicePb.Device();
       device.setDevEui(devEui);
       device.setName(deviceName);
@@ -83,13 +93,18 @@ export function createChirpstackClient() {
       createDeviceRequest.setDevice(device);
 
       return new Promise(resolve => {
-        deviceClient.create(createDeviceRequest, metadata, err => {
+        deviceClient.create(createDeviceRequest, metadata, unaryCallOptions(), err => {
           if (err) {
+            // Legacy: any create failure → non-new so provisioning can continue.
+            // Callers skip key setup when false. Log code so we can narrow to
+            // ALREADY_EXISTS once that status is observed in the wild.
             console.info(
-              '[CHIRPSTACK REPO] Could not add device because',
-              err.details,
+              '[CHIRPSTACK REPO] Device create failed; treating as non-new registration',
+              { devEui, code: err.code, details: err.details },
             );
             // Always resolve — existing devices should not block provisioning.
+            // If we can narrow this so real errors can be cause to reject, we will do so.
+            // But for now logging and letting pass is all we can do.
             resolve({ isNewRegistration: false });
             return;
           }
@@ -107,7 +122,7 @@ export function createChirpstackClient() {
       createDeviceKeysRequest.setDeviceKeys(deviceKeys);
 
       return new Promise(resolve => {
-        deviceClient.createKeys(createDeviceKeysRequest, metadata, err => {
+        deviceClient.createKeys(createDeviceKeysRequest, metadata, unaryCallOptions(), err => {
           if (err) {
             console.error(
               '[CHIRPSTACK REPO] Error generating application key for device',
@@ -127,7 +142,7 @@ export function createChirpstackClient() {
       request.setDevEui(devEui);
 
       return new Promise((resolve, reject) => {
-        deviceClient.getQueue(request, metadata, (err, res) => {
+        deviceClient.getQueue(request, metadata, unaryCallOptions(), (err, res) => {
           if (err) {
             reject(err);
             return;

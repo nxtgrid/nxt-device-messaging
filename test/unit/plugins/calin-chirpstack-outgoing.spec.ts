@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DeviceMessage } from '#src/lib/device-message/types.js';
 import type { ChirpstackClient } from '#src/plugins/_shared/chirpstack-repository/index.js';
@@ -6,6 +6,10 @@ import {
   CalinChirpstackError,
   createCalinChirpstackOutgoing,
 } from '#src/plugins/calin-chirpstack/outgoing.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function baseMessage(
   overrides: Partial<DeviceMessage> & Pick<DeviceMessage, 'commandType'>,
@@ -105,7 +109,7 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('parseError sets skipRetry for unregistered-device FK violation', () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
 
     expect(outgoing.parseError({
@@ -130,7 +134,7 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('parseError falls back for unknown gRPC errors', () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
 
     expect(outgoing.parseError({
@@ -140,6 +144,17 @@ describe('createCalinChirpstackOutgoing', () => {
       reason: 'Failed to enqueue message at ChirpStack',
       errorCode: 14,
       details: 'unavailable',
+    });
+  });
+
+  it('parseError does not throw on nullish err', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
+
+    expect(outgoing.parseError(null)).toEqual({
+      reason: 'Failed to enqueue message at ChirpStack',
+      errorCode: undefined,
+      details: undefined,
     });
   });
 });

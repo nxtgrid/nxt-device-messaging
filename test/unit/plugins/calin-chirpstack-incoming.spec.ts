@@ -9,7 +9,8 @@ afterEach(() => {
 });
 
 const DEV_EUI = '0000047003333771';
-const METER_REF = DEV_EUI.substring(5); // '047003333771'
+/** 11-digit meter serial after stripping 5 leading DevEUI pad digits. */
+const METER_REF = '47003333771';
 
 describe('createCalinChirpstackIncoming', () => {
   const incoming = createCalinChirpstackIncoming();
@@ -18,6 +19,14 @@ describe('createCalinChirpstackIncoming', () => {
     expect(incoming.handle?.(null)).toBeNull();
     expect(incoming.handle?.({})).toBeNull();
     expect(incoming.handle?.({ deviceInfo: {} })).toBeNull();
+  });
+
+  it('returns null when DevEUI is not 16 hex digits', () => {
+    expect(incoming.handle?.({
+      downlinkId: 'dl-1',
+      queueItemId: 'q-1',
+      deviceInfo: { devEui: '47003333771' },
+    })).toBeNull();
   });
 
   it('handleDown maps tx-ack to SENT_TO_DEVICE', () => {

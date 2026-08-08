@@ -8,6 +8,7 @@ import { CalinMetaBytes } from '#src/plugins/calin-chirpstack/lib/types.js';
 
 afterEach(() => {
   eventCorrelator.clear();
+  vi.useRealTimers();
 });
 
 describe('encodeRequestData', () => {
@@ -67,6 +68,36 @@ describe('encodeRequestData', () => {
       deviceIdentifier: '47003333771',
       devicePhase: 'A',
       requestType: 'READ_VERSION',
+    })).toBeNull();
+  });
+
+  it('encodes SET_DATE BCD bytes (weekday/day/month/year after password)', () => {
+    // 2026-03-15 UTC → Sunday (weekday 0)
+    const bytes = encodeRequestData({
+      deviceIdentifier: '47003333771',
+      devicePhase: 'A',
+      requestType: 'SET_DATE',
+      payload: { year: 2026, month: 3, day: 15 },
+    });
+    expect(bytes).not.toBeNull();
+    expect(bytes![8]).toBe(0x04); // writing control code
+
+    // writeBytes = 4 password bytes (+0x33) + reversed date (+0x33)
+    // Natural BCD: year 0x26, month 0x03, day 0x15, weekday 0x00
+    // After +0x33 + reverse: [0x33, 0x48, 0x36, 0x59]
+    const dateStart = bytes!.length - 2 - 4; // before checksum + end
+    expect(bytes!.slice(dateStart, dateStart + 4)).toEqual([
+      0x33, 0x48, 0x36, 0x59,
+    ]);
+  });
+
+  it('returns null for SET_TIME when a field is outside BCD range', () => {
+    // hour 25 is still valid BCD (0–99); use >99 to hit toBcd → null
+    expect(encodeRequestData({
+      deviceIdentifier: '47003333771',
+      devicePhase: 'A',
+      requestType: 'SET_TIME',
+      payload: { hour: 100, minute: 0, second: 0 },
     })).toBeNull();
   });
 });
@@ -173,7 +204,6 @@ describe('eventCorrelator', () => {
     vi.advanceTimersByTime(10_001);
     eventCorrelator.runGarbageCollection();
     expect(eventCorrelator.getPendingCount()).toBe(0);
-    vi.useRealTimers();
   });
 });
 

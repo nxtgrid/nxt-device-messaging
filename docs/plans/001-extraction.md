@@ -273,7 +273,7 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 | Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
 | Debug HTTP to run distribute / poll once | Nice for manual stepping; not in ADR-003; overkill while timers + stubs suffice | Manual smoke against timers becomes painful |
 | Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
-| HA / multi-instance (leader election, Redis-backed correlator) | `nxt-backend` ADR-010 §6 defers it | Evidence of multi-instance demand |
+| HA / multi-replica (leader election, Redis-backed correlator) | **ADR-007** (+ `nxt-backend` ADR-010 §6) | Operator needs >1 replica / ADR-007 triggers |
 
 Cancel is **not** deferred — Unit **5.2** ships engine + `POST /message/cancel` /
 `POST /messages/cancel`.

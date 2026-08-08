@@ -54,7 +54,7 @@ describe('createChirpstackClient', () => {
   });
 
   it('enqueueDeviceRequest returns the queue item id', async () => {
-    grpcStub.enqueue.mockImplementation((_req, _meta, cb) => {
+    grpcStub.enqueue.mockImplementation((_req, _meta, _opts, cb) => {
       cb(null, { getId: () => 'queue-item-1' });
     });
 
@@ -62,11 +62,17 @@ describe('createChirpstackClient', () => {
     await expect(client.enqueueDeviceRequest('0000000000000001', [ 0x01, 0x02 ]))
       .resolves.toBe('queue-item-1');
     expect(grpcStub.enqueue).toHaveBeenCalledOnce();
+    expect(grpcStub.enqueue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ deadline: expect.any(Number) }),
+      expect.any(Function),
+    );
   });
 
   it('enqueueDeviceRequest rejects on gRPC error', async () => {
     const grpcErr = { code: 5, details: 'not found' } as ServiceError;
-    grpcStub.enqueue.mockImplementation((_req, _meta, cb) => {
+    grpcStub.enqueue.mockImplementation((_req, _meta, _opts, cb) => {
       cb(grpcErr, null);
     });
 
@@ -76,18 +82,22 @@ describe('createChirpstackClient', () => {
   });
 
   it('registerDevice resolves isNewRegistration false when create fails', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    grpcStub.create.mockImplementation((_req, _meta, cb) => {
-      cb({ details: 'already exists' } as ServiceError, null);
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    grpcStub.create.mockImplementation((_req, _meta, _opts, cb) => {
+      cb({ code: 6, details: 'already exists' } as ServiceError, null);
     });
 
     const client = createChirpstackClient();
     await expect(client.registerDevice('0000000000000001', 'meter-1'))
       .resolves.toEqual({ isNewRegistration: false });
+    expect(infoSpy).toHaveBeenCalledWith(
+      '[CHIRPSTACK REPO] Device create failed; treating as non-new registration',
+      { devEui: '0000000000000001', code: 6, details: 'already exists' },
+    );
   });
 
   it('registerDevice resolves isNewRegistration true on success', async () => {
-    grpcStub.create.mockImplementation((_req, _meta, cb) => {
+    grpcStub.create.mockImplementation((_req, _meta, _opts, cb) => {
       cb(null, {});
     });
 
@@ -98,7 +108,7 @@ describe('createChirpstackClient', () => {
 
   it('setApplicationKeyForDevice maps errors to success false', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    grpcStub.createKeys.mockImplementation((_req, _meta, cb) => {
+    grpcStub.createKeys.mockImplementation((_req, _meta, _opts, cb) => {
       cb({ details: 'keys failed' } as ServiceError, null);
     });
 
@@ -108,7 +118,7 @@ describe('createChirpstackClient', () => {
   });
 
   it('getDeviceQueue returns camelCase deliveryQueueId list', async () => {
-    grpcStub.getQueue.mockImplementation((_req, _meta, cb) => {
+    grpcStub.getQueue.mockImplementation((_req, _meta, _opts, cb) => {
       cb(null, {
         getResultList: () => [
           { getId: () => 'q-1' },
@@ -122,5 +132,11 @@ describe('createChirpstackClient', () => {
       { deliveryQueueId: 'q-1' },
       { deliveryQueueId: 'q-2' },
     ]);
+    expect(grpcStub.getQueue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ deadline: expect.any(Number) }),
+      expect.any(Function),
+    );
   });
 });

@@ -5,6 +5,9 @@
  * ChirpStack may deliver the data uplink and the ACK in either order; we key
  * on `deduplicationId` and emit a combined {@link ParsedIncomingEvent} once
  * both halves arrive (or drop stale halves via GC).
+ *
+ * Process-local by design (ADR-007 single-replica / single-writer). Do not move
+ * to Redis until that ADR’s multi-replica triggers fire.
  */
 
 import type {
