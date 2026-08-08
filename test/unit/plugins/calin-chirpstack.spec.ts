@@ -134,12 +134,13 @@ describe('createCalinChirpstackPlugin', () => {
     })).toThrow(/Invalid tuning/);
   });
 
-  it('wires placeholder outgoing and incoming facets', async () => {
+  it('wires outgoing and placeholder incoming facets', () => {
     stubValidChirpstackEnv();
     const plugin = createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID });
     expect(plugin.outgoing.sendOne).toBeTypeOf('function');
+    expect(plugin.outgoing.getRemoteStatus).toBeTypeOf('function');
+    expect(plugin.outgoing.parseError).toBeTypeOf('function');
     expect(plugin.incoming.handle).toBeTypeOf('function');
-    await expect(plugin.outgoing.sendOne({} as never)).rejects.toThrow(/Unit 10\.4/);
     expect(() => plugin.incoming.handle?.({})).toThrow(/Unit 10\.5/);
   });
 

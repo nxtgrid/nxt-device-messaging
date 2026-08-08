@@ -80,8 +80,8 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 /**
  * Build the `calin-chirpstack` {@link DeviceMessagingPlugin}.
  *
- * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing /
- * incoming send/handle bodies are placeholders until Units 10.4 / 10.5.
+ * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing is
+ * wired (Unit 10.4); incoming handle is a placeholder until Unit 10.5.
  *
  * @param entry - Config `plugins[]` entry for this id
  */
