@@ -39,8 +39,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0 complete. Phase 1 foundation through Unit 6 (SPI polish + D5/D6). Phase 1b
-Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–9 (`calin-api-v1`, `nxt-sts`,
-`calin-api-v2`) complete. Next: Unit 10 (`calin-chirpstack`).**
+Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–10 (`calin-api-v1`, `nxt-sts`,
+`calin-api-v2`, `calin-chirpstack`) complete. Next: Phase 3 (ADR-003 polish).**
 
 Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -53,15 +53,17 @@ deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `type
 `command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
 `device.relayNode`; `generateTokenSchema` type-discriminated), Redis/Lua, queue primitives
 (`queue_in_flight_to_relay_node`), lifecycle (typed on `DeviceMessagingPlugin`),
-`src/plugins/` (SPI + `PluginTuning` + `_shared/` helpers + catalog / registry / `stub/` +
-`calin-api-v1/` PULL plugin — fetch client, outgoing, incoming, token; enable via
-`plugins[]` + `CALIN_API_V1_*` — + `calin-api-v2/` PULL plugin — fetch + login cache,
+`src/plugins/` (SPI + `PluginTuning` + `_shared/` helpers incl. ChirpStack gRPC client +
+catalog / registry / `stub/` + `calin-api-v1/` PULL — fetch, outgoing, incoming, token;
+enable via `plugins[]` + `CALIN_API_V1_*` — + `calin-api-v2/` PULL — fetch + login cache,
 outgoing, incoming, token; enable via `plugins[]` + `CALIN_API_V2_*` — + `nxt-sts/`
-token-only plugin — fetch client + mint; enable via `plugins[]` + `NXT_STS_URL`),
+token-only — fetch + mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
+PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `plugins[]` +
+`CHIRPSTACK_*`),
 `src/http/` (lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac),
 `src/engine/` peer factories — `createBaseService` / `createOutgoingService` /
 `createIncomingService` / `createTokenService` + `startEngineTimers` (`engine.enabled`).
-Errors from `engine/errors.ts`. Composition root in `main.ts`. **Units 5–9 complete.**
+Errors from `engine/errors.ts`. Composition root in `main.ts`. **Units 5–10 complete.**
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
@@ -114,6 +116,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
+| 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
 
 ### `nxt-backend` ADRs that constrain this repo
 
@@ -122,7 +125,7 @@ if the ADR does not apply. Cap at 2–3 before proposing an approach.
 
 | `nxt-backend` ADR | Read it when |
 |---|---|
-| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here |
+| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here. §6 single-writer ↔ this repo’s **ADR-007** |
 | **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning; this repo’s **ADR-006** is the actionable admission SPI |
 | **007** — configuration & wiring | Touching config. This repo's ADR-002 adapts it rather than replacing it |
 | **005** — inter-host communication | How consumers integrate; §11 classifies this service as an integrable extracted service |

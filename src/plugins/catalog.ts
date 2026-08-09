@@ -3,7 +3,7 @@
  *
  * Config `plugins[].id` must appear here. Each factory receives that plugin's
  * config entry (settings/tuning; secrets stay in env) and merges tuning onto
- * code defaults. Unit 10 adds `calin-chirpstack` to this map.
+ * code defaults.
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';
@@ -17,6 +17,10 @@ import {
   CALIN_API_V2_ID,
   createCalinApiV2Plugin,
 } from './calin-api-v2/index.js';
+import {
+  CALIN_CHIRPSTACK_ID,
+  createCalinChirpstackPlugin,
+} from './calin-chirpstack/index.js';
 import {
   NXT_STS_ID,
   createNxtStsPlugin,
@@ -35,6 +39,7 @@ export const PLUGIN_CATALOG: Record<
 > = {
   [ CALIN_API_V1_ID ]: createCalinApiV1Plugin,
   [ CALIN_API_V2_ID ]: createCalinApiV2Plugin,
+  [ CALIN_CHIRPSTACK_ID ]: createCalinChirpstackPlugin,
   [ NXT_STS_ID ]: createNxtStsPlugin,
   [ STUB_PUSH_ID ]: createStubPushPlugin,
   [ STUB_PULL_ID ]: createStubPullPlugin,

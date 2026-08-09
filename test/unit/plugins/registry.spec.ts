@@ -37,8 +37,8 @@ describe('createPluginRegistry', () => {
   });
 
   it('throws on unknown plugin id', () => {
-    expect(() => createPluginRegistry([ { id: 'calin-chirpstack' } ])).toThrow(
-      /Unknown plugin id "calin-chirpstack"/,
+    expect(() => createPluginRegistry([ { id: 'not-a-catalog-plugin' } ])).toThrow(
+      /Unknown plugin id "not-a-catalog-plugin"/,
     );
   });
 

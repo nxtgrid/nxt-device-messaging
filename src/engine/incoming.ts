@@ -16,7 +16,7 @@ import type {
   FailureReason,
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
-import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
+import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { emitDeliveryEvent, type BaseService } from './base.js';
 
@@ -30,7 +30,11 @@ export type IncomingService = {
    * Caller (HTTP) already resolved an enabled PUSH plugin — no registry lookup here.
    * No-op when the plugin returns null (ignore event).
    */
-  handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void>;
+  handle(
+    event: unknown,
+    plugin: DeviceMessagingPlugin,
+    meta?: IncomingHandleMeta,
+  ): Promise<void>;
   /**
    * One PULL poll tick: `fetchStatus` for due awaiting-task messages, then process.
    * Also driven by `startEngineTimers`; tests may invoke this directly.
@@ -140,12 +144,17 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    *
    * @param event - Raw event payload from ingress
    * @param plugin - Already-resolved PUSH plugin (HTTP gated enablement / signature)
+   * @param meta - Optional HTTP query/context (e.g. ChirpStack `?event=`)
    */
-  async function handle(event: unknown, plugin: DeviceMessagingPlugin): Promise<void> {
+  async function handle(
+    event: unknown,
+    plugin: DeviceMessagingPlugin,
+    meta?: IncomingHandleMeta,
+  ): Promise<void> {
     const parse = plugin.incoming.handle;
     if (!parse) return;
 
-    const parsedEvent = parse(event);
+    const parsedEvent = parse(event, meta);
     if (!parsedEvent) return;
 
     await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY, plugin);

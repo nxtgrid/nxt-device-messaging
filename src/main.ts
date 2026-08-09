@@ -59,7 +59,7 @@ startEngineTimers({
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });
-const pluginIds = pluginRegistry.getAll().map(plugin => plugin.id).join(',') || '(none)';
+const pluginIds = `[${ pluginRegistry.getAll().map(plugin => plugin.id).join(', ') }]`;
 console.info(
   `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, plugins=${ pluginIds })`,
 );

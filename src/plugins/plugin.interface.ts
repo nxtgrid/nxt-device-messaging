@@ -23,6 +23,14 @@ import type {
 export type DeliveryPattern = 'PUSH' | 'PULL';
 
 /**
+ * Optional HTTP context for PUSH {@link DeviceMessagingPlugin.incoming.handle}.
+ * Plain strings only — no framework types (ADR-001).
+ */
+export type IncomingHandleMeta = {
+  readonly query: Readonly<Record<string, string>>;
+};
+
+/**
  * Inputs for {@link DeviceMessagingPlugin.initialQueueKey}.
  * Not the full create DTO — only network + device (incl. optional `relayNode`).
  */
@@ -127,8 +135,14 @@ export type DeviceMessagingPlugin = {
   };
 
   incoming: {
-    /** PUSH: normalize a raw webhook payload (or null to ignore). */
-    handle?(event: unknown): ParsedIncomingEvent | null;
+    /**
+     * PUSH: normalize a raw webhook payload (or null to ignore).
+     * HTTP may pass {@link IncomingHandleMeta} (e.g. ChirpStack `?event=`).
+     */
+    handle?(
+      event: unknown,
+      meta?: IncomingHandleMeta,
+    ): ParsedIncomingEvent | null;
     /** PULL: poll vendor status for an in-flight message. */
     fetchStatus?(message: DeviceMessage): Promise<ParsedIncomingEvent | null>;
     /** PUSH ingress: optional signature check (ADR-003). */

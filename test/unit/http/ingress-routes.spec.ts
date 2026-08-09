@@ -21,7 +21,7 @@ describe('POST /ingress/:pluginId', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/ingress/${ STUB_PUSH_ID }`,
+      url: `/ingress/${ STUB_PUSH_ID }?event=up`,
       headers: { 'content-type': 'application/json' },
       payload,
     });
@@ -30,6 +30,7 @@ describe('POST /ingress/:pluginId', () => {
     expect(onHandle).toHaveBeenCalledWith(
       payload,
       expect.objectContaining({ id: STUB_PUSH_ID }),
+      { query: { event: 'up' } },
     );
 
     await app.close();
