@@ -2,13 +2,19 @@
  * @fileoverview Outbound event-webhook messenger (ADR-003 §6).
  *
  * Always enqueues to Redis, then kicks the same private drain the timer uses.
- * Device engine never awaits HTTP. HMAC is a later chunk.
+ * Device engine never awaits HTTP. Opt-in HMAC when `signingSecret` is set.
  */
 
 import type { EventWebhookConfig } from '../../config/schema.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
 import { calculateWebhookBackoffDelay } from './backoff.js';
 import { buildWebhookEvent } from './build-event.js';
+import {
+  formatWebhookSignatureHeader,
+  signWebhookBody,
+  WEBHOOK_EVENT_ID_HEADER,
+  WEBHOOK_SIGNATURE_HEADER,
+} from './sign.js';
 import type { WebhookStore } from './store.js';
 import type { WebhookStoredRecord } from './types.js';
 
@@ -31,6 +37,11 @@ export type WebhookService = {
 export type CreateWebhookServiceOptions = {
   readonly config: EventWebhookConfig;
   readonly store: WebhookStore;
+  /**
+   * When non-empty, POSTs include HMAC headers (ADR-003 §6).
+   * From `DEVICE_MESSAGING_WEBHOOK_SECRET` at the composition root.
+   */
+  readonly signingSecret?: string;
 };
 
 /**
@@ -45,10 +56,13 @@ export function isRetryableWebhookStatus(status: number): boolean {
 /**
  * Factory for the outbound webhook messenger.
  *
- * @param options - Config + Redis store
+ * @param options - Config, Redis store, optional signing secret
  */
 export function createWebhookService(options: CreateWebhookServiceOptions): WebhookService {
-  const { config, store } = options;
+  const { config, store, signingSecret } = options;
+  const secret = signingSecret !== undefined && signingSecret !== ''
+    ? signingSecret
+    : undefined;
 
   /** Serialize overlapping drain kicks (timer + storeAndEmit) in-process. */
   let drainChain: Promise<void> = Promise.resolve();
@@ -98,12 +112,23 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
     // Lease: push score forward so a concurrent tick skips this id while we POST.
     await store.reschedule(record, Date.now() + CLAIM_LEASE_MS);
 
+    const rawBody = JSON.stringify(record.event);
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+    };
+    if (secret !== undefined) {
+      headers[WEBHOOK_SIGNATURE_HEADER] = formatWebhookSignatureHeader(
+        signWebhookBody(secret, rawBody),
+      );
+      headers[WEBHOOK_EVENT_ID_HEADER] = record.event.eventId;
+    }
+
     let response: Response;
     try {
       response = await fetch(config.url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(record.event),
+        headers,
+        body: rawBody,
       });
     }
     catch (err) {

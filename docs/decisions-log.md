@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; Phase 3.1A–D done — session 35; next 3.1E HMAC / 3.2 OpenAPI)* | —          |
+| —   | *(none blocking; Phase 3.1 done — session 36; next 3.2 OpenAPI / 3.3 auth)*     | —          |
 
 
 
@@ -49,8 +49,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** underway: event webhook **3.1A–D done** (unsigned, wired); next HMAC
-(3.1E) / OpenAPI (3.2) / auth polish (3.3).
+**done**. **Phase 3** underway: event webhook **3.1 done** (incl. HMAC); next OpenAPI (3.2) /
+auth polish (3.3).
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1469,3 +1469,18 @@ does not construct the webhook service; unsolicited emit still omits `pluginId`
 - Unit: `base-emit.spec.ts`; opt-in integration: `webhook.smoke.spec.ts`
 
 **Next:** **3.1E** HMAC (when asked) or **3.2** OpenAPI / **3.3** auth polish.
+
+### 2026-08-10 — session 36: Phase 3.1E — opt-in webhook HMAC
+
+**Landed:**
+
+- `sign.ts` — HMAC-SHA256 over raw body; `sha256=<hex>` header format;
+  `verifyWebhookSignature` (timing-safe) for consumers/tests
+- `createWebhookService({ signingSecret? })` — when set, POST includes
+  `X-Device-Messaging-Signature` + `X-Device-Messaging-Event-Id`
+- `main.ts` — pass `DEVICE_MESSAGING_WEBHOOK_SECRET`; boot **warn** if
+  `eventWebhook.url` set without secret (unsigned POSTs; does not fail boot)
+- ADR-003 §6 signing no longer deferred; plan 3.1E checked; unit tests
+
+**Phase 3.1 (event webhook) closed.** Next: **3.2** OpenAPI or **3.3** auth polish
+(or PR for the 3.1 slice).

@@ -5,6 +5,11 @@ import {
   isRetryableWebhookStatus,
   WEBHOOK_DRAIN_INTERVAL_MS,
 } from '#src/engine/webhook/service.js';
+import {
+  verifyWebhookSignature,
+  WEBHOOK_EVENT_ID_HEADER,
+  WEBHOOK_SIGNATURE_HEADER,
+} from '#src/engine/webhook/sign.js';
 import type { WebhookStore } from '#src/engine/webhook/store.js';
 import type { WebhookStoredRecord } from '#src/engine/webhook/types.js';
 
@@ -141,15 +146,53 @@ describe('createWebhookService', () => {
     );
     const firstCall = fetchMock.mock.calls[0] as unknown as [
       string,
-      { body?: string },
+      { body?: string; headers?: Record<string, string> },
     ];
     const body = JSON.parse(String(firstCall[1]?.body)) as {
       eventId: string;
       message: { correlationId?: string };
     };
     expect(body.message.correlationId).toBe('corr-1');
+    expect(firstCall[1]?.headers?.[WEBHOOK_SIGNATURE_HEADER]).toBeUndefined();
     expect(store.payloads.size).toBe(0);
     expect(store.pending.size).toBe(0);
+  });
+
+  it('signs the raw body when signingSecret is set', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const store = createMemoryStore();
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const signingSecret = 'webhook-secret';
+
+    const service = createWebhookService({
+      config: CONFIG,
+      store,
+      signingSecret,
+    });
+
+    service.storeAndEmit({
+      pluginId: 'stub-push',
+      deliveryStatus: 'SENT_TO_NS',
+      device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
+    });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { body?: string; headers?: Record<string, string> },
+    ];
+    const rawBody = String(firstCall[1]?.body);
+    const headers = firstCall[1]?.headers ?? {};
+    const signature = headers[WEBHOOK_SIGNATURE_HEADER];
+    const eventIdHeader = headers[WEBHOOK_EVENT_ID_HEADER];
+    const parsed = JSON.parse(rawBody) as { eventId: string };
+
+    expect(signature).toBeDefined();
+    expect(verifyWebhookSignature(signingSecret, rawBody, String(signature))).toBe(true);
+    expect(eventIdHeader).toBe(parsed.eventId);
   });
 
   it('dead-letters when retries are exhausted', async () => {

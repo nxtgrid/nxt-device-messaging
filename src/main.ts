@@ -27,10 +27,19 @@ function resolvePort(): number {
 /**
  * Composition root — runtime already booted; wire peer services, then Fastify.
  */
+const webhookSigningSecret = process.env.DEVICE_MESSAGING_WEBHOOK_SECRET;
+
+if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigningSecret === '')) {
+  console.warn(
+    '[webhook] eventWebhook.url is set but DEVICE_MESSAGING_WEBHOOK_SECRET is unset — POSTs will be unsigned',
+  );
+}
+
 const webhookService = config.eventWebhook
   ? createWebhookService({
     config: config.eventWebhook,
     store: createWebhookStore({ client: redisRepo.client }),
+    signingSecret: webhookSigningSecret,
   })
   : undefined;
 

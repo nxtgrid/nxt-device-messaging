@@ -7,7 +7,7 @@ service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
 amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`);
 amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed);
 amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys locked;
-HMAC deferred to a later chunk)
+HMAC deferred then landed in 3.1E)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -253,21 +253,19 @@ engine never awaits HTTP. Drain is not a public API surface.
 - After exhaustion: log (`correlationId` + `eventId`) and retain in DLQ with TTL.
 - Device-message success/failure is independent of webhook delivery success.
 
-#### Signing (opt-in) — **deferred**
+#### Signing (opt-in)
 
-Normative shape (when the HMAC chunk lands):
-
-- **Secret set:** HMAC-SHA256 over the raw body; headers
+- **Secret set** (`DEVICE_MESSAGING_WEBHOOK_SECRET`): HMAC-SHA256 over the **exact** raw
+  JSON body string; headers
   `X-Device-Messaging-Signature: sha256=<hex>` and
   `X-Device-Messaging-Event-Id: <eventId>`.
-- **Secret unset:** POST unsigned (local / quick-start). Boot **warns** if a webhook URL is
-  configured without a secret; does not fail boot.
+- **Secret unset/empty:** POST unsigned (local / quick-start). Boot **warns** if a
+  webhook URL is configured without a secret; does not fail boot.
 - No timestamp/skew window in v1; `eventId` covers idempotent retries. Private network +
   shared secret is the v1 threat model.
 
-**Implementation order (session 32):** durable **unsigned** delivery first; HMAC as a
-separate small chunk afterward. Until then, POSTs are unsigned even if
-`DEVICE_MESSAGING_WEBHOOK_SECRET` is set (secret unused).
+Helpers: `src/engine/webhook/sign.ts` (`signWebhookBody`, `verifyWebhookSignature` for
+consumers/tests). Composition root passes the env secret into `createWebhookService`.
 
 This is **not** the inbound API key: that authenticates callers *to* this service; the
 webhook secret authenticates callbacks *from* this service to the consumer.
