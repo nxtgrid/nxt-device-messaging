@@ -31,7 +31,7 @@ import type {
   DistributeCtx,
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
-import { emitDeliveryEvent, type BaseService } from './base.js';
+import type { BaseService } from './base.js';
 import {
   InvalidEnqueueError,
   UnknownPluginError,
@@ -273,7 +273,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
     const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
     for (const { message } of pullTimeouts) {
-      emitDeliveryEvent(message);
+      baseService.emitDeliveryEvent(message);
     }
 
     // 4. Requeue messages whose backoff has elapsed
@@ -316,7 +316,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       // If not a retry, notify the adopter that the message is getting handled.
       // (The message status is already 'SENT_TO_NS'.)
       if (!messageToSend.retryCount) {
-        emitDeliveryEvent(messageToSend);
+        baseService.emitDeliveryEvent(messageToSend);
       }
 
       // Fire-and-forget: distribute considers the handoff done once picked.

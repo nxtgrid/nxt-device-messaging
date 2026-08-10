@@ -1,8 +1,8 @@
 /**
  * @fileoverview Shared engine helpers for delivery outcomes and retry.
  *
- * Adopter notification goes through {@link emitDeliveryEvent} (stub until Phase 3
- * lands the outbound webhook — ADR-003).
+ * Adopter notification goes through {@link BaseService.emitDeliveryEvent}, which
+ * thin-forwards to the outbound webhook messenger when configured (ADR-003 §6).
  *
  * Concurrency admission: the rate-limit key is stored on the message hash at claim
  * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `fromAnyToRetry` SREM it.
@@ -13,7 +13,6 @@ import type { DeliveryConfig } from '../config/schema.js';
 import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { calculateBackoffDelay } from '../lib/retry-helpers.js';
-import { omitInternalFields } from '../lib/device-message/omit-internal-fields.js';
 import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
@@ -22,30 +21,9 @@ import type {
   FailureReason,
 } from '../lib/device-message/types.js';
 import type { PluginRegistry } from '../plugins/registry.js';
+import type { WebhookService } from './webhook/service.js';
 
-/**
- * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
- *
- * Stub until Phase 3 lands the outbound webhook (ADR-003 §6 / `eventWebhook.url`).
- * Engine call sites must use this seam — do not reintroduce in-process subscribers.
- *
- * @param message - The message (or partial) to broadcast
- */
-export function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
-  const payload = omitInternalFields(message);
-  // Temporary until Phase 3 webhook — see delivery outcomes in the process log.
-  console.info('[emitDeliveryEvent]', {
-    id: payload.id,
-    correlationId: payload.correlationId,
-    commandType: payload.commandType,
-    deliveryStatus: payload.deliveryStatus,
-    response: payload.response,
-    device: payload.device?.externalReference,
-    unsolicited: payload.unsolicited,
-  });
-}
-
-/** Shared retry / requeue operations used by peers. */
+/** Shared retry / requeue / adopter-notify operations used by peers. */
 export type BaseService = {
   retryOrFail(
     messageId: string,
@@ -53,21 +31,34 @@ export type BaseService = {
     failureContext: FailureContext,
   ): Promise<void>;
   requeueMessage(messageId: string): Promise<void>;
+  /**
+   * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
+   * Forwards to `webhook.storeAndEmit` when a webhook is wired; otherwise no-op.
+   */
+  emitDeliveryEvent(message: Partial<DeviceMessage>): void;
 };
 
 /** Dependencies for {@link createBaseService}. */
 export type CreateBaseServiceOptions = {
   readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
+  /**
+   * Outbound event webhook. When omitted (no `eventWebhook` in config), emits are no-ops.
+   */
+  readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
 };
 
 /**
  * Factory for shared delivery-outcome helpers (no runtime import).
  *
- * @param options - Registry (requeue → `initialQueueKey`) and delivery knobs (retries / backoff)
+ * @param options - Registry, delivery knobs, optional webhook messenger
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { registry, delivery } = options;
+  const { registry, delivery, webhook } = options;
+
+  function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
+    webhook?.storeAndEmit(message);
+  }
 
   /**
    * Handle a failed delivery attempt by either scheduling a retry or failing permanently.
@@ -192,5 +183,6 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
   return {
     retryOrFail,
     requeueMessage,
+    emitDeliveryEvent,
   };
 }

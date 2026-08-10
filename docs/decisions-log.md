@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; Phase 3.1A–C done — session 34; next 3.1D; HMAC later)*        | —          |
+| —   | *(none blocking; Phase 3.1A–D done — session 35; next 3.1E HMAC / 3.2 OpenAPI)* | —          |
 
 
 
@@ -49,8 +49,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** underway: event webhook (3.1A–C done; next 3.1D wire), then OpenAPI /
-auth. HMAC is a later chunk (H1), not in the first delivery slices.
+**done**. **Phase 3** underway: event webhook **3.1A–D done** (unsigned, wired); next HMAC
+(3.1E) / OpenAPI (3.2) / auth polish (3.3).
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1455,3 +1455,17 @@ does not construct the webhook service; unsolicited emit still omits `pluginId`
 
 **Next:** **3.1D** — inject webhook into `createBaseService` / fold emit; compose in
 `main` when `config.eventWebhook` set; fix unsolicited `pluginId`; smoke.
+
+### 2026-08-10 — session 35: Phase 3.1D — wire emit + composition root
+
+**Landed:**
+
+- `BaseService.emitDeliveryEvent` → optional `webhook.storeAndEmit` (no-op if unset)
+- Removed free `emitDeliveryEvent` export; outgoing/incoming use `baseService`
+- Unsolicited emit includes `pluginId: plugin.id`
+- `main.ts`: build `createWebhookStore` + `createWebhookService` when
+  `config.eventWebhook` set; pass into `createBaseService`; start webhook timers
+  (independent of `engine.enabled`); boot log `eventWebhook=on|off`
+- Unit: `base-emit.spec.ts`; opt-in integration: `webhook.smoke.spec.ts`
+
+**Next:** **3.1E** HMAC (when asked) or **3.2** OpenAPI / **3.3** auth polish.

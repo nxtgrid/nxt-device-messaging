@@ -8,7 +8,7 @@ its 2026-07-27 amendment
 **Status:** Phase 0 complete; Phase 1 foundation through **Unit 6** (SPI polish + D5/D6);
 **Phase 1b Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–10 (`calin-api-v1`,
 `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) done. Phase 3 underway — **3.1A** webhook
-**3.1A–C** done (`createWebhookService`); next **3.1D** wire emit + composition root.
+**3.1A–D** done (event webhook wired); next **3.1E** HMAC (later) / **3.2** OpenAPI.
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -50,7 +50,7 @@ need them (same pattern as Intermezzo enqueue/get).
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Done** |
-| **3** | ADR-003 **polish**: event webhook (unsigned → HMAC later), OpenAPI, auth hardening (routes already thin-landed earlier) | **In progress** — 3.1A–C done; next 3.1D |
+| **3** | ADR-003 **polish**: event webhook (unsigned → HMAC later), OpenAPI, auth hardening (routes already thin-landed earlier) | **In progress** — 3.1A–D done; next 3.1E / 3.2 |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
@@ -73,8 +73,9 @@ ADR-003 §6 and decisions-log session 32.
       drain + POST + retry/DLQ; claim lease; timer + kick. Public: `storeAndEmit` /
       `startTimers` only. Not wired into `baseService` / `main` yet (→ 3.1D).
       Requires `pluginId` (unsolicited call site fix in 3.1D).
-- [ ] **3.1D — Wire emit.** `baseService.emitDeliveryEvent` → `webhook.storeAndEmit`;
-      composition root; smoke when URL configured; pass `pluginId` on unsolicited.
+- [x] **3.1D — Wire emit.** `baseService.emitDeliveryEvent` → `webhook.storeAndEmit`;
+      `main` composes store/service/timers when `eventWebhook` set; unsolicited passes
+      `pluginId`; opt-in Redis smoke.
 - [ ] **3.1E — HMAC (later).** Opt-in signing; boot warn if URL without secret.
 - [ ] **3.2 — OpenAPI** from Zod.
 - [ ] **3.3 — Auth / HTTP polish** (timing-safe Bearer, error bodies, …).

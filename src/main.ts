@@ -4,6 +4,9 @@ import { createIncomingService } from './engine/incoming.js';
 import { createOutgoingService } from './engine/outgoing.js';
 import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
+import { createWebhookService } from './engine/webhook/service.js';
+import { createWebhookStore } from './engine/webhook/store.js';
+import { redisRepo } from './lib/redis-repository/index.js';
 import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -24,9 +27,17 @@ function resolvePort(): number {
 /**
  * Composition root — runtime already booted; wire peer services, then Fastify.
  */
+const webhookService = config.eventWebhook
+  ? createWebhookService({
+    config: config.eventWebhook,
+    store: createWebhookStore({ client: redisRepo.client }),
+  })
+  : undefined;
+
 const baseService = createBaseService({
   registry: pluginRegistry,
   delivery: config.delivery,
+  webhook: webhookService,
 });
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
@@ -56,10 +67,16 @@ startEngineTimers({
   incomingService,
 });
 
+/** Webhook drain is independent of `engine.enabled` (ingress can still emit). */
+if (webhookService) {
+  webhookService.startTimers();
+}
+
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });
 const pluginIds = `[${ pluginRegistry.getAll().map(plugin => plugin.id).join(', ') }]`;
+const webhookLabel = config.eventWebhook ? 'on' : 'off';
 console.info(
-  `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, plugins=${ pluginIds })`,
+  `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, eventWebhook=${ webhookLabel }, plugins=${ pluginIds })`,
 );

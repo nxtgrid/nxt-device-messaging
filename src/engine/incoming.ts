@@ -18,7 +18,7 @@ import type {
 } from '../lib/device-message/types.js';
 import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
-import { emitDeliveryEvent, type BaseService } from './base.js';
+import type { BaseService } from './base.js';
 
 /**
  * Incoming operations used by HTTP (and later by the poll loop).
@@ -74,7 +74,14 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     // Device-initiated uplink with no matching outbound command.
     if (unsolicited) {
-      emitDeliveryEvent({ commandType, deliveryStatus, device, response, unsolicited: true });
+      baseService.emitDeliveryEvent({
+        pluginId: plugin.id,
+        commandType,
+        deliveryStatus,
+        device,
+        response,
+        unsolicited: true,
+      });
       return;
     }
 
@@ -136,7 +143,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
         : [ historyEntry ];
     }
 
-    emitDeliveryEvent(updatedMessage);
+    baseService.emitDeliveryEvent(updatedMessage);
   }
 
   /**
