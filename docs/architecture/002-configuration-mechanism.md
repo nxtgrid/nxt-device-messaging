@@ -21,8 +21,8 @@
 > `queue_in_flight_to_relay_node` (was `…_to_gw`). Shared `delivery` is retry/TTL only.
 >
 > **Amendment (2026-08-10):** Config key rename `resultWebhook` → **`eventWebhook`**
-> (outbound delivery **events**, not terminal-only). Retry/DLQ tuning under that object —
-> see ADR-003 §6.
+> (outbound delivery **events**, not terminal-only). Retry/DLQ tuning under that object
+> (defaults locked session 32; schema fields session 33) — see ADR-003 §6.
 
 ---
 
@@ -99,7 +99,14 @@ therefore safe to inline in an environment variable, serve from object storage, 
     "retryMaxDelayMs": 3600000,
     "messageTtlSeconds": 604800
   },
-  "eventWebhook": { "url": "https://consumer.example/hooks/device-messages" },
+  "eventWebhook": {
+    "url": "https://consumer.example/hooks/device-messages",
+    "maxAttempts": 6,
+    "baseDelayMs": 2000,
+    "backoffMultiplier": 2,
+    "maxDelayMs": 60000,
+    "deadLetterTtlSeconds": 604800
+  },
   "plugins": [
     { "id": "calin-chirpstack",
       "settings": { "chirpstackUrl": "…", "applicationId": "…", "profileId": "…" },

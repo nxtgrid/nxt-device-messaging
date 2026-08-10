@@ -11,7 +11,12 @@
     "messageTtlSeconds": 604800
   },
   "eventWebhook": {
-    "url": "https://consumer.example/hooks/device-messages"
+    "url": "https://consumer.example/hooks/device-messages",
+    "maxAttempts": 6,
+    "baseDelayMs": 2000,
+    "backoffMultiplier": 2,
+    "maxDelayMs": 60000,
+    "deadLetterTtlSeconds": 604800
   },
   "plugins": [
     {

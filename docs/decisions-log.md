@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; Phase 3.1A webhook shape locked — session 32; HMAC later)*     | —          |
+| —   | *(none blocking; Phase 3.1A–B done — session 33; next 3.1C; HMAC later)*        | —          |
 
 
 
@@ -49,7 +49,7 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** underway: event webhook (3.1A locked; next 3.1B), then OpenAPI /
+**done**. **Phase 3** underway: event webhook (3.1A–B done; next 3.1C), then OpenAPI /
 auth. HMAC is a later chunk (H1), not in the first delivery slices.
 Also outstanding on `nxt-backend`:
 
@@ -1409,3 +1409,24 @@ schema + `config.example.json` key rename; README.
 
 **Next:** **3.1B** — `eventWebhook` tuning fields with defaults + Redis `webhook:*` helpers /
 payload store (no HTTP POST yet).
+
+### 2026-08-10 — session 33: Phase 3.1B — eventWebhook tuning + Redis store
+
+**Landed:**
+
+- Config: `eventWebhook` knobs with Zod defaults (`maxAttempts` 6, `baseDelayMs` 2000,
+  ×2, `maxDelayMs` 60s, `deadLetterTtlSeconds` 7d); `EventWebhookConfig` export;
+  `config.example.json` + ADR-002 example updated
+- `src/engine/webhook/`:
+  - `keys.ts` — `webhook:pending` / `payload:{id}` / `dlq:{id}`
+  - `types.ts` — `WebhookEvent` + `WebhookStoredRecord` (`event` field; renamed from
+    Envelope in review)
+  - `backoff.ts` — exponential delay, **no jitter** (predictable ~62s window)
+  - `store.ts` — `createWebhookStore({ client })`: enqueue / listDue / get /
+    reschedule / complete / deadLetter (MULTI/EXEC); no HTTP
+- Unit tests: keys, backoff ladder, parse record, config defaults
+
+**Still stub:** `emitDeliveryEvent` console log; no `createWebhookService` / timer / POST.
+
+**Next:** **3.1C** — `createWebhookService` (build envelope, enqueue, drain + POST +
+retry/DLQ, timer + kick). Wire onto `baseService` in **3.1D**.

@@ -111,4 +111,21 @@ describe('loadConfig', () => {
     expect(config.delivery.retryMaxDelayMs).toBe(3_600_000);
     expect(config.delivery.messageTtlSeconds).toBe(604_800);
   });
+
+  it('applies eventWebhook tuning defaults when only url is set', async () => {
+    process.env.DEVICE_MESSAGING_CONFIG_JSON = JSON.stringify({
+      $schemaVersion: '1',
+      eventWebhook: { url: 'https://consumer.example/hooks/device-messages' },
+      plugins: [],
+    });
+
+    const config = await loadConfig({ defaultConfigPath: FROM_DEFAULT_FIXTURE });
+
+    expect(config.eventWebhook?.url).toBe('https://consumer.example/hooks/device-messages');
+    expect(config.eventWebhook?.maxAttempts).toBe(6);
+    expect(config.eventWebhook?.baseDelayMs).toBe(2000);
+    expect(config.eventWebhook?.backoffMultiplier).toBe(2);
+    expect(config.eventWebhook?.maxDelayMs).toBe(60_000);
+    expect(config.eventWebhook?.deadLetterTtlSeconds).toBe(604_800);
+  });
 });

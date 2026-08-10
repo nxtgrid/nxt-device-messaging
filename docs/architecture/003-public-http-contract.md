@@ -186,10 +186,10 @@ consumers that ignore unknown statuses:
 Mid-pipeline relay-node ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events
 today and do not in v1.
 
-#### Payload envelope
+#### Payload (`WebhookEvent`)
 
 HTTP body **wraps** a trimmed message (legacy `publish()` sent a bare partial
-`DeviceMessage` in-process). Consumer reads `body.message.*`.
+`DeviceMessage` in-process). Type name: `WebhookEvent`. Consumer reads `body.message.*`.
 
 ```ts
 {
@@ -227,7 +227,7 @@ internals (`deliveryQueueId`, `retryCount`, priority, `requestData`,
 | Key | Type | Role |
 |---|---|---|
 | `webhook:pending` | sorted set | members = `eventId`, score = `nextAttemptAt` (ms) |
-| `webhook:payload:{eventId}` | string (JSON) | envelope + attempt metadata |
+| `webhook:payload:{eventId}` | string (JSON) | `WebhookStoredRecord` (`event` + attempt metadata) |
 | `webhook:dlq:{eventId}` | string (JSON) | exhausted payload; TTL = `deadLetterTtlSeconds` |
 
 #### Schedule

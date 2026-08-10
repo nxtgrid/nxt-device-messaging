@@ -14,9 +14,18 @@ const engineSchema = z.object({
   enabled: z.boolean().default(true),
 }).strict();
 
-/** Outbound delivery-event webhook (ADR-003 §6). Tuning knobs land in Phase 3.1B. */
+/**
+ * Outbound delivery-event webhook (ADR-003 §6).
+ * Present ⇒ notify adopter; absent ⇒ no outbound callbacks.
+ * Tuning defaults: 6 attempts, ~62s first→last, 7d DLQ TTL.
+ */
 const eventWebhookSchema = z.object({
   url: z.url(),
+  maxAttempts: z.number().int().positive().default(6),
+  baseDelayMs: z.number().int().positive().default(2000),
+  backoffMultiplier: z.number().positive().default(2),
+  maxDelayMs: z.number().int().positive().default(60_000),
+  deadLetterTtlSeconds: z.number().int().positive().default(604_800),
 }).strict();
 
 /**
@@ -48,3 +57,6 @@ export type DeviceMessagingConfig = z.infer<typeof deviceMessagingConfigSchema>;
 
 /** Shared delivery-engine knobs (`config.delivery`) — retry / TTL only after D5. */
 export type DeliveryConfig = DeviceMessagingConfig['delivery'];
+
+/** Outbound event-webhook knobs when `eventWebhook` is configured. */
+export type EventWebhookConfig = NonNullable<DeviceMessagingConfig['eventWebhook']>;
