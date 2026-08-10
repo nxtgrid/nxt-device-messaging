@@ -232,9 +232,10 @@ internals (`deliveryQueueId`, `retryCount`, priority, `requestData`,
 
 #### Schedule
 
-Always enqueue to Redis first (durability). Then fire-and-forget the same `drainDue`
-function the webhook timer uses (happy path: no intentional timer-tick delay). Timer
-remains the safety net for retries and backlog. Device engine never awaits HTTP.
+Always enqueue to Redis first (durability). Then fire-and-forget the same private
+drain the webhook timer uses (`storeAndEmit` kick; happy path: no intentional
+timer-tick delay). Timer remains the safety net for retries and backlog. Device
+engine never awaits HTTP. Drain is not a public API surface.
 
 #### Retry / DLQ defaults (`eventWebhook` tuning)
 

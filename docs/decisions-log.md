@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; Phase 3.1A–B done — session 33; next 3.1C; HMAC later)*        | —          |
+| —   | *(none blocking; Phase 3.1A–C done — session 34; next 3.1D; HMAC later)*        | —          |
 
 
 
@@ -49,7 +49,7 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** underway: event webhook (3.1A–B done; next 3.1C), then OpenAPI /
+**done**. **Phase 3** underway: event webhook (3.1A–C done; next 3.1D wire), then OpenAPI /
 auth. HMAC is a later chunk (H1), not in the first delivery slices.
 Also outstanding on `nxt-backend`:
 
@@ -1398,7 +1398,7 @@ HTTP 204 + null `handle` behavior stays.
 | Envelope | ADR-003 wrap: `eventId` / `occurredAt` / `pluginId` / trimmed `message` |
 | Ids | `message.id` ≠ `correlationId` ≠ `eventId` (notification; reused on HTTP retries) |
 | Redis | `webhook:pending` (ZSET) / `webhook:payload:{eventId}` / `webhook:dlq:{eventId}` (TTL) |
-| Schedule | Always enqueue Redis first; fire-and-forget same `drainDue` as timer (kick); timer = safety net |
+| Schedule | Always enqueue Redis first; fire-and-forget same private drain as timer (`storeAndEmit` kick); timer = safety net |
 | Retry | `maxAttempts: 6`, `baseDelayMs: 2000`, ×2, `maxDelayMs: 60000` (~62s first→last); retry 5xx/429/408/network; no retry other 4xx |
 | DLQ | `deadLetterTtlSeconds: 604800` (7d); same Redis DB |
 | HMAC | **Deferred (H1)** — unsigned delivery first; opt-in HMAC as separate later chunk |
@@ -1428,5 +1428,30 @@ payload store (no HTTP POST yet).
 
 **Still stub:** `emitDeliveryEvent` console log; no `createWebhookService` / timer / POST.
 
-**Next:** **3.1C** — `createWebhookService` (build envelope, enqueue, drain + POST +
+**Next:** **3.1C** — `createWebhookService` (build event, enqueue, drain + POST +
 retry/DLQ, timer + kick). Wire onto `baseService` in **3.1D**.
+
+### 2026-08-10 — session 34: Phase 3.1C — `createWebhookService`
+
+**Landed:**
+
+- `build-event.ts` — trim partial `DeviceMessage` → `WebhookEvent` (requires
+  `pluginId` / `deliveryStatus` / `device`; strips `concurrencyRateLimitKey`)
+- `service.ts` — `createWebhookService({ config, store })`:
+  - `storeAndEmit` → enqueue at now → kick private drain (never throws to engine)
+  - private drain — serialized in-process; claim lease via reschedule; POST JSON
+  - retry: network / 408 / 429 / 5xx → backoff; other 4xx → DLQ; exhaust → DLQ
+  - `startTimers` (default 1s); drain not on the public interface
+- Unit tests: build-event, retryable statuses, happy path, backoff, 4xx DLQ,
+  exhaust, timer drain
+
+**Review polish (same session):** dropped `fetchImpl` / `now` injection (tests use
+`vi.stubGlobal('fetch')` + fake timers); renamed `emit` → `storeAndEmit`; un-exported
+`drainDue` (timer + kick only).
+
+**Not in this chunk:** `baseService.emitDeliveryEvent` still console stub; `main.ts`
+does not construct the webhook service; unsolicited emit still omits `pluginId`
+(fix when wiring in 3.1D).
+
+**Next:** **3.1D** — inject webhook into `createBaseService` / fold emit; compose in
+`main` when `config.eventWebhook` set; fix unsolicited `pluginId`; smoke.

@@ -40,9 +40,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 **Phase 0 complete. Phase 1 foundation through Unit 6 (SPI polish + D5/D6). Phase 1b
 Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–10 (`calin-api-v1`, `nxt-sts`,
-`calin-api-v2`, `calin-chirpstack`) complete. Phase 3 underway: **3.1A–B** done
-(`eventWebhook` tuning + `src/engine/webhook/` Redis store); next **3.1C**
-`createWebhookService`. HMAC later.**
+`calin-api-v2`, `calin-chirpstack`) complete. Phase 3 underway: **3.1A–C** done
+(`createWebhookService`); next **3.1D** wire emit + composition root. HMAC later.**
 
 Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -65,10 +64,10 @@ PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `
 `src/http/` (lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac),
 `src/engine/` peer factories — `createBaseService` / `createOutgoingService` /
 `createIncomingService` / `createTokenService` + `startEngineTimers` (`engine.enabled`).
-Outbound adopter notify → `src/engine/webhook/` (keys / types / backoff / store;
-`createWebhookService` in 3.1C; emit stub until 3.1D). Errors from `engine/errors.ts`.
-Composition root in `main.ts`. **Units 5–10 complete.** Config: `eventWebhook`
-(url + retry/DLQ tuning).
+Outbound adopter notify → `src/engine/webhook/` (`createWebhookService`:
+`storeAndEmit` / private drain / POST / retry / DLQ / timers; base emit stub until
+3.1D). Errors from `engine/errors.ts`. Composition root in `main.ts`. **Units 5–10
+complete.** Config: `eventWebhook` (url + retry/DLQ tuning).
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)
