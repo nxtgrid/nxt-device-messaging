@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking Phase 3; Phase 2 Units 7–10 done — session 29)*                 | —          |
+| —   | *(none blocking; Phase 3.1A webhook shape locked — session 32; HMAC later)*     | —          |
 
 
 
@@ -49,7 +49,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. Next is **Phase 3** (ADR-003 polish: webhook HMAC/DLQ, OpenAPI, auth).
+**done**. **Phase 3** underway: event webhook (3.1A locked; next 3.1B), then OpenAPI /
+auth. HMAC is a later chunk (H1), not in the first delivery slices.
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1382,3 +1383,29 @@ no `/metrics` / `prom-client` surface yet (ADR-005 Phase 4). Revisit with Phase 
 HTTP 204 + null `handle` behavior stays.
 
 **Next:** Phase 3 when prompted / remaining review nits if any.
+
+### 2026-08-10 — session 32: Phase 3.1A — event webhook shape locked
+
+**Docs + config-key rename only** (no delivery implementation).
+
+**Locked:**
+
+| Topic | Decision |
+|---|---|
+| Config key | **`eventWebhook`** (rename from `resultWebhook` — events, not terminal-only) |
+| Module | `src/engine/webhook/` |
+| Seam | `baseService.emitDeliveryEvent` → thin forward into `createWebhookService` |
+| Envelope | ADR-003 wrap: `eventId` / `occurredAt` / `pluginId` / trimmed `message` |
+| Ids | `message.id` ≠ `correlationId` ≠ `eventId` (notification; reused on HTTP retries) |
+| Redis | `webhook:pending` (ZSET) / `webhook:payload:{eventId}` / `webhook:dlq:{eventId}` (TTL) |
+| Schedule | Always enqueue Redis first; fire-and-forget same `drainDue` as timer (kick); timer = safety net |
+| Retry | `maxAttempts: 6`, `baseDelayMs: 2000`, ×2, `maxDelayMs: 60000` (~62s first→last); retry 5xx/429/408/network; no retry other 4xx |
+| DLQ | `deadLetterTtlSeconds: 604800` (7d); same Redis DB |
+| HMAC | **Deferred (H1)** — unsigned delivery first; opt-in HMAC as separate later chunk |
+| Security floor until HMAC | VPC + inbound API key; unsigned outbound POSTs |
+
+**Landed:** ADR-002/003 amendments; plan Phase 3 slices 3.1A–E / 3.2 / 3.3; AGENTS;
+schema + `config.example.json` key rename; README.
+
+**Next:** **3.1B** — `eventWebhook` tuning fields with defaults + Redis `webhook:*` helpers /
+payload store (no HTTP POST yet).

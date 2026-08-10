@@ -14,7 +14,8 @@ const engineSchema = z.object({
   enabled: z.boolean().default(true),
 }).strict();
 
-const resultWebhookSchema = z.object({
+/** Outbound delivery-event webhook (ADR-003 §6). Tuning knobs land in Phase 3.1B. */
+const eventWebhookSchema = z.object({
   url: z.url(),
 }).strict();
 
@@ -39,7 +40,7 @@ export const deviceMessagingConfigSchema = z.object({
     retryMaxDelayMs: 3600000,
     messageTtlSeconds: 604800,
   }),
-  resultWebhook: resultWebhookSchema.optional(),
+  eventWebhook: eventWebhookSchema.optional(),
   plugins: z.array(pluginEntrySchema).default([]),
 }).strict();
 

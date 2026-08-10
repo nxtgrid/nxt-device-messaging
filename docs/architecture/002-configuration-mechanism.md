@@ -19,6 +19,10 @@
 > `nsInFlightTimeoutMs`, `relayNodeInFlightTimeoutMs`, `deviceInFlightTimeoutMs`,
 > `initialPollDelayMs` on `plugin.tuning`. PUSH mid-stage Redis key →
 > `queue_in_flight_to_relay_node` (was `…_to_gw`). Shared `delivery` is retry/TTL only.
+>
+> **Amendment (2026-08-10):** Config key rename `resultWebhook` → **`eventWebhook`**
+> (outbound delivery **events**, not terminal-only). Retry/DLQ tuning under that object —
+> see ADR-003 §6.
 
 ---
 
@@ -95,7 +99,7 @@ therefore safe to inline in an environment variable, serve from object storage, 
     "retryMaxDelayMs": 3600000,
     "messageTtlSeconds": 604800
   },
-  "resultWebhook": { "url": "https://consumer.example/hooks/device-messages" },
+  "eventWebhook": { "url": "https://consumer.example/hooks/device-messages" },
   "plugins": [
     { "id": "calin-chirpstack",
       "settings": { "chirpstackUrl": "…", "applicationId": "…", "profileId": "…" },
@@ -118,7 +122,7 @@ used shorter `CALIN_V1_*` / `CALIN_V2_*` prefixes). Each plugin **declares the e
 keys it needs, co-located with the plugin**, and validates them at its own registration
 point — `nxt-backend` ADR-007 decision 9's two-layer model, unchanged.
 
-The result-webhook signing secret and the inbound API key are secrets and therefore env-supplied,
+The event-webhook signing secret and the inbound API key are secrets and therefore env-supplied,
 while the webhook *URL* is topology and lives in the artifact.
 
 ### 3. Plugins contribute their own Zod schemas, composed into the root schema
@@ -261,7 +265,7 @@ instance name and has no meaning to an adopter.
 ## Related
 
 - **ADR-001** — Fastify + Zod, no DI container; why a frozen global is the right primitive.
-- **ADR-003** — public HTTP contract; plugin ids (`calin-chirpstack`, …) and `resultWebhook` usage.
+- **ADR-003** — public HTTP contract; plugin ids (`calin-chirpstack`, …) and `eventWebhook` usage.
 - **`nxt-backend` ADR-007** — the mechanism this adapts; decision 6 anticipated this extraction.
 - **`nxt-backend` ADR-001** — PUSH/PULL divergence; the per-adapter tuning this implements.
 - **`nxt-backend` ADR-010** — the extraction decision; its plugin contract carries the tuning.

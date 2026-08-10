@@ -10,7 +10,7 @@
     "retryMaxDelayMs": 3600000,
     "messageTtlSeconds": 604800
   },
-  "resultWebhook": {
+  "eventWebhook": {
     "url": "https://consumer.example/hooks/device-messages"
   },
   "plugins": [

@@ -26,7 +26,7 @@ import type { PluginRegistry } from '../plugins/registry.js';
 /**
  * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
  *
- * Stub until Phase 3 lands the outbound webhook (ADR-003 §6 / `resultWebhook.url`).
+ * Stub until Phase 3 lands the outbound webhook (ADR-003 §6 / `eventWebhook.url`).
  * Engine call sites must use this seam — do not reintroduce in-process subscribers.
  *
  * @param message - The message (or partial) to broadcast
