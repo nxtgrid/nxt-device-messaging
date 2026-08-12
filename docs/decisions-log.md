@@ -1484,3 +1484,39 @@ does not construct the webhook service; unsolicited emit still omits `pluginId`
 
 **Phase 3.1 (event webhook) closed.** Next: **3.2** OpenAPI or **3.3** auth polish
 (or PR for the 3.1 slice).
+
+### 2026-08-12 — review: await webhook Redis enqueue before source cleanup
+
+PR review caught fire-and-forget `store.enqueue` — engine could drop the device
+message before the webhook event was durable.
+
+**Landed (lean):**
+
+- `storeAndEmit` / `emitDeliveryEvent` are `async`; **await Redis enqueue** only;
+  HTTP drain remains fire-and-forget (ADR-003)
+- Terminal paths reorder: await emit → then `messageFullCleanup` (incoming success,
+  `retryOrFail` final, PULL age timeouts)
+- `getPullTimeouts` no longer cleans up; caller emits then cleans
+- First `SENT_TO_NS` and unsolicited await enqueue
+
+HTTP delivery success remains independent of device-message outcome.
+
+### 2026-08-12 — review: webhook POST timeout + body release
+
+PR review: hung acceptor could stall the serialized drain and hold the claim lease;
+unread response bodies could pin Undici connections.
+
+**Landed:**
+
+- `eventWebhook.requestTimeoutMs` (default `10000`) → `AbortSignal.timeout` on POST
+- Cancel response body on every response path (success / 4xx / 5xx)
+- Abort / network errors stay on the existing retry path
+- ADR-003 / ADR-002 example / config.example.json + unit coverage
+
+### 2026-08-12 — lean graceful shutdown (SIGTERM/SIGINT)
+
+No process shutdown path existed; timer `{ stop }` handles were discarded.
+
+**Landed in `main.ts`:** retain engine + webhook timer stops; on `SIGTERM`/`SIGINT`
+stop timers → `app.close()` → `redisRepo.client.quit()` → exit. Idempotent guard;
+does **not** await in-flight resolution/drain ticks (v1 / single-replica).

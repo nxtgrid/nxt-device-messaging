@@ -236,7 +236,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    * One lifecycle tick:
    * 1. NS queue timeouts → retryOrFail
    * 2. PUSH GW/Device timeouts (GW may extend via remote status) → retryOrFail
-   * 3. PULL age timeouts → emitDeliveryEvent (already cleaned up)
+   * 3. PULL age timeouts → emitDeliveryEvent then cleanup
    * 4. Retry queue → requeue ready messages
    * 5. Distribute (fire-and-forget)
    */
@@ -269,11 +269,12 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       await baseService.retryOrFail(messageId, queueKey, { reason });
     }
 
-    // 3. PULL: age-based permanent failure (cleanup already done inside getPullTimeouts)
+    // 3. PULL: age-based permanent failure — durable webhook first, then cleanup
     const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
     const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
     for (const { message } of pullTimeouts) {
-      baseService.emitDeliveryEvent(message);
+      await baseService.emitDeliveryEvent(message);
+      await redisRepo.messageFullCleanup(message);
     }
 
     // 4. Requeue messages whose backoff has elapsed
@@ -314,9 +315,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       await _onClaimAfterPick(plugin, queueKey, messageToSend.id);
 
       // If not a retry, notify the adopter that the message is getting handled.
-      // (The message status is already 'SENT_TO_NS'.)
+      // (The message status is already 'SENT_TO_NS'.) Await Redis enqueue only.
       if (!messageToSend.retryCount) {
-        baseService.emitDeliveryEvent(messageToSend);
+        await baseService.emitDeliveryEvent(messageToSend);
       }
 
       // Fire-and-forget: distribute considers the handoff done once picked.

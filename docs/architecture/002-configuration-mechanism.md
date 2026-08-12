@@ -105,6 +105,7 @@ therefore safe to inline in an environment variable, serve from object storage, 
     "baseDelayMs": 2000,
     "backoffMultiplier": 2,
     "maxDelayMs": 60000,
+    "requestTimeoutMs": 10000,
     "deadLetterTtlSeconds": 604800
   },
   "plugins": [

@@ -33,9 +33,10 @@ export type BaseService = {
   requeueMessage(messageId: string): Promise<void>;
   /**
    * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
-   * Forwards to `webhook.storeAndEmit` when a webhook is wired; otherwise no-op.
+   * Awaits Redis persistence of the webhook event when a webhook is wired; otherwise no-op.
+   * Does not await HTTP delivery. Callers must await this before cleaning up the source message.
    */
-  emitDeliveryEvent(message: Partial<DeviceMessage>): void;
+  emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void>;
 };
 
 /** Dependencies for {@link createBaseService}. */
@@ -56,8 +57,9 @@ export type CreateBaseServiceOptions = {
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { registry, delivery, webhook } = options;
 
-  function emitDeliveryEvent(message: Partial<DeviceMessage>): void {
-    webhook?.storeAndEmit(message);
+  async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
+    if (!webhook) return;
+    await webhook.storeAndEmit(message);
   }
 
   /**
@@ -100,12 +102,13 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     ];
 
     if (isFinalFailure) {
-      await redisRepo.messageFullCleanup(message);
-      emitDeliveryEvent({
+      // Persist webhook before dropping the device-message hash (durable notify).
+      await emitDeliveryEvent({
         ...message,
         failureHistory: newFailureHistory,
         deliveryStatus: 'DELIVERY_FAILED',
       });
+      await redisRepo.messageFullCleanup(message);
       return;
     }
 

@@ -34,7 +34,7 @@ export type PollResult = {
 
 /** Result of a PULL pattern timeout: a failed message ready to publish. */
 export type PullTimeoutResult = {
-  message: Partial<DeviceMessage>;
+  message: DeviceMessage;
 };
 
 /**
@@ -97,14 +97,14 @@ export async function pollAwaitingTasksFor(
 
 /**
  * Find PULL pattern messages that have exceeded their max age.
- * Cleans up timed-out messages and returns them for publishing.
  *
- * Caller supplies which PULL `pluginId`s to scan (Unit 5/6 get them from the registry).
- * Core does not hardcode which plugins are PULL.
+ * Does **not** clean up Redis — returns failed message shapes still present in the
+ * awaiting-task queue / hash. Caller must `emitDeliveryEvent` (await durable webhook
+ * enqueue) then `messageFullCleanup`.
  *
  * @param now - Current timestamp
  * @param pluginIds - PULL plugin ids whose awaiting-task queues to scan
- * @returns Array of failed messages ready to publish (already cleaned up in Redis)
+ * @returns Array of failed messages ready to publish (still in Redis)
  */
 export async function getPullTimeouts(
   now: number,
@@ -127,8 +127,7 @@ export async function getPullTimeouts(
       const message = await redisRepo.getMessageById(messageId);
       if (!message) continue;
 
-      // Permanent failure - no retry for PULL pattern timeouts
-      await redisRepo.messageFullCleanup(message);
+      // Permanent failure - no retry for PULL pattern timeouts (cleanup is caller's job).
       results.push({
         message: {
           ...message,

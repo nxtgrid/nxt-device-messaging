@@ -1,7 +1,7 @@
 /**
  * @fileoverview Outbound event-webhook messenger (ADR-003 §6).
  *
- * Always enqueues to Redis, then kicks the same private drain the timer uses.
+ * Always **awaits** Redis enqueue, then kicks the same private drain the timer uses.
  * Device engine never awaits HTTP. Opt-in HMAC when `signingSecret` is set.
  */
 
@@ -26,10 +26,11 @@ const CLAIM_LEASE_MS = 60_000;
 
 export type WebhookService = {
   /**
-   * Build event, store in Redis, fire-and-forget drain (same path as the timer).
-   * Drops (warn) when required fields are missing — never throws to the engine.
+   * Build event, **await** Redis enqueue (durability), then kick drain (HTTP stays
+   * fire-and-forget). Drops (warn, resolves) when required fields are missing.
+   * Rejects if Redis persistence fails — callers must not clean up the source message yet.
    */
-  storeAndEmit(message: Partial<DeviceMessage>): void;
+  storeAndEmit(message: Partial<DeviceMessage>): Promise<void>;
   /** Start the drain interval; `{ stop }` for tests / shutdown. */
   startTimers(options?: { readonly intervalMs?: number }): { stop(): void };
 };
@@ -54,6 +55,20 @@ export function isRetryableWebhookStatus(status: number): boolean {
 }
 
 /**
+ * Cancel an unused response body so Undici can release the connection.
+ *
+ * @param response - Fetch response whose body we do not read
+ */
+async function releaseResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  }
+  catch {
+    // Already consumed or closed.
+  }
+}
+
+/**
  * Factory for the outbound webhook messenger.
  *
  * @param options - Config, Redis store, optional signing secret
@@ -67,7 +82,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
   /** Serialize overlapping drain kicks (timer + storeAndEmit) in-process. */
   let drainChain: Promise<void> = Promise.resolve();
 
-  function storeAndEmit(message: Partial<DeviceMessage>): void {
+  async function storeAndEmit(message: Partial<DeviceMessage>): Promise<void> {
     const built = buildWebhookEvent(message);
     if (!built.ok) {
       console.warn(`[webhook] drop storeAndEmit: ${ built.reason }`);
@@ -79,11 +94,9 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
       attemptCount: 0,
     };
 
-    void store.enqueue(record, Date.now())
-      .then(() => _drainDue())
-      .catch(err => {
-        console.error('[webhook] enqueue/kick failed', err);
-      });
+    // Await durability only — HTTP delivery is kicked, not awaited (ADR-003 §6).
+    await store.enqueue(record, Date.now());
+    void _drainDue();
   }
 
   function _drainDue(): Promise<void> {
@@ -115,12 +128,12 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
     const rawBody = JSON.stringify(record.event);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
+      [WEBHOOK_EVENT_ID_HEADER]: record.event.eventId,
     };
     if (secret !== undefined) {
       headers[WEBHOOK_SIGNATURE_HEADER] = formatWebhookSignatureHeader(
         signWebhookBody(secret, rawBody),
       );
-      headers[WEBHOOK_EVENT_ID_HEADER] = record.event.eventId;
     }
 
     let response: Response;
@@ -129,12 +142,15 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
         method: 'POST',
         headers,
         body: rawBody,
+        signal: AbortSignal.timeout(config.requestTimeoutMs),
       });
     }
     catch (err) {
       await _onFailure(record, err instanceof Error ? err.message : String(err));
       return;
     }
+
+    await releaseResponseBody(response);
 
     if (response.ok) {
       await store.complete(eventId);

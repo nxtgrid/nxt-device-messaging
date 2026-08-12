@@ -7,6 +7,9 @@
 > aligned with sibling OSS service `nxt-sts`, adapted for a Node service that needs Valkey.
 > `nxt-backend` ADR-006's Dockerfile/CI recipe does **not** transfer (Nx prune, webpack) —
 > re-derived here for a plain Fastify app.
+>
+> **Amendment (2026-08-12):** Lean process shutdown on `SIGTERM`/`SIGINT` — stop engine +
+> webhook timers, `app.close()`, Redis `quit()`. Does not await in-flight ticks (v1).
 
 ---
 

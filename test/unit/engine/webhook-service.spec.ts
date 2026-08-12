@@ -19,6 +19,7 @@ const CONFIG = {
   baseDelayMs: 2000,
   backoffMultiplier: 2,
   maxDelayMs: 60_000,
+  requestTimeoutMs: 10_000,
   deadLetterTtlSeconds: 604_800,
 } as const;
 
@@ -114,7 +115,11 @@ describe('isRetryableWebhookStatus', () => {
 });
 
 describe('createWebhookService', () => {
+  let activeTimers: { stop(): void } | undefined;
+
   afterEach(() => {
+    activeTimers?.stop();
+    activeTimers = undefined;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -128,7 +133,7 @@ describe('createWebhookService', () => {
 
     const service = createWebhookService({ config: CONFIG, store });
 
-    service.storeAndEmit({
+    await service.storeAndEmit({
       pluginId: 'stub-push',
       deliveryStatus: 'DELIVERY_SUCCESSFUL',
       device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
@@ -141,7 +146,11 @@ describe('createWebhookService', () => {
       CONFIG.url,
       expect.objectContaining({
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+          [WEBHOOK_EVENT_ID_HEADER]: expect.any(String),
+        }),
+        signal: expect.any(AbortSignal),
       }),
     );
     const firstCall = fetchMock.mock.calls[0] as unknown as [
@@ -153,6 +162,7 @@ describe('createWebhookService', () => {
       message: { correlationId?: string };
     };
     expect(body.message.correlationId).toBe('corr-1');
+    expect(firstCall[1]?.headers?.[WEBHOOK_EVENT_ID_HEADER]).toBe(body.eventId);
     expect(firstCall[1]?.headers?.[WEBHOOK_SIGNATURE_HEADER]).toBeUndefined();
     expect(store.payloads.size).toBe(0);
     expect(store.pending.size).toBe(0);
@@ -172,7 +182,7 @@ describe('createWebhookService', () => {
       signingSecret,
     });
 
-    service.storeAndEmit({
+    await service.storeAndEmit({
       pluginId: 'stub-push',
       deliveryStatus: 'SENT_TO_NS',
       device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
@@ -206,12 +216,11 @@ describe('createWebhookService', () => {
       config: { ...CONFIG, maxAttempts: 6 },
       store,
     });
-    const timers = await tickDrain(service, fetchMock);
+    activeTimers = await tickDrain(service, fetchMock);
 
     expect(store.dlq.get('01EVENT')?.attemptCount).toBe(6);
     expect(store.dlq.get('01EVENT')?.lastError).toBe('HTTP 503');
     expect(store.pending.size).toBe(0);
-    timers.stop();
   });
 
   it('dead-letters non-retryable 4xx without further attempts', async () => {
@@ -222,12 +231,11 @@ describe('createWebhookService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const service = createWebhookService({ config: CONFIG, store });
-    const timers = await tickDrain(service, fetchMock);
+    activeTimers = await tickDrain(service, fetchMock);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(store.dlq.get('01EVENT')?.lastError).toBe('HTTP 400');
     expect(store.pending.size).toBe(0);
-    timers.stop();
   });
 
   it('reschedules with backoff after a retryable failure', async () => {
@@ -239,13 +247,50 @@ describe('createWebhookService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const service = createWebhookService({ config: CONFIG, store });
-    const timers = await tickDrain(service, fetchMock);
+    activeTimers = await tickDrain(service, fetchMock);
 
     expect(store.dlq.size).toBe(0);
     expect(store.payloads.get('01EVENT')?.attemptCount).toBe(1);
     // Timer tick advances fake `Date.now` by the drain interval before backoff is applied.
     expect(store.pending.get('01EVENT')).toBe(nowMs + WEBHOOK_DRAIN_INTERVAL_MS + 2000);
-    timers.stop();
+  });
+
+  it('reschedules when the request aborts (timeout / network)', async () => {
+    vi.useFakeTimers();
+    const nowMs = 50_000;
+    vi.setSystemTime(nowMs);
+    const store = createMemoryStore([ sampleRecord({ attemptCount: 0 }) ]);
+    const fetchMock = vi.fn(async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createWebhookService({ config: CONFIG, store });
+    activeTimers = await tickDrain(service, fetchMock);
+
+    expect(store.dlq.size).toBe(0);
+    expect(store.payloads.get('01EVENT')?.attemptCount).toBe(1);
+    expect(store.payloads.get('01EVENT')?.lastError).toMatch(/aborted|timeout/i);
+    expect(store.pending.get('01EVENT')).toBe(nowMs + WEBHOOK_DRAIN_INTERVAL_MS + 2000);
+  });
+
+  it('cancels the response body after each POST', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = createMemoryStore([ sampleRecord() ]);
+    const cancel = vi.fn(async () => undefined);
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 204,
+      body: { cancel },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = createWebhookService({ config: CONFIG, store });
+    activeTimers = await tickDrain(service, fetchMock);
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(store.payloads.size).toBe(0);
   });
 
   it('startTimers drains due items on the interval', async () => {
@@ -256,13 +301,11 @@ describe('createWebhookService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const service = createWebhookService({ config: CONFIG, store });
-    const timers = service.startTimers({ intervalMs: WEBHOOK_DRAIN_INTERVAL_MS });
+    activeTimers = service.startTimers({ intervalMs: WEBHOOK_DRAIN_INTERVAL_MS });
     expect(fetchMock).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(WEBHOOK_DRAIN_INTERVAL_MS);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(store.payloads.size).toBe(0);
-
-    timers.stop();
   });
 });

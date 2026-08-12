@@ -168,7 +168,8 @@ no-op) — silence is intentional; do not invent a 4xx that would make ChirpStac
 
 Config key: **`eventWebhook`** (renamed from `resultWebhook` — these are delivery
 **events**, not terminal-only results). URL in the artifact (`eventWebhook.url`,
-ADR-002); signing secret in env (`DEVICE_MESSAGING_WEBHOOK_SECRET`) when HMAC lands.
+ADR-002); signing secret in env (`DEVICE_MESSAGING_WEBHOOK_SECRET`) when set
+(opt-in HMAC; unset → unsigned).
 
 Module: `src/engine/webhook/`. Seam: `baseService.emitDeliveryEvent` thin-forwards into
 `createWebhookService` (peer factory). Engine call sites do not touch Redis webhook keys.
@@ -232,10 +233,11 @@ internals (`deliveryQueueId`, `retryCount`, priority, `requestData`,
 
 #### Schedule
 
-Always enqueue to Redis first (durability). Then fire-and-forget the same private
-drain the webhook timer uses (`storeAndEmit` kick; happy path: no intentional
-timer-tick delay). Timer remains the safety net for retries and backlog. Device
-engine never awaits HTTP. Drain is not a public API surface.
+Always **await Redis enqueue** first (durability) before the engine drops the source
+device-message. Then fire-and-forget the same private drain the webhook timer uses
+(`storeAndEmit` kick; happy path: no intentional timer-tick delay). Timer remains the
+safety net for HTTP retries and backlog. Device engine never awaits HTTP delivery.
+Drain is not a public API surface.
 
 #### Retry / DLQ defaults (`eventWebhook` tuning)
 
@@ -245,20 +247,23 @@ engine never awaits HTTP. Drain is not a public API surface.
 | `baseDelayMs` | `2000` | |
 | `backoffMultiplier` | `2` | Gaps: 2+4+8+16+32 ≈ **62s** first→last |
 | `maxDelayMs` | `60000` | |
+| `requestTimeoutMs` | `10000` | Per-POST `AbortSignal`; under claim lease (60s) |
 | `deadLetterTtlSeconds` | `604800` | 7 days |
 
-- **2xx** = success. Retry on network errors, **5xx**, **429**, **408**. Do not retry
-  other **4xx**.
+- **2xx** = success. Retry on network errors / abort timeout, **5xx**, **429**, **408**.
+  Do not retry other **4xx**. Response bodies are cancelled (not read) so connections
+  return to the pool.
 - Retries reuse the same `eventId`.
 - After exhaustion: log (`correlationId` + `eventId`) and retain in DLQ with TTL.
 - Device-message success/failure is independent of webhook delivery success.
 
 #### Signing (opt-in)
 
-- **Secret set** (`DEVICE_MESSAGING_WEBHOOK_SECRET`): HMAC-SHA256 over the **exact** raw
-  JSON body string; headers
-  `X-Device-Messaging-Signature: sha256=<hex>` and
-  `X-Device-Messaging-Event-Id: <eventId>`.
+- Every POST includes `X-Device-Messaging-Event-Id: <eventId>` (idempotent retries
+  reuse the same id; also present as `body.eventId`).
+- **Secret set** (`DEVICE_MESSAGING_WEBHOOK_SECRET`): also HMAC-SHA256 over the
+  **exact** raw JSON body string; header
+  `X-Device-Messaging-Signature: sha256=<hex>`.
 - **Secret unset/empty:** POST unsigned (local / quick-start). Boot **warns** if a
   webhook URL is configured without a secret; does not fail boot.
 - No timestamp/skew window in v1; `eventId` covers idempotent retries. Private network +

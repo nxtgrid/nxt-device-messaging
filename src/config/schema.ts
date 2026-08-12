@@ -4,7 +4,7 @@ import { z } from 'zod';
 const deliverySchema = z.object({
   maxRetries: z.number().int().nonnegative().default(11),
   retryBaseDelayMs: z.number().int().positive().default(2000),
-  retryBackoffMultiplier: z.number().positive().default(2),
+  retryBackoffMultiplier: z.number().min(1).default(2),
   retryMaxDelayMs: z.number().int().positive().default(3600000),
   messageTtlSeconds: z.number().int().positive().default(604800),
 }).strict();
@@ -17,14 +17,16 @@ const engineSchema = z.object({
 /**
  * Outbound delivery-event webhook (ADR-003 §6).
  * Present ⇒ notify adopter; absent ⇒ no outbound callbacks.
- * Tuning defaults: 6 attempts, ~62s first→last, 7d DLQ TTL.
+ * Tuning defaults: 6 attempts, ~62s first→last, 10s POST timeout, 7d DLQ TTL.
  */
 const eventWebhookSchema = z.object({
   url: z.url(),
   maxAttempts: z.number().int().positive().default(6),
   baseDelayMs: z.number().int().positive().default(2000),
-  backoffMultiplier: z.number().positive().default(2),
+  backoffMultiplier: z.number().min(1).default(2),
   maxDelayMs: z.number().int().positive().default(60_000),
+  /** Per-POST AbortSignal deadline; keep under the drain claim lease (60s). */
+  requestTimeoutMs: z.number().int().positive().default(10_000),
   deadLetterTtlSeconds: z.number().int().positive().default(604_800),
 }).strict();
 

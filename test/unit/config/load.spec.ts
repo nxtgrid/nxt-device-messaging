@@ -126,6 +126,22 @@ describe('loadConfig', () => {
     expect(config.eventWebhook?.baseDelayMs).toBe(2000);
     expect(config.eventWebhook?.backoffMultiplier).toBe(2);
     expect(config.eventWebhook?.maxDelayMs).toBe(60_000);
+    expect(config.eventWebhook?.requestTimeoutMs).toBe(10_000);
     expect(config.eventWebhook?.deadLetterTtlSeconds).toBe(604_800);
+  });
+
+  it('rejects backoff multipliers below 1', async () => {
+    process.env.DEVICE_MESSAGING_CONFIG_JSON = JSON.stringify({
+      $schemaVersion: '1',
+      eventWebhook: {
+        url: 'https://consumer.example/hooks/device-messages',
+        backoffMultiplier: 0.5,
+      },
+      plugins: [],
+    });
+
+    await expect(loadConfig({ defaultConfigPath: FROM_DEFAULT_FIXTURE }))
+      .rejects
+      .toThrow(/backoffMultiplier/);
   });
 });

@@ -74,7 +74,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     // Device-initiated uplink with no matching outbound command.
     if (unsolicited) {
-      baseService.emitDeliveryEvent({
+      await baseService.emitDeliveryEvent({
         pluginId: plugin.id,
         commandType,
         deliveryStatus,
@@ -123,8 +123,6 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await redisRepo.messageFullCleanup(storedMessage);
-
     const updatedMessage: DeviceMessage = { ...storedMessage, deliveryStatus, response, device };
 
     // Successful delivery can still carry a failed execution — keep failure history.
@@ -143,7 +141,9 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
         : [ historyEntry ];
     }
 
-    baseService.emitDeliveryEvent(updatedMessage);
+    // Persist webhook before dropping the device-message hash (durable notify).
+    await baseService.emitDeliveryEvent(updatedMessage);
+    await redisRepo.messageFullCleanup(storedMessage);
   }
 
   /**
