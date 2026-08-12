@@ -5,7 +5,9 @@
 camelCase; Redis key paths + Lua locals = snake_case); amended 2026-08-03 (Unit 6.1:
 service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
 amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`);
-amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed)
+amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed);
+amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys locked;
+HMAC deferred then landed in 3.1E)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -26,12 +28,12 @@ The inherited module has no HTTP surface of its own. Five in-process call sites 
 | `cancelOne` / `cancelMany` (zero callers, logic present) | Command API — cancel |
 | `deviceTokenService.generate()` | Command API — sync token (missing from ADR-010) |
 | `incoming.handle()` via `POST /chirpstack/calin` | Ingress |
-| `subscribe()` / `publish()` | Outbound result webhook |
+| `subscribe()` / `publish()` | Outbound event webhook |
 
 `nxt-backend` ADR-010 calls the outbound webhook "the single most consequential interface
 decision." The only production consumer will be imported `meter-interactions` in `apps/api`,
 but the contract must also be adoptable by third parties. Configuration already anticipates
-this: ADR-002 puts `resultWebhook.url` in the JSON artifact and the signing secret in env.
+this: ADR-002 puts `eventWebhook.url` in the JSON artifact and the signing secret in env.
 
 Source baseline: `db5c2ac`. Cancel was deferred in planning because it had zero callers, not
 because the logic was missing — both single and batch cancel already exist in Redis.
@@ -162,10 +164,15 @@ Ops confirmed ChirpStack sends `event` in production; missing `event` is treated
 unhandled type. Ingress still returns **HTTP 204** when `handle` returns `null` (engine
 no-op) — silence is intentional; do not invent a 4xx that would make ChirpStack retry.
 
-### 6. Outbound result webhook replaces `subscribe()`
+### 6. Outbound event webhook replaces `subscribe()`
 
-Config: URL in the artifact (`resultWebhook.url`, ADR-002); signing secret in env
-(`DEVICE_MESSAGING_WEBHOOK_SECRET`).
+Config key: **`eventWebhook`** (renamed from `resultWebhook` — these are delivery
+**events**, not terminal-only results). URL in the artifact (`eventWebhook.url`,
+ADR-002); signing secret in env (`DEVICE_MESSAGING_WEBHOOK_SECRET`) when set
+(opt-in HMAC; unset → unsigned).
+
+Module: `src/engine/webhook/`. Seam: `baseService.emitDeliveryEvent` thin-forwards into
+`createWebhookService` (peer factory). Engine call sites do not touch Redis webhook keys.
 
 #### Events
 
@@ -177,19 +184,22 @@ consumers that ignore unknown statuses:
 3. Terminal failure (`DELIVERY_FAILED`, including max-retries and PULL age timeout)
 4. Unsolicited uplinks (no `correlationId`)
 
-Mid-pipeline GW ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events today and
-do not in v1.
+Mid-pipeline relay-node ACKs (`SENT_TO_DEVICE`) and retry scheduling do not emit events
+today and do not in v1.
 
-#### Payload envelope
+#### Payload (`WebhookEvent`)
+
+HTTP body **wraps** a trimmed message (legacy `publish()` sent a bare partial
+`DeviceMessage` in-process). Type name: `WebhookEvent`. Consumer reads `body.message.*`.
 
 ```ts
 {
-  eventId: string;       // ULID — idempotency key
+  eventId: string;       // ULID — this notification; reused on HTTP retries
   occurredAt: string;    // ISO-8601
   pluginId: string;
   message: {
     id?: string;         // device-message ULID; may be absent for pure unsolicited
-    correlationId?: string; // absent ⇒ unsolicited
+    correlationId?: string; // absent ⇒ unsolicited (adopter business id)
     commandType?: string; // CommandType when present
     deliveryStatus: DeviceMessageDeliveryStatus;
     phase?: 'A' | 'B' | 'C';
@@ -208,36 +218,62 @@ do not in v1.
 }
 ```
 
-Wire JSON is **camelCase** (same as the command API). Queue internals (`deliveryQueueId`,
-`retryCount`, priority, `requestData`) are omitted from the webhook; `GET /message/:correlationId`
-may expose more for inspection.
+Three ids stay distinct: `message.id` (delivery record), `correlationId` (adopter
+interaction), `eventId` (this webhook notification). Wire JSON is **camelCase**. Queue
+internals (`deliveryQueueId`, `retryCount`, priority, `requestData`,
+`concurrencyRateLimitKey`) are omitted; `GET /message/:correlationId` may expose more.
+
+#### Redis keys (same DB as device queues)
+
+| Key | Type | Role |
+|---|---|---|
+| `webhook:pending` | sorted set | members = `eventId`, score = `nextAttemptAt` (ms) |
+| `webhook:payload:{eventId}` | string (JSON) | `WebhookStoredRecord` (`event` + attempt metadata) |
+| `webhook:dlq:{eventId}` | string (JSON) | exhausted payload; TTL = `deadLetterTtlSeconds` |
+
+#### Schedule
+
+Always **await Redis enqueue** first (durability) before the engine drops the source
+device-message. Then fire-and-forget the same private drain the webhook timer uses
+(`storeAndEmit` kick; happy path: no intentional timer-tick delay). Timer remains the
+safety net for HTTP retries and backlog. Device engine never awaits HTTP delivery.
+Drain is not a public API surface.
+
+#### Retry / DLQ defaults (`eventWebhook` tuning)
+
+| Knob | Default | Notes |
+|---|---|---|
+| `maxAttempts` | `6` | First try + 5 retries |
+| `baseDelayMs` | `2000` | |
+| `backoffMultiplier` | `2` | Gaps: 2+4+8+16+32 ≈ **62s** first→last |
+| `maxDelayMs` | `60000` | |
+| `requestTimeoutMs` | `10000` | Per-POST `AbortSignal`; under claim lease (60s) |
+| `deadLetterTtlSeconds` | `604800` | 7 days |
+
+- **2xx** = success. Retry on network errors / abort timeout, **5xx**, **429**, **408**.
+  Do not retry other **4xx**. Response bodies are cancelled (not read) so connections
+  return to the pool.
+- Retries reuse the same `eventId`.
+- After exhaustion: log (`correlationId` + `eventId`) and retain in DLQ with TTL.
+- Device-message success/failure is independent of webhook delivery success.
 
 #### Signing (opt-in)
 
-- **Secret set:** HMAC-SHA256 over the raw body; headers
-  `X-Device-Messaging-Signature: sha256=<hex>` and
-  `X-Device-Messaging-Event-Id: <eventId>`.
-- **Secret unset:** POST unsigned (local / quick-start). Boot **warns** if a webhook URL is
-  configured without a secret; does not fail boot.
+- Every POST includes `X-Device-Messaging-Event-Id: <eventId>` (idempotent retries
+  reuse the same id; also present as `body.eventId`).
+- **Secret set** (`DEVICE_MESSAGING_WEBHOOK_SECRET`): also HMAC-SHA256 over the
+  **exact** raw JSON body string; header
+  `X-Device-Messaging-Signature: sha256=<hex>`.
+- **Secret unset/empty:** POST unsigned (local / quick-start). Boot **warns** if a
+  webhook URL is configured without a secret; does not fail boot.
 - No timestamp/skew window in v1; `eventId` covers idempotent retries. Private network +
   shared secret is the v1 threat model.
 
+Helpers: `src/engine/webhook/sign.ts` (`signWebhookBody`, `verifyWebhookSignature` for
+consumers/tests). Composition root passes the env secret into `createWebhookService`.
+
 This is **not** the inbound API key: that authenticates callers *to* this service; the
-webhook secret authenticates callbacks *from* this service to the consumer. Both ends of a
-signed deployment hold the same secret in env.
-
-#### Delivery, retry, failure
-
-1. Emitting an event never blocks the device-message engine; the callback is enqueued.
-2. **2xx** = success. Retry on network errors, **5xx**, **429**, **408**. Do not retry other
-   **4xx**.
-3. Bounded exponential backoff (defaults under `resultWebhook` tuning; e.g. 5 attempts).
-   Retries reuse the same `eventId`.
-4. After exhaustion: log with `correlationId` + `eventId`, and retain the payload in a Redis
-   **dead-letter** with TTL (e.g. 7 days) for ops replay. Pending retries and dead letters
-   use the **same Redis DB** as message queues, under `webhook:*` key prefixes — not a
-   separate `REDIS_DB`.
-5. Device-message success/failure is independent of webhook delivery success.
+webhook secret authenticates callbacks *from* this service to the consumer.
 
 ### 7. OpenAPI is generated from Zod (ADR-001)
 
@@ -294,7 +330,7 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
 ## Related
 
 - **ADR-001** — Fastify + Zod; OpenAPI from the same schemas.
-- **ADR-002** — `resultWebhook.url` in artifact; secrets in env; plugin enablement.
+- **ADR-002** — `eventWebhook.url` in artifact; secrets in env; plugin enablement.
 - **`nxt-backend` ADR-010** — extraction rationale; decision 2 inventory superseded here.
 - **`nxt-backend` ADR-005 §11** — integrable extracted service (HTTP in, callbacks out).
 - **`nxt-backend` ADR-011** — estate `command_type` vocabulary.

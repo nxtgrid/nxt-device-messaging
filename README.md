@@ -140,7 +140,7 @@ from GitHub and ignore image healthchecks, configure the platform probe to the s
 
 | Surface | Examples |
 |---|---|
-| JSON artifact | `engine`, `delivery`, `resultWebhook`, `plugins` — see `config.example.json` |
+| JSON artifact | `engine`, `delivery`, `eventWebhook`, `plugins` — see `config.example.json` |
 | Env (secrets / connection) | `REDIS_*`, `DEVICE_MESSAGING_API_KEY`, `DEVICE_MESSAGING_WEBHOOK_SECRET` |
 | Env (ops) | `PORT` (default `3100`) |
 | Env (config source) | `DEVICE_MESSAGING_CONFIG_JSON` / `_URL` / `_PATH` |

@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking Phase 3; Phase 2 Units 7–10 done — session 29)*                 | —          |
+| —   | *(none blocking; **3.1 done**; **next = 3.2 OpenAPI**, then 3.3 auth)*                 | —          |
 
 
 
@@ -49,7 +49,9 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. Next is **Phase 3** (ADR-003 polish: webhook HMAC/DLQ, OpenAPI, auth).
+**done**. **Phase 3** sliced: **3.1** (event webhook + HMAC + review follow-ups) **closed**;
+**next = 3.2 OpenAPI**; then **3.3** auth polish. Cold starts: trust `AGENTS.md` + this log
++ `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -82,6 +84,7 @@ Each needs to land somewhere before it can be dropped from this list.
 | Under wholesale cutover this service carries **zero production traffic until cutover day** — so ADR-010's self-identified riskiest interface (the outbound webhook) is first exercised inside a window with no rollback past it (`nxt-backend` ADR-012 decision 5). Needs the rehearsal step attached                                                                                                                                                                                                                                                                                                                                   | Cutover addendum                                                                              |
 | **Open question for the cutover addendum:** does the early adopter (`nxt-backend` roadmap deployment consumer #3) run CALIN meters and ChirpStack? If so they are the natural first production user *before* the company, which retires most of the above risk                                                                                                                                                                                                                                                                                                                                                                          | Ask the maintainer when authoring                                                             |
 | ~~**ChirpStack** `?event=` **routing**~~ — ops confirmed (`event: 'up'`, also `status` / `log`); SPI `handle(event, meta?)` with `IncomingHandleMeta.query`; ingress flattens query; `calin-chirpstack` switches on `txack`/`ack`/`join`/`up`, fail-closed when missing/unhandled                                                                                                                                                                                                                                                                                                                                                                                                                          | ✅ session 31                                                                                 |
+| **Graceful shutdown v2 (parked).** Await in-flight engine ticks + webhook `drainChain` on stop; optionally gate `storeAndEmit` after shutdown begins. v1 only clears intervals then closes Fastify/Redis. Thin interim: webhook-only await of `drainChain`                                                                                                                                                                                                                                                                                                                                                                                    | Follow-up when reopening shutdown (ADR-005)                                                   |
 
 
 ---
@@ -1382,3 +1385,157 @@ no `/metrics` / `prom-client` surface yet (ADR-005 Phase 4). Revisit with Phase 
 HTTP 204 + null `handle` behavior stays.
 
 **Next:** Phase 3 when prompted / remaining review nits if any.
+
+### 2026-08-10 — session 32: Phase 3.1A — event webhook shape locked
+
+**Docs + config-key rename only** (no delivery implementation).
+
+**Locked:**
+
+| Topic | Decision |
+|---|---|
+| Config key | **`eventWebhook`** (rename from `resultWebhook` — events, not terminal-only) |
+| Module | `src/engine/webhook/` |
+| Seam | `baseService.emitDeliveryEvent` → thin forward into `createWebhookService` |
+| Envelope | ADR-003 wrap: `eventId` / `occurredAt` / `pluginId` / trimmed `message` |
+| Ids | `message.id` ≠ `correlationId` ≠ `eventId` (notification; reused on HTTP retries) |
+| Redis | `webhook:pending` (ZSET) / `webhook:payload:{eventId}` / `webhook:dlq:{eventId}` (TTL) |
+| Schedule | Always enqueue Redis first; fire-and-forget same private drain as timer (`storeAndEmit` kick); timer = safety net |
+| Retry | `maxAttempts: 6`, `baseDelayMs: 2000`, ×2, `maxDelayMs: 60000` (~62s first→last); retry 5xx/429/408/network; no retry other 4xx |
+| DLQ | `deadLetterTtlSeconds: 604800` (7d); same Redis DB |
+| HMAC | **Deferred (H1)** — unsigned delivery first; opt-in HMAC as separate later chunk |
+| Security floor until HMAC | VPC + inbound API key; unsigned outbound POSTs |
+
+**Landed:** ADR-002/003 amendments; plan Phase 3 slices 3.1A–E / 3.2 / 3.3; AGENTS;
+schema + `config.example.json` key rename; README.
+
+**Next:** **3.1B** — `eventWebhook` tuning fields with defaults + Redis `webhook:*` helpers /
+payload store (no HTTP POST yet).
+
+### 2026-08-10 — session 33: Phase 3.1B — eventWebhook tuning + Redis store
+
+**Landed:**
+
+- Config: `eventWebhook` knobs with Zod defaults (`maxAttempts` 6, `baseDelayMs` 2000,
+  ×2, `maxDelayMs` 60s, `deadLetterTtlSeconds` 7d); `EventWebhookConfig` export;
+  `config.example.json` + ADR-002 example updated
+- `src/engine/webhook/`:
+  - `keys.ts` — `webhook:pending` / `payload:{id}` / `dlq:{id}`
+  - `types.ts` — `WebhookEvent` + `WebhookStoredRecord` (`event` field; renamed from
+    Envelope in review)
+  - `backoff.ts` — exponential delay, **no jitter** (predictable ~62s window)
+  - `store.ts` — `createWebhookStore({ client })`: enqueue / listDue / get /
+    reschedule / complete / deadLetter (MULTI/EXEC); no HTTP
+- Unit tests: keys, backoff ladder, parse record, config defaults
+
+**Still stub:** `emitDeliveryEvent` console log; no `createWebhookService` / timer / POST.
+
+**Next:** **3.1C** — `createWebhookService` (build event, enqueue, drain + POST +
+retry/DLQ, timer + kick). Wire onto `baseService` in **3.1D**.
+
+### 2026-08-10 — session 34: Phase 3.1C — `createWebhookService`
+
+**Landed:**
+
+- `build-event.ts` — trim partial `DeviceMessage` → `WebhookEvent` (requires
+  `pluginId` / `deliveryStatus` / `device`; strips `concurrencyRateLimitKey`)
+- `service.ts` — `createWebhookService({ config, store })`:
+  - `storeAndEmit` → enqueue at now → kick private drain (never throws to engine)
+  - private drain — serialized in-process; claim lease via reschedule; POST JSON
+  - retry: network / 408 / 429 / 5xx → backoff; other 4xx → DLQ; exhaust → DLQ
+  - `startTimers` (default 1s); drain not on the public interface
+- Unit tests: build-event, retryable statuses, happy path, backoff, 4xx DLQ,
+  exhaust, timer drain
+
+**Review polish (same session):** dropped `fetchImpl` / `now` injection (tests use
+`vi.stubGlobal('fetch')` + fake timers); renamed `emit` → `storeAndEmit`; un-exported
+`drainDue` (timer + kick only).
+
+**Not in this chunk:** `baseService.emitDeliveryEvent` still console stub; `main.ts`
+does not construct the webhook service; unsolicited emit still omits `pluginId`
+(fix when wiring in 3.1D).
+
+**Next:** **3.1D** — inject webhook into `createBaseService` / fold emit; compose in
+`main` when `config.eventWebhook` set; fix unsolicited `pluginId`; smoke.
+
+### 2026-08-10 — session 35: Phase 3.1D — wire emit + composition root
+
+**Landed:**
+
+- `BaseService.emitDeliveryEvent` → optional `webhook.storeAndEmit` (no-op if unset)
+- Removed free `emitDeliveryEvent` export; outgoing/incoming use `baseService`
+- Unsolicited emit includes `pluginId: plugin.id`
+- `main.ts`: build `createWebhookStore` + `createWebhookService` when
+  `config.eventWebhook` set; pass into `createBaseService`; start webhook timers
+  (independent of `engine.enabled`); boot log `eventWebhook=on|off`
+- Unit: `base-emit.spec.ts`; opt-in integration: `webhook.smoke.spec.ts`
+
+**Next:** **3.1E** HMAC (when asked) or **3.2** OpenAPI / **3.3** auth polish.
+
+### 2026-08-10 — session 36: Phase 3.1E — opt-in webhook HMAC
+
+**Landed:**
+
+- `sign.ts` — HMAC-SHA256 over raw body; `sha256=<hex>` header format;
+  `verifyWebhookSignature` (timing-safe) for consumers/tests
+- `createWebhookService({ signingSecret? })` — when set, POST includes
+  `X-Device-Messaging-Signature` + `X-Device-Messaging-Event-Id`
+- `main.ts` — pass `DEVICE_MESSAGING_WEBHOOK_SECRET`; boot **warn** if
+  `eventWebhook.url` set without secret (unsigned POSTs; does not fail boot)
+- ADR-003 §6 signing no longer deferred; plan 3.1E checked; unit tests
+
+**Phase 3.1 (event webhook) closed.** Next: **3.2** OpenAPI or **3.3** auth polish
+(or PR for the 3.1 slice).
+
+### 2026-08-12 — review: await webhook Redis enqueue before source cleanup
+
+PR review caught fire-and-forget `store.enqueue` — engine could drop the device
+message before the webhook event was durable.
+
+**Landed (lean):**
+
+- `storeAndEmit` / `emitDeliveryEvent` are `async`; **await Redis enqueue** only;
+  HTTP drain remains fire-and-forget (ADR-003)
+- Terminal paths reorder: await emit → then `messageFullCleanup` (incoming success,
+  `retryOrFail` final, PULL age timeouts)
+- `getPullTimeouts` no longer cleans up; caller emits then cleans
+- First `SENT_TO_NS` and unsolicited await enqueue
+
+HTTP delivery success remains independent of device-message outcome.
+
+### 2026-08-12 — review: webhook POST timeout + body release
+
+PR review: hung acceptor could stall the serialized drain and hold the claim lease;
+unread response bodies could pin Undici connections.
+
+**Landed:**
+
+- `eventWebhook.requestTimeoutMs` (default `10000`) → `AbortSignal.timeout` on POST
+- Cancel response body on every response path (success / 4xx / 5xx)
+- Abort / network errors stay on the existing retry path
+- ADR-003 / ADR-002 example / config.example.json + unit coverage
+
+### 2026-08-12 — lean graceful shutdown (SIGTERM/SIGINT)
+
+No process shutdown path existed; timer `{ stop }` handles were discarded.
+
+**Landed in `main.ts`:** retain engine + webhook timer stops; on `SIGTERM`/`SIGINT`
+stop timers → `app.close()` → `redisRepo.client.quit()` → exit. Idempotent guard;
+does **not** await in-flight resolution/drain ticks (v1 / single-replica).
+
+### 2026-08-12 — parked: shutdown awaits in-flight ticks / gate emit
+
+PR review asked for `stop()` to expose bounded completion promises (engine ticks +
+webhook `_drainDue`), await them before `process.exit`, and refuse `storeAndEmit`
+after shutdown begins.
+
+**Parked (graceful-shutdown v2).** Contradicts deliberate v1 lean shutdown. Engine
+timers have no in-flight tracking and allow re-entrant ticks; full fix is a dedicated
+chunk. Thin later option if needed: webhook `stop()` awaits current `drainChain` only
+(already bounded by `requestTimeoutMs`).
+
+### 2026-08-12 — cold-start docs: Phase 3 slice pointers
+
+Aligned `AGENTS.md` Current status, plan 001 Phase 3 header/checklist, and this log’s
+open-decisions blurb so a fresh chat without transcript sees: **3.1 closed → next 3.2
+OpenAPI → then 3.3**; parked shutdown-v2 / drain concurrency called out.

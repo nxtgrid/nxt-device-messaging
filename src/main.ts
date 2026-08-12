@@ -4,6 +4,9 @@ import { createIncomingService } from './engine/incoming.js';
 import { createOutgoingService } from './engine/outgoing.js';
 import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
+import { createWebhookService } from './engine/webhook/service.js';
+import { createWebhookStore } from './engine/webhook/store.js';
+import { redisRepo } from './lib/redis-repository/index.js';
 import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -24,9 +27,26 @@ function resolvePort(): number {
 /**
  * Composition root — runtime already booted; wire peer services, then Fastify.
  */
+const webhookSigningSecret = process.env.DEVICE_MESSAGING_WEBHOOK_SECRET;
+
+if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigningSecret === '')) {
+  console.warn(
+    '[webhook] eventWebhook.url is set but DEVICE_MESSAGING_WEBHOOK_SECRET is unset — POSTs will be unsigned',
+  );
+}
+
+const webhookService = config.eventWebhook
+  ? createWebhookService({
+    config: config.eventWebhook,
+    store: createWebhookStore({ client: redisRepo.client }),
+    signingSecret: webhookSigningSecret,
+  })
+  : undefined;
+
 const baseService = createBaseService({
   registry: pluginRegistry,
   delivery: config.delivery,
+  webhook: webhookService,
 });
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
@@ -50,16 +70,57 @@ const app = await buildApp({
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
 });
 
-startEngineTimers({
+const engineTimers = startEngineTimers({
   enabled: config.engine.enabled,
   outgoingService,
   incomingService,
 });
 
+/** Webhook drain is independent of `engine.enabled` (ingress can still emit). */
+const webhookTimers = webhookService?.startTimers();
+
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });
 const pluginIds = `[${ pluginRegistry.getAll().map(plugin => plugin.id).join(', ') }]`;
+const webhookLabel = config.eventWebhook ? 'on' : 'off';
 console.info(
-  `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, plugins=${ pluginIds })`,
+  `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, eventWebhook=${ webhookLabel }, plugins=${ pluginIds })`,
 );
+
+/** Stop timers → close HTTP → quit Redis. Does not await in-flight ticks (v1). */
+let isShuttingDown = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  console.info(`[shutdown] ${ signal } — stopping timers, Fastify, Redis`);
+
+  engineTimers.stop();
+  webhookTimers?.stop();
+
+  try {
+    await app.close();
+  }
+  catch (err) {
+    console.error('[shutdown] Fastify close failed', err);
+  }
+
+  try {
+    await redisRepo.client.quit();
+  }
+  catch (err) {
+    console.error('[shutdown] Redis quit failed', err);
+  }
+
+  process.exit(0);
+}
+
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.once('SIGINT', () => {
+  void shutdown('SIGINT');
+});
