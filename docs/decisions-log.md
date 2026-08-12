@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.1 done**; **next = 3.2 OpenAPI**, then 3.3 auth)*                 | —          |
+| —   | *(none blocking; **3.2A1 scaffold done**; **next = 3.2A2** route schemas → 3.2B webhook docs → 3.3)* | —          |
 
 
 
@@ -1539,3 +1539,15 @@ chunk. Thin later option if needed: webhook `stop()` awaits current `drainChain`
 Aligned `AGENTS.md` Current status, plan 001 Phase 3 header/checklist, and this log’s
 open-decisions blurb so a fresh chat without transcript sees: **3.1 closed → next 3.2
 OpenAPI → then 3.3**; parked shutdown-v2 / drain concurrency called out.
+
+### 2026-08-12 — session: Phase 3.2A1 — OpenAPI scaffold
+
+**Locked (D1–D5):** `@fastify/type-provider-zod` + `@fastify/swagger` +
+`@fastify/swagger-ui`; paths mirror `nxt-sts` (`/v3/api-docs`, `/swagger`); UI on;
+docs unauthenticated; outbound webhook described later (no fake path).
+
+**Landed:** deps; `registerOpenApi` in `src/http/openapi.ts`; Zod compilers + type
+provider in `buildApp`; `/healthz` response schema; unit smoke for JSON + UI.
+
+**Next (3.2A2):** migrate command + token routes from hand `safeParse` to Fastify
+route `schema` (same Zod). Then ingress (3.2A3), then webhook components (3.2B).
