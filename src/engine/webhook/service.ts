@@ -160,7 +160,11 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
     const errorText = `HTTP ${ response.status }`;
     if (!isRetryableWebhookStatus(response.status)) {
       await store.deadLetter(
-        { ...record, lastError: errorText },
+        {
+          ...record,
+          attemptCount: record.attemptCount + 1,
+          lastError: errorText,
+        },
         config.deadLetterTtlSeconds,
       );
       return;

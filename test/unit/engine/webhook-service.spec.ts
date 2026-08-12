@@ -234,6 +234,7 @@ describe('createWebhookService', () => {
     activeTimers = await tickDrain(service, fetchMock);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.dlq.get('01EVENT')?.attemptCount).toBe(1);
     expect(store.dlq.get('01EVENT')?.lastError).toBe('HTTP 400');
     expect(store.pending.size).toBe(0);
   });

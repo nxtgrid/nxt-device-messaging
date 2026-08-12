@@ -38,10 +38,18 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0 complete. Phase 1 foundation through Unit 6 (SPI polish + D5/D6). Phase 1b
-Intermezzo closed (I0–I3; I4 skipped). Phase 2 Units 7–10 (`calin-api-v1`, `nxt-sts`,
-`calin-api-v2`, `calin-chirpstack`) complete. Phase 3 underway: **3.1** event webhook
-done (Redis / retry / DLQ / HMAC); next **3.2** OpenAPI / **3.3** auth polish.**
+**Phase 0–2 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10).
+
+**Phase 3 — ADR-003 polish (sliced; do not treat as one blob):**
+
+| Slice | Status |
+|---|---|
+| **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
+| **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7) | **Next** |
+| **3.3** Auth / HTTP polish (timing-safe Bearer, error bodies, …) | After 3.2 |
+
+Parked (not next): graceful-shutdown v2 (await in-flight ticks); webhook drain concurrency —
+see `docs/decisions-log.md` carried findings.
 
 Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -61,14 +69,15 @@ outgoing, incoming, token; enable via `plugins[]` + `CALIN_API_V2_*` — + `nxt-
 token-only — fetch + mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
 PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `plugins[]` +
 `CHIRPSTACK_*`),
-`src/http/` (lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac),
+`src/http/` (lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac — **no OpenAPI
+document wired yet**),
 `src/engine/` peer factories — `createBaseService` (optional `webhook`) /
 `createOutgoingService` / `createIncomingService` / `createTokenService` +
 `startEngineTimers` (`engine.enabled`). Outbound adopter notify →
 `src/engine/webhook/` (`storeAndEmit` / private drain / POST / retry / DLQ / opt-in
 HMAC); wired from `main` when `eventWebhook` is set. Errors from `engine/errors.ts`.
-Composition root in `main.ts`. **Units 5–10 complete.** Config: `eventWebhook`; env
-`DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
+Composition root in `main.ts` (lean `SIGTERM`/`SIGINT` shutdown). **Units 5–10 complete.**
+Config: `eventWebhook`; env `DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
   `pnpm dev` (loads `.env`; port **3100**)

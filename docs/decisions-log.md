@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; Phase 3.1 done — session 36; next 3.2 OpenAPI / 3.3 auth)*     | —          |
+| —   | *(none blocking; **3.1 done**; **next = 3.2 OpenAPI**, then 3.3 auth)*                 | —          |
 
 
 
@@ -49,8 +49,9 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** underway: event webhook **3.1 done** (incl. HMAC); next OpenAPI (3.2) /
-auth polish (3.3).
+**done**. **Phase 3** sliced: **3.1** (event webhook + HMAC + review follow-ups) **closed**;
+**next = 3.2 OpenAPI**; then **3.3** auth polish. Cold starts: trust `AGENTS.md` + this log
++ `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -83,6 +84,7 @@ Each needs to land somewhere before it can be dropped from this list.
 | Under wholesale cutover this service carries **zero production traffic until cutover day** — so ADR-010's self-identified riskiest interface (the outbound webhook) is first exercised inside a window with no rollback past it (`nxt-backend` ADR-012 decision 5). Needs the rehearsal step attached                                                                                                                                                                                                                                                                                                                                   | Cutover addendum                                                                              |
 | **Open question for the cutover addendum:** does the early adopter (`nxt-backend` roadmap deployment consumer #3) run CALIN meters and ChirpStack? If so they are the natural first production user *before* the company, which retires most of the above risk                                                                                                                                                                                                                                                                                                                                                                          | Ask the maintainer when authoring                                                             |
 | ~~**ChirpStack** `?event=` **routing**~~ — ops confirmed (`event: 'up'`, also `status` / `log`); SPI `handle(event, meta?)` with `IncomingHandleMeta.query`; ingress flattens query; `calin-chirpstack` switches on `txack`/`ack`/`join`/`up`, fail-closed when missing/unhandled                                                                                                                                                                                                                                                                                                                                                                                                                          | ✅ session 31                                                                                 |
+| **Graceful shutdown v2 (parked).** Await in-flight engine ticks + webhook `drainChain` on stop; optionally gate `storeAndEmit` after shutdown begins. v1 only clears intervals then closes Fastify/Redis. Thin interim: webhook-only await of `drainChain`                                                                                                                                                                                                                                                                                                                                                                                    | Follow-up when reopening shutdown (ADR-005)                                                   |
 
 
 ---
@@ -1520,3 +1522,20 @@ No process shutdown path existed; timer `{ stop }` handles were discarded.
 **Landed in `main.ts`:** retain engine + webhook timer stops; on `SIGTERM`/`SIGINT`
 stop timers → `app.close()` → `redisRepo.client.quit()` → exit. Idempotent guard;
 does **not** await in-flight resolution/drain ticks (v1 / single-replica).
+
+### 2026-08-12 — parked: shutdown awaits in-flight ticks / gate emit
+
+PR review asked for `stop()` to expose bounded completion promises (engine ticks +
+webhook `_drainDue`), await them before `process.exit`, and refuse `storeAndEmit`
+after shutdown begins.
+
+**Parked (graceful-shutdown v2).** Contradicts deliberate v1 lean shutdown. Engine
+timers have no in-flight tracking and allow re-entrant ticks; full fix is a dedicated
+chunk. Thin later option if needed: webhook `stop()` awaits current `drainChain` only
+(already bounded by `requestTimeoutMs`).
+
+### 2026-08-12 — cold-start docs: Phase 3 slice pointers
+
+Aligned `AGENTS.md` Current status, plan 001 Phase 3 header/checklist, and this log’s
+open-decisions blurb so a fresh chat without transcript sees: **3.1 closed → next 3.2
+OpenAPI → then 3.3**; parked shutdown-v2 / drain concurrency called out.
