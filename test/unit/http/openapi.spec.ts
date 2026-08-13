@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '#src/app.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
@@ -20,7 +21,7 @@ describe('OpenAPI / Swagger UI', () => {
     const body = response.json();
     expect(body.openapi).toMatch(/^3\./);
     expect(body.info.title).toBe('NXT Device Messaging');
-    expect(body.info.version).toBe('0.0.0');
+    expect(body.info.version).toBe(packageJson.version);
     expect(body.paths['/healthz'].get).toBeDefined();
 
     await app.close();
@@ -48,6 +49,12 @@ describe('OpenAPI / Swagger UI', () => {
     expect(paths['/token/generate'].post).toBeDefined();
     expect(paths['/ingress/{pluginId}'].post).toBeDefined();
     expect(paths['/ingress/{pluginId}'].post.tags).toContain('ingress');
+    expect(
+      paths['/ingress/{pluginId}'].post.requestBody.content['application/json'].schema,
+    ).toMatchObject({ type: 'object' });
+    expect(
+      paths['/ingress/{pluginId}'].post.requestBody.content['application/json'].schema.type,
+    ).not.toBe('string');
 
     await app.close();
   });

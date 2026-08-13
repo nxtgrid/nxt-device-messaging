@@ -27,10 +27,15 @@ export type IngressRoutesOpts = {
 /**
  * Vendor JSON is opaque to core (plugin parses). `z.unknown()` accepts the raw
  * Buffer from the content-type parser so signature verification still sees bytes.
+ * OpenAPI would otherwise treat untyped `unknown` as a string (Swagger UI default);
+ * `type: object` is documentation-only metadata.
  */
 const ingressBodySchema = z.unknown().meta({
+  type: 'object',
+  additionalProperties: true,
   description:
     'Vendor-specific JSON (opaque to the service). The raw body is retained for optional signature checks; the enabled plugin parses the shape.',
+  examples: [ { event: 'up', deviceInfo: { devEui: '0102030405060708' } } ],
 });
 
 /**
