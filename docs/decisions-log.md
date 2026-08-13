@@ -5,7 +5,8 @@ Chronological record of decisions and deviations, appended every working session
 records what happened, when, and what is still open — the things an ADR is the wrong shape for.
 
 **Read this first when picking up work after a gap.** It is the only place that tells you what is
-settled versus still open.
+settled versus still open. Parked follow-ups live in **Parked / revisit** below — not in the
+chronological log and not duplicated in the plan.
 
 ---
 
@@ -19,9 +20,43 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 | —   | *(none blocking; **Phase 3 done**; **next = Phase 4** metrics / pino / integration guide)* | —          |
 
 
+## Parked / revisit (canonical)
 
+Living list of work that is **intentionally not next**. Do not add parallel lists in
+`AGENTS.md` or the extraction plan — point here. When an item lands, strike it and note
+the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 
-### Deferred with locked criteria
+### This repo
+
+| Item | Revisit when | Detail |
+| --- | --- | --- |
+| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`) | Before cutover, or when reopening shutdown | ADR-005 amendment; log **2026-08-12** parked shutdown |
+| **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | 3.1 closeout; log **2026-08-12** cold-start / 3.1E notes |
+| **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
+| **D2 + thorough cleanup suite** — `messageFullCleanup` options; every exit must drop the hash and all references. Includes PULL poll↔retry orphan on `queue_awaiting_retry` | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
+| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; generous fetch safety deadline (not abort-at-NS-timeout); trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass |
+
+### Product / ops trigger
+
+| Item | Revisit when | Detail |
+| --- | --- | --- |
+| Message-bus adapter for delivery events | A consumer needs broker delivery | ADR-003; was plan 001 Deferred |
+| Dead-letter admin / replay HTTP | Ops needs DLQ replay without Redis access | ADR-003 |
+| Debug HTTP to run distribute / poll once | Manual smoke against timers becomes painful | Plan Intermezzo / Unit 5 working rule |
+| HA / multi-replica (leader election, Redis-backed correlator) | Operator needs >1 replica | **ADR-007**; `nxt-backend` ADR-010 §6 |
+| Domain rename (`DeviceMessage` → dispatch-flavoured) | Rejected for the extraction; only if the service is real and test-covered | ADR-001 Rejected |
+
+### Other repo (`nxt-backend`)
+
+| Item | Revisit when | Detail |
+| --- | --- | --- |
+| **Cutover addendum** — hard stop-then-start (not blue/green); ChirpStack integration URL flip; drain old Valkey; provision this service’s Valkey/config/secrets; webhook rehearsal in a window with no rollback; early-adopter CALIN/ChirpStack question | Authoring company cutover vs `nxt-backend` ADR-012 | Carried findings (cutover rows) |
+| **`meter-installs` vendor clients** — ChirpStack `registerDevice` / `setApplicationKeyForDevice` and CALIN v2 repo still imported by hardware provisioning | Metering import (002f) | Carried finding; plan coupling note |
+| Re-cut `nxt-backend` plan 001 into a per-repo pair | Optional; mechanics settled | Open-decisions blurb; decision 5 |
+
+---
+
+## Deferred with locked criteria
 
 These are **not** free-for-all open questions. Criteria and interim seams live in the cited ADR.
 Revisit only in the named unit; record the choice in this log and amend the ADR if needed.
@@ -52,12 +87,10 @@ Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chir
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **next = Phase 4**
 (metrics / pino / integration guide). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
-Also outstanding on `nxt-backend`:
+Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
-- Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
-settled; the re-cut itself may still be outstanding on that side).
-- The device-messaging **cutover addendum** for the company, reconciled with `nxt-backend`
-ADR-012 (see "Carried findings" below).
+- Re-cutting `nxt-backend`'s plan 001 into a per-repo pair.
+- The device-messaging **cutover addendum**, reconciled with `nxt-backend` ADR-012.
 
 ---
 
@@ -67,6 +100,9 @@ ADR-012 (see "Carried findings" below).
 
 Facts established during planning that are not yet reflected in the documents they contradict.
 Each needs to land somewhere before it can be dropped from this list.
+
+**Actionable parked work is in Parked / revisit above** — do not treat this table as the
+to-do list. Rows below are leftover facts (many already struck).
 
 
 | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Lands in                                                                                      |
@@ -1637,4 +1673,19 @@ Unit: `test/unit/http/validation-errors.spec.ts`.
 
 **Phase 3.3 / Phase 3 closed.** Next: **Phase 4** (ADR-005 metrics, pino sweep,
 integration guide). Parked unchanged: shutdown v2, webhook drain concurrency.
+
+### 2026-08-13 — docs: canonical Parked / revisit table
+
+Parked items were split across AGENTS (2 bullets), plan 001 Deferred (product
+triggers only), carried findings (mixed historical table), and dated log notes
+(ingress durability, sanitization). A cold reader would miss most of them.
+
+**Landed (docs only):** `docs/decisions-log.md` § **Parked / revisit** is the
+living list (this repo / product trigger / `nxt-backend`). `AGENTS.md` and plan
+001 `## Deferred` point there — no second tables. Carried findings marked as
+facts-not-todos.
+
+**Next:** **Phase 4** when prompted. Use the new table; do not relitigate parked
+items unless the maintainer picks one.
+
 

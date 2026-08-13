@@ -19,8 +19,8 @@ need them (same pattern as Intermezzo enqueue/get).
 
 ## How to work in this plan
 
-1. Read `AGENTS.md` (origin, baseline, governance) and `docs/decisions-log.md` (what is settled vs
-   open) first.
+1. Read `AGENTS.md` (origin, baseline, governance) and `docs/decisions-log.md` first
+   (settled vs open; **Parked / revisit**).
 2. **The source is `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend`, frozen at
    `db5c2ac`.** Both repos are in the same Cursor workspace. Read the source, never a description
    of it.
@@ -300,13 +300,8 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 
 ## Deferred
 
-| Item | Why | Revisit when |
-|---|---|---|
-| Message-bus adapter for results | ADR-003: HTTP webhook is v1; bus stays optional | A consumer needs broker delivery |
-| Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
-| Debug HTTP to run distribute / poll once | Nice for manual stepping; not in ADR-003; overkill while timers + stubs suffice | Manual smoke against timers becomes painful |
-| Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
-| HA / multi-replica (leader election, Redis-backed correlator) | **ADR-007** (+ `nxt-backend` ADR-010 §6) | Operator needs >1 replica / ADR-007 triggers |
+**Canonical living list:** `docs/decisions-log.md` § **Parked / revisit**.
+Do not add rows here — they drift from the log. HA remains governed by **ADR-007**.
 
 Cancel is **not** deferred — Unit **5.2** ships engine + `POST /message/cancel` /
 `POST /messages/cancel`.
