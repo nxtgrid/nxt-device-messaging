@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.2 done**; **next = 3.3** auth / HTTP polish)* | —          |
+| —   | *(none blocking; **3.3A done**; **next = 3.3B** validation error bodies)* | —          |
 
 
 
@@ -50,7 +50,8 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** sliced: **3.1–3.2** (webhook + OpenAPI) **closed**;
-**next = 3.3** auth / HTTP polish. Cold starts: trust `AGENTS.md` + this log
+**3.3A** (timing-safe Bearer) **done**; **next = 3.3B** validation error
+bodies. Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
@@ -1613,3 +1614,15 @@ raw-event enqueue → 204 → async process design. Not a 3.2 change.
 plan 001 / AGENTS 3.2 → done; next **3.3**.
 
 **Phase 3.2 closed.**
+
+### 2026-08-13 — session: Phase 3.3A — timing-safe Bearer
+
+**Landed:** `src/http/auth.ts` — parse case-insensitive `Bearer ` then
+`timingSafeEqual` on the token vs `DEVICE_MESSAGING_API_KEY` (length-guard first,
+same pattern as webhook signature verify). Same 401 `{ error: 'Unauthorized' }`
+for missing / malformed / wrong. Opt-in unchanged (unset/empty key skips the
+hook; `/healthz`, docs, ingress stay open). Helper stays local — no share with
+`sign.ts`. Unit: `test/unit/http/auth.spec.ts`.
+
+**Phase 3.3A closed.** Next: **3.3B** richer Zod validation error bodies
+(field path + message; lock envelope before coding).

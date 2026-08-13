@@ -46,7 +46,7 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 |---|---|
 | **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
 | **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7); `/v3/api-docs` + `/swagger`; outbound `webhooks` | **Done** |
-| **3.3** Auth / HTTP polish (timing-safe Bearer, error bodies, …) | **Next** |
+| **3.3** Auth / HTTP polish | **3.3A done** (timing-safe Bearer); next **3.3B** error bodies |
 
 Parked (not next): graceful-shutdown v2 (await in-flight ticks); webhook drain concurrency —
 see `docs/decisions-log.md` carried findings.

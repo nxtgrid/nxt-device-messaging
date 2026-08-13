@@ -6,7 +6,7 @@ its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
 **Status:** Phase 0–2 done. Phase 3 sliced: **3.1** + **3.2** (OpenAPI) **done**;
-**next = 3.3** auth polish. See Phase 3 checklist below.
+**3.3A done**; **next = 3.3B** validation error bodies. See Phase 3 checklist below.
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -48,12 +48,12 @@ need them (same pattern as Intermezzo enqueue/get).
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Done** |
-| **3** | ADR-003 **polish** (sliced): **3.1** webhook, **3.2** OpenAPI, **3.3** auth | **In progress** — **3.1–3.2 done**; **next 3.3 auth** |
+| **3** | ADR-003 **polish** (sliced): **3.1** webhook, **3.2** OpenAPI, **3.3** auth | **In progress** — **3.3A done**; **next 3.3B** |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
 **Phase 1b is closed.** Phase 2 **Units 7–10** are **done**. **Phase 3** in progress:
-**3.1–3.2 closed**; next **3.3** (auth / HTTP polish). Phase 4 still owns ADR-005 observability
+**3.1–3.2 closed**; **3.3A done**; next **3.3B** (validation error bodies). Phase 4 still owns ADR-005 observability
 hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
 
 ### Phase 3 — ADR-003 polish (sliced)
@@ -85,6 +85,10 @@ follow-ups).
       (STS-mirrored); route schemas; outbound `webhooks.deliveryEvent` + `WebhookEvent`
       component (not a fake inbound path).
 - [ ] **3.3 — Auth / HTTP polish** (timing-safe Bearer, error bodies, …).
+      - [x] **3.3A** Timing-safe Bearer on command routes (`src/http/auth.ts`);
+            same `{ error: 'Unauthorized' }` for missing / malformed / wrong.
+      - [ ] **3.3B** Richer Zod validation error bodies (field path + message;
+            stable envelope).
 
 ## Port units
 
