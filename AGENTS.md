@@ -45,8 +45,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 | Slice | Status |
 |---|---|
 | **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
-| **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7) | **Next** |
-| **3.3** Auth / HTTP polish (timing-safe Bearer, error bodies, …) | After 3.2 |
+| **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7); `/v3/api-docs` + `/swagger`; outbound `webhooks` | **Done** |
+| **3.3** Auth / HTTP polish (timing-safe Bearer, error bodies, …) | **Next** |
 
 Parked (not next): graceful-shutdown v2 (await in-flight ticks); webhook drain concurrency —
 see `docs/decisions-log.md` carried findings.
@@ -69,13 +69,14 @@ outgoing, incoming, token; enable via `plugins[]` + `CALIN_API_V2_*` — + `nxt-
 token-only — fetch + mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
 PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `plugins[]` +
 `CHIRPSTACK_*`),
-`src/http/` (lean enqueue/get/cancel; thin ingress + token; `smoke/` httpYac — **no OpenAPI
-document wired yet**),
+`src/http/` (lean enqueue/get/cancel; thin ingress + token; Zod route schemas;
+`registerOpenApi` → `/v3/api-docs` + `/swagger`; `smoke/` httpYac),
 `src/engine/` peer factories — `createBaseService` (optional `webhook`) /
 `createOutgoingService` / `createIncomingService` / `createTokenService` +
 `startEngineTimers` (`engine.enabled`). Outbound adopter notify →
 `src/engine/webhook/` (`storeAndEmit` / private drain / POST / retry / DLQ / opt-in
-HMAC); wired from `main` when `eventWebhook` is set. Errors from `engine/errors.ts`.
+HMAC; OpenAPI `webhooks.deliveryEvent` + `WebhookEvent`); wired from `main` when
+`eventWebhook` is set. Errors from `engine/errors.ts`.
 Composition root in `main.ts` (lean `SIGTERM`/`SIGINT` shutdown). **Units 5–10 complete.**
 Config: `eventWebhook`; env `DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
 

@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.2A2c type/schema unify done**; **next = 3.2A3** ingress → 3.2B webhook docs → 3.3)* | —          |
+| —   | *(none blocking; **3.2 done**; **next = 3.3** auth / HTTP polish)* | —          |
 
 
 
@@ -49,8 +49,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** sliced: **3.1** (event webhook + HMAC + review follow-ups) **closed**;
-**next = 3.2 OpenAPI**; then **3.3** auth polish. Cold starts: trust `AGENTS.md` + this log
+**done**. **Phase 3** sliced: **3.1–3.2** (webhook + OpenAPI) **closed**;
+**next = 3.3** auth / HTTP polish. Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
@@ -1589,3 +1589,27 @@ truth; `types.ts` infers. `DeviceMessage` = public wire + `commandType: CommandT
   `types.ts` re-exports (no hand-written message duplicate).
 - **Rename:** `deviceMessagePublicSchema` / `DeviceMessagePublic` →
   `deviceMessageResponseSchema` / `DeviceMessageResponse` (HTTP outgoing clear).
+
+### 2026-08-13 — session: Phase 3.2A3 — ingress OpenAPI schema
+
+**Landed:** `POST /ingress/:pluginId` uses Fastify Zod `schema` (params + opaque
+`z.unknown()` body so raw Buffer still validates for signatures; 204/400/401
+responses). OpenAPI smoke includes ingress path. **3.2A closed.**
+
+**Next:** **3.2B** — outbound webhook in OpenAPI (`webhooks` / components) + plan /
+AGENTS closeout.
+
+### 2026-08-13 — parked: ChirpStack HTTP does not retry ingress
+
+ChirpStack’s HTTP integration posts once, expects 2xx, and on failure **logs** — no
+delivery retry loop. v1 still **awaits** `incomingService.handle` before 204 for
+*local* durability (Redis work), not vendor recovery. Revisit only with a durable
+raw-event enqueue → 204 → async process design. Not a 3.2 change.
+
+### 2026-08-13 — session: Phase 3.2B — outbound webhook OpenAPI + closeout
+
+**Landed:** `webhookEventSchema`; OpenAPI `components.schemas.WebhookEvent` +
+`webhooks.deliveryEvent` (headers, no fake inbound path); `WebhookEvent` inferred;
+plan 001 / AGENTS 3.2 → done; next **3.3**.
+
+**Phase 3.2 closed.**

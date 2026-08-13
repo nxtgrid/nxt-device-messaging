@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '#src/app.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 
@@ -24,10 +26,12 @@ describe('OpenAPI / Swagger UI', () => {
     await app.close();
   });
 
-  it('documents command and token paths when services are wired', async () => {
+  it('documents command, token, and ingress paths when services are wired', async () => {
     const app = await buildApp({
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       tokenService: createInMemoryTokenService({ knownPluginIds: [ STUB_PUSH_ID ] }),
+      incomingService: createInMemoryIncomingService(),
+      registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
     });
 
     const response = await app.inject({
@@ -42,6 +46,8 @@ describe('OpenAPI / Swagger UI', () => {
     expect(paths['/message/cancel'].post).toBeDefined();
     expect(paths['/messages/cancel'].post).toBeDefined();
     expect(paths['/token/generate'].post).toBeDefined();
+    expect(paths['/ingress/{pluginId}'].post).toBeDefined();
+    expect(paths['/ingress/{pluginId}'].post.tags).toContain('ingress');
 
     await app.close();
   });
@@ -64,6 +70,22 @@ describe('OpenAPI / Swagger UI', () => {
     expect(dateBranch.properties.month).toMatchObject({ minimum: 1, maximum: 12 });
     expect(dateBranch.properties.day).toMatchObject({ minimum: 1, maximum: 31 });
     expect(JSON.stringify(dateBranch)).not.toContain('-9007199254740991');
+
+    await app.close();
+  });
+
+  it('documents outbound deliveryEvent webhook (not an inbound path)', async () => {
+    const app = await buildApp();
+
+    const doc = (await app.inject({ method: 'GET', url: '/v3/api-docs' })).json();
+
+    expect(doc.components.schemas.WebhookEvent).toBeDefined();
+    expect(doc.components.schemas.WebhookEvent.properties.message).toBeDefined();
+    expect(doc.webhooks.deliveryEvent.post).toBeDefined();
+    expect(doc.webhooks.deliveryEvent.post.requestBody.content['application/json'].schema)
+      .toEqual({ $ref: '#/components/schemas/WebhookEvent' });
+    expect(doc.paths['/webhooks']).toBeUndefined();
+    expect(doc.paths['/webhook']).toBeUndefined();
 
     await app.close();
   });
