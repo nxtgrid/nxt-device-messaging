@@ -1,4 +1,10 @@
+import {
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from '@fastify/type-provider-zod';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { z } from 'zod';
 
 import {
   ingressRoutes,
@@ -8,10 +14,12 @@ import {
   messageRoutes,
   type MessageRoutesOpts,
 } from './http/message-routes.js';
+import { registerOpenApi } from './http/openapi.js';
 import {
   tokenRoutes,
   type TokenRoutesOpts,
 } from './http/token-routes.js';
+import { registerCoarseValidationErrorHandler } from './http/validation-errors.js';
 
 /**
  * HTTP composition deps. Services are optional so probes (e.g. `/healthz`) can
@@ -26,15 +34,32 @@ export type BuildAppOptions = {
   readonly registry?: IngressRoutesOpts['registry'];
 };
 
+const healthzResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
 /**
  * Builds the HTTP application (ADR-001). Ops probes stay unauthenticated (ADR-005 §5).
  */
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
-  });
+  }).withTypeProvider<ZodTypeProvider>();
 
-  app.get('/healthz', async () => {
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+  registerCoarseValidationErrorHandler(app);
+
+  await registerOpenApi(app);
+
+  app.get('/healthz', {
+    schema: {
+      tags: [ 'ops' ],
+      response: {
+        200: healthzResponseSchema,
+      },
+    },
+  }, async () => {
     return { ok: true as const };
   });
 

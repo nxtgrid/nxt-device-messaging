@@ -2,43 +2,18 @@
  * @fileoverview Types for the outbound event-webhook messenger (ADR-003 §6).
  *
  * The HTTP body is {@link WebhookEvent}. Redis stores {@link WebhookStoredRecord}
- * (event + attempt metadata).
+ * (event + attempt metadata). Message slice and event envelope are Zod-owned.
  */
 
-import type {
-  DeviceMessageDeliveryStatus,
-  DeviceMessageDevice,
-  FailureReason,
-  MessageResponseStatus,
-  PhaseEnum,
-} from '../../lib/device-message/types.js';
+import { z } from 'zod';
 
-/** Adopter-facing message slice inside the webhook event (no queue internals). */
-export type WebhookMessagePayload = {
-  readonly id?: string;
-  readonly correlationId?: string;
-  readonly commandType?: string;
-  readonly deliveryStatus: DeviceMessageDeliveryStatus;
-  readonly phase?: PhaseEnum;
-  readonly device: DeviceMessageDevice;
-  readonly response?: {
-    readonly status: MessageResponseStatus;
-    readonly data?: unknown;
-  };
-  readonly failureHistory?: readonly FailureReason[];
-  readonly unsolicited?: boolean;
-};
+import type { WebhookMessagePayload } from '../../lib/device-message/types.js';
+import { webhookEventSchema } from './event-schema.js';
 
-/**
- * HTTP POST body for one delivery-event notification.
- * `eventId` is reused across HTTP retries of the same notification.
- */
-export type WebhookEvent = {
-  readonly eventId: string;
-  readonly occurredAt: string;
-  readonly pluginId: string;
-  readonly message: WebhookMessagePayload;
-};
+export type { WebhookMessagePayload };
+
+/** Outbound webhook POST body — inferred from {@link webhookEventSchema}. */
+export type WebhookEvent = z.infer<typeof webhookEventSchema>;
 
 /**
  * Redis payload under `webhook:payload:{eventId}` / `webhook:dlq:{eventId}`.

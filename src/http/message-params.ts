@@ -15,7 +15,10 @@ export type CorrelationIdParams = z.infer<typeof correlationIdParamsSchema>;
 
 /** `POST /ingress/:pluginId` path params. */
 export const pluginIdParamsSchema = z.object({
-  pluginId: z.string().min(1),
+  pluginId: z.string().min(1).meta({
+    description: 'Enabled plugin id that supports PUSH ingress',
+    examples: [ 'calin-chirpstack' ],
+  }),
 }).strict();
 
 export type PluginIdParams = z.infer<typeof pluginIdParamsSchema>;

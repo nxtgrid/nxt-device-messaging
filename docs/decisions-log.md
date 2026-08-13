@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.1 done**; **next = 3.2 OpenAPI**, then 3.3 auth)*                 | —          |
+| —   | *(none blocking; **3.2 done**; **next = 3.3** auth / HTTP polish)* | —          |
 
 
 
@@ -49,8 +49,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** sliced: **3.1** (event webhook + HMAC + review follow-ups) **closed**;
-**next = 3.2 OpenAPI**; then **3.3** auth polish. Cold starts: trust `AGENTS.md` + this log
+**done**. **Phase 3** sliced: **3.1–3.2** (webhook + OpenAPI) **closed**;
+**next = 3.3** auth / HTTP polish. Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
@@ -1539,3 +1539,77 @@ chunk. Thin later option if needed: webhook `stop()` awaits current `drainChain`
 Aligned `AGENTS.md` Current status, plan 001 Phase 3 header/checklist, and this log’s
 open-decisions blurb so a fresh chat without transcript sees: **3.1 closed → next 3.2
 OpenAPI → then 3.3**; parked shutdown-v2 / drain concurrency called out.
+
+### 2026-08-12 — session: Phase 3.2A1 — OpenAPI scaffold
+
+**Locked (D1–D5):** `@fastify/type-provider-zod` + `@fastify/swagger` +
+`@fastify/swagger-ui`; paths mirror `nxt-sts` (`/v3/api-docs`, `/swagger`); UI on;
+docs unauthenticated; outbound webhook described later (no fake path).
+
+**Landed:** deps; `registerOpenApi` in `src/http/openapi.ts`; Zod compilers + type
+provider in `buildApp`; `/healthz` response schema; unit smoke for JSON + UI.
+
+**Next (3.2A2):** migrate command + token routes from hand `safeParse` to Fastify
+route `schema` (same Zod). Then ingress (3.2A3), then webhook components (3.2B).
+
+### 2026-08-12 — session: Phase 3.2A2 — command + token route schemas
+
+**Landed:** message + token routes use Fastify Zod `schema` (body/params/response);
+`deviceMessagePublicSchema` / cancel / token / coarse `errorBodySchema`;
+`registerCoarseValidationErrorHandler` keeps `{ error: 'Invalid request body' }`
+until 3.3; OpenAPI smoke asserts command + token paths.
+
+**Next (3.2A3):** ingress route schema (opaque body + `pluginId` params). Then 3.2B
+webhook description.
+
+### 2026-08-12 — session: Phase 3.2A2b — OpenAPI example polish
+
+Swagger UI was inventing examples from Zod JSON-Schema integer extremes
+(`Number.MIN_SAFE_INTEGER`) for unconstrained `z.number().int()` fields
+(e.g. SET_DATE year/month/day).
+
+**Landed:** calendar/time bounds + `.meta({ examples, description })` on create /
+token / date-time schemas; `networkId` / relay `id` as `z.uint32()` so docs stay
+sane; year still allows 2-digit (`0–9999`). OpenAPI unit asserts SET_DATE branch.
+
+### 2026-08-13 — session: Phase 3.2A2c — Zod owns shared vocabulary
+
+Removed TS/Zod double declarations for delivery status, cancel result, message
+response, failure reason, and public message shape. Zod schemas are source of
+truth; `types.ts` infers. `DeviceMessage` = public wire + `commandType: CommandType`
++ optional `concurrencyRateLimitKey`. `FailureContext` stays TS-only (engine
+`skipRetry`, not on wire). Coarse validation params message →
+`Invalid path parameters` (field-level Zod issues = 3.3).
+
+### 2026-08-13 — session: Phase 3.2A2d–e — public commandType + webhook pick
+
+- **3.2A2d:** `deviceMessagePublicSchema.commandType` → `z.enum(COMMAND_TYPES)`.
+- **3.2A2e:** `webhookMessagePayloadSchema` = pick from public + partial (keep
+  `deliveryStatus`/`device` required); `WebhookMessagePayload` inferred; webhook
+  `types.ts` re-exports (no hand-written message duplicate).
+- **Rename:** `deviceMessagePublicSchema` / `DeviceMessagePublic` →
+  `deviceMessageResponseSchema` / `DeviceMessageResponse` (HTTP outgoing clear).
+
+### 2026-08-13 — session: Phase 3.2A3 — ingress OpenAPI schema
+
+**Landed:** `POST /ingress/:pluginId` uses Fastify Zod `schema` (params + opaque
+`z.unknown()` body so raw Buffer still validates for signatures; 204/400/401
+responses). OpenAPI smoke includes ingress path. **3.2A closed.**
+
+**Next:** **3.2B** — outbound webhook in OpenAPI (`webhooks` / components) + plan /
+AGENTS closeout.
+
+### 2026-08-13 — parked: ChirpStack HTTP does not retry ingress
+
+ChirpStack’s HTTP integration posts once, expects 2xx, and on failure **logs** — no
+delivery retry loop. v1 still **awaits** `incomingService.handle` before 204 for
+*local* durability (Redis work), not vendor recovery. Revisit only with a durable
+raw-event enqueue → 204 → async process design. Not a 3.2 change.
+
+### 2026-08-13 — session: Phase 3.2B — outbound webhook OpenAPI + closeout
+
+**Landed:** `webhookEventSchema`; OpenAPI `components.schemas.WebhookEvent` +
+`webhooks.deliveryEvent` (headers, no fake inbound path); `WebhookEvent` inferred;
+plan 001 / AGENTS 3.2 → done; next **3.3**.
+
+**Phase 3.2 closed.**

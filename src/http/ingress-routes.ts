@@ -2,7 +2,7 @@
  * @fileoverview Thin vendor ingress: `POST /ingress/:pluginId` (Unit 5.5).
  *
  * No Bearer API key (ADR-003 §5). Optional `plugin.incoming.verifySignature`.
- * HMAC/OpenAPI polish stays Phase 3.
+ * Body is vendor-opaque: raw buffer kept for signatures; JSON parsed in-handler.
  *
  * HTTP resolves the plugin once (enablement, PUSH support, signature), then
  * hands it to {@link IncomingService.handle} — no second registry lookup in the
@@ -10,12 +10,14 @@
  * exception because signature verification needs the plugin before `handle`.
  */
 
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsyncZod } from '@fastify/type-provider-zod';
+import { z } from 'zod';
 
 import type { IncomingService } from '../engine/incoming.js';
 import type { PluginId } from '../lib/device-message/types.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import { pluginIdParamsSchema } from './message-params.js';
+import { errorBodySchema } from './response-schemas.js';
 
 export type IngressRoutesOpts = {
   readonly incomingService: IncomingService;
@@ -23,9 +25,23 @@ export type IngressRoutesOpts = {
 };
 
 /**
+ * Vendor JSON is opaque to core (plugin parses). `z.unknown()` accepts the raw
+ * Buffer from the content-type parser so signature verification still sees bytes.
+ * OpenAPI would otherwise treat untyped `unknown` as a string (Swagger UI default);
+ * `type: object` is documentation-only metadata.
+ */
+const ingressBodySchema = z.unknown().meta({
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Vendor-specific JSON (opaque to the service). The raw body is retained for optional signature checks; the enabled plugin parses the shape.',
+  examples: [ { event: 'up', deviceInfo: { devEui: '0102030405060708' } } ],
+});
+
+/**
  * Registers unauthenticated vendor webhook ingress.
  */
-export const ingressRoutes: FastifyPluginAsync<IngressRoutesOpts> = async (app, opts) => {
+export const ingressRoutes: FastifyPluginAsyncZod<IngressRoutesOpts> = async (app, opts) => {
   // Keep the raw buffer for optional signature checks; parse JSON in-handler.
   app.addContentTypeParser(
     'application/json',
@@ -35,13 +51,19 @@ export const ingressRoutes: FastifyPluginAsync<IngressRoutesOpts> = async (app, 
     },
   );
 
-  app.post('/ingress/:pluginId', async (request, reply) => {
-    const parsedParams = pluginIdParamsSchema.safeParse(request.params);
-    if (!parsedParams.success) {
-      return reply.code(400).send({ error: 'Invalid pluginId' });
-    }
-
-    const pluginId = parsedParams.data.pluginId as PluginId;
+  app.post('/ingress/:pluginId', {
+    schema: {
+      tags: [ 'ingress' ],
+      params: pluginIdParamsSchema,
+      body: ingressBodySchema,
+      response: {
+        204: z.null(),
+        400: errorBodySchema,
+        401: errorBodySchema,
+      },
+    },
+  }, async (request, reply) => {
+    const pluginId = request.params.pluginId as PluginId;
     const plugin = opts.registry.get(pluginId);
     if (!plugin) {
       return reply.code(400).send({ error: `Unknown or disabled pluginId: ${ pluginId }` });
@@ -85,7 +107,7 @@ export const ingressRoutes: FastifyPluginAsync<IngressRoutesOpts> = async (app, 
     await opts.incomingService.handle(event, plugin, {
       query: flattenQuery(request.query),
     });
-    return reply.code(204).send();
+    return reply.code(204).send(null);
   });
 };
 
