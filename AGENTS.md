@@ -38,7 +38,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0–2 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10).
+**Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
+ADR-003 polish). **Next = Phase 4** (metrics, pino, integration guide).
 
 **Phase 3 — ADR-003 polish (sliced; do not treat as one blob):**
 
@@ -46,10 +47,10 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 |---|---|
 | **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
 | **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7); `/v3/api-docs` + `/swagger`; outbound `webhooks` | **Done** |
-| **3.3** Auth / HTTP polish (timing-safe Bearer, error bodies, …) | **Next** |
+| **3.3** Auth / HTTP polish (timing-safe Bearer, validation `{ error, issues }`) | **Done** |
 
-Parked (not next): graceful-shutdown v2 (await in-flight ticks); webhook drain concurrency —
-see `docs/decisions-log.md` carried findings.
+Parked / revisit (not Phase 4): **`docs/decisions-log.md` § Parked / revisit** — that table
+is canonical. Do not keep a second list here.
 
 Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
 command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
@@ -152,7 +153,7 @@ index table above.
 
 | File | What it holds |
 |---|---|
-| `docs/decisions-log.md` | **Read first.** What is settled, what is open, and carried findings. Append every session |
+| `docs/decisions-log.md` | **Read first.** Settled vs open; **Parked / revisit** (canonical follow-ups); carried findings. Append every session |
 | `docs/plans/001-extraction.md` | The executable plan: five phases, ten port units, and the import ledger |
 
 `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md` is **stale and marked

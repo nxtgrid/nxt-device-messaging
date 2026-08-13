@@ -19,7 +19,7 @@ import {
   tokenRoutes,
   type TokenRoutesOpts,
 } from './http/token-routes.js';
-import { registerCoarseValidationErrorHandler } from './http/validation-errors.js';
+import { registerValidationErrorHandler } from './http/validation-errors.js';
 
 /**
  * HTTP composition deps. Services are optional so probes (e.g. `/healthz`) can
@@ -48,7 +48,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-  registerCoarseValidationErrorHandler(app);
+  registerValidationErrorHandler(app);
 
   await registerOpenApi(app);
 

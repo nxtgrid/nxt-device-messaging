@@ -5,8 +5,8 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0–2 done. Phase 3 sliced: **3.1** + **3.2** (OpenAPI) **done**;
-**next = 3.3** auth polish. See Phase 3 checklist below.
+**Status:** Phase 0–3 done. Phase 3 sliced: **3.1** + **3.2** (OpenAPI) + **3.3**
+(auth / validation errors) **done**. **Next = Phase 4.** See Phase 3 checklist below.
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -19,8 +19,8 @@ need them (same pattern as Intermezzo enqueue/get).
 
 ## How to work in this plan
 
-1. Read `AGENTS.md` (origin, baseline, governance) and `docs/decisions-log.md` (what is settled vs
-   open) first.
+1. Read `AGENTS.md` (origin, baseline, governance) and `docs/decisions-log.md` first
+   (settled vs open; **Parked / revisit**).
 2. **The source is `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend`, frozen at
    `db5c2ac`.** Both repos are in the same Cursor workspace. Read the source, never a description
    of it.
@@ -48,12 +48,12 @@ need them (same pattern as Intermezzo enqueue/get).
 | **1** | Foundation: units 1–6 (SPI polish, D5/D6) | **Done** through Unit 6 |
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Done** |
-| **3** | ADR-003 **polish** (sliced): **3.1** webhook, **3.2** OpenAPI, **3.3** auth | **In progress** — **3.1–3.2 done**; **next 3.3 auth** |
+| **3** | ADR-003 **polish** (sliced): **3.1** webhook, **3.2** OpenAPI, **3.3** auth | **Done** |
 | **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
-**Phase 1b is closed.** Phase 2 **Units 7–10** are **done**. **Phase 3** in progress:
-**3.1–3.2 closed**; next **3.3** (auth / HTTP polish). Phase 4 still owns ADR-005 observability
+**Phase 1b is closed.** Phase 2 **Units 7–10** are **done**. **Phase 3 is closed**
+(**3.1–3.3**). Phase 4 still owns ADR-005 observability
 hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
 
 ### Phase 3 — ADR-003 polish (sliced)
@@ -84,7 +84,11 @@ follow-ups).
 - [x] **3.2 — OpenAPI** from Zod (ADR-001 §3 / ADR-003 §7). `/v3/api-docs` + `/swagger`
       (STS-mirrored); route schemas; outbound `webhooks.deliveryEvent` + `WebhookEvent`
       component (not a fake inbound path).
-- [ ] **3.3 — Auth / HTTP polish** (timing-safe Bearer, error bodies, …).
+- [x] **3.3 — Auth / HTTP polish** (timing-safe Bearer, error bodies, …).
+      - [x] **3.3A** Timing-safe Bearer on command routes (`src/http/auth.ts`);
+            same `{ error: 'Unauthorized' }` for missing / malformed / wrong.
+      - [x] **3.3B** Richer Zod validation error bodies (`{ error, issues: [{ path, message }] }`;
+            domain/auth errors omit `issues`).
 
 ## Port units
 
@@ -296,13 +300,8 @@ those enums stay in nxt-backend as code (`nxt-backend` ADR-010 §4, ADR-007 §6)
 
 ## Deferred
 
-| Item | Why | Revisit when |
-|---|---|---|
-| Message-bus adapter for results | ADR-003: HTTP webhook is v1; bus stays optional | A consumer needs broker delivery |
-| Dead-letter admin/replay HTTP | ADR-003 keeps failed callbacks in Redis TTL; no admin route yet | Ops needs replay without Redis access |
-| Debug HTTP to run distribute / poll once | Nice for manual stepping; not in ADR-003; overkill while timers + stubs suffice | Manual smoke against timers becomes painful |
-| Domain vocabulary rename (`DeviceMessage` → dispatch-flavoured) | Would touch the Redis key schema and both Lua scripts during a behaviour-preserving move | Service is real and test-covered (ADR-001, Rejected) |
-| HA / multi-replica (leader election, Redis-backed correlator) | **ADR-007** (+ `nxt-backend` ADR-010 §6) | Operator needs >1 replica / ADR-007 triggers |
+**Canonical living list:** `docs/decisions-log.md` § **Parked / revisit**.
+Do not add rows here — they drift from the log. HA remains governed by **ADR-007**.
 
 Cancel is **not** deferred — Unit **5.2** ships engine + `POST /message/cancel` /
 `POST /messages/cancel`.

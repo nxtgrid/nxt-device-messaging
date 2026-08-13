@@ -89,7 +89,13 @@ describe('POST /token/generate', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: 'Invalid request body' });
+    const body = response.json() as {
+      error: string;
+      issues: { path: string; message: string }[];
+    };
+    expect(body.error).toBe('Invalid request body');
+    expect(body.issues.length).toBeGreaterThan(0);
+    expect(body.issues.every(issue => issue.message.length > 0)).toBe(true);
 
     await app.close();
   });
