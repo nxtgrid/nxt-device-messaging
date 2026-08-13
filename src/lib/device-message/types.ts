@@ -1,18 +1,26 @@
 /**
  * @fileoverview Domain types for the device-message aggregate.
  *
- * Create DTO is inferred from Zod in `./schemas.ts`. Lifecycle fields are TypeScript-only.
+ * Wire / shared vocabulary is owned by Zod in `./schemas.ts` and inferred here.
+ * Prefer `z.infer<typeof …Schema>` over re-listing string unions.
  */
 
 import { z } from 'zod';
 
 import type { CommandType } from './command-types.js';
 import {
+  cancelMessageResultSchema,
   createDeviceMessageSchema,
+  deliveryStatusSchema,
+  deviceMessageResponseSchema,
+  failureReasonSchema,
   generateTokenSchema,
+  messageResponseSchema,
+  messageResponseStatusSchema,
   phaseSchema,
   setDatePayloadSchema,
   setTimePayloadSchema,
+  webhookMessagePayloadSchema,
 } from './schemas.js';
 
 export type {
@@ -57,27 +65,23 @@ export type SetTimePayload = z.infer<typeof setTimePayloadSchema>;
 export type PluginId = string;
 
 /** Outcome of command execution on the device. */
-export type MessageResponseStatus = 'EXECUTION_SUCCESS' | 'EXECUTION_FAILURE';
+export type MessageResponseStatus = z.infer<typeof messageResponseStatusSchema>;
+
+/** Device response block on a message. */
+export type MessageResponse = z.infer<typeof messageResponseSchema>;
 
 /**
- * Delivery status representing the message's position in the delivery pipeline.
+ * Delivery status — inferred from {@link deliveryStatusSchema}.
  *
  * Flow: QUEUED → SENT_TO_NS → DELIVERED_TO_NS → SENT_TO_DEVICE → DELIVERY_SUCCESSFUL
  *       ↓ (on failure at any step)
  *       TO_RETRY → QUEUED (retry) or DELIVERY_FAILED (max retries exceeded)
  */
-export type DeviceMessageDeliveryStatus =
-  | 'QUEUED'
-  | 'TO_RETRY'
-  | 'SENT_TO_NS'
-  | 'DELIVERED_TO_NS'
-  | 'SENT_TO_DEVICE'
-  | 'DELIVERY_SUCCESSFUL'
-  | 'DELIVERY_FAILED';
+export type DeviceMessageDeliveryStatus = z.infer<typeof deliveryStatusSchema>;
 
 /**
  * Context provided when a delivery attempt fails.
- * Used as input to retryOrFail and by network server adapters.
+ * Engine-only input to retryOrFail (includes `skipRetry`); not on the public wire.
  */
 export type FailureContext = {
   /** Human-readable description of what went wrong. */
@@ -90,40 +94,33 @@ export type FailureContext = {
   skipRetry?: boolean;
 };
 
-/**
- * Record of a delivery attempt failure, stored in failureHistory.
- */
-export type FailureReason = {
-  /** Human-readable description of what went wrong. */
-  reason: string;
-  /** gRPC or HTTP error code from the network server. */
-  errorCode?: number | string;
-  /** Additional error context (e.g., gRPC details, constraint names). */
-  details?: string;
-  /** Delivery status when the failure occurred. */
-  status: DeviceMessageDeliveryStatus;
-  /** ISO timestamp of the failure. */
-  timestamp: string;
-  /** Flags whether this is the final failure. */
-  isFinal?: boolean;
-};
+/** Record of a delivery attempt failure, stored in failureHistory. */
+export type FailureReason = z.infer<typeof failureReasonSchema>;
 
 /**
  * Result of a cancel operation for a single correlation id.
- * Returned by cancel-one / cancel-many on the outgoing surface.
+ * Inferred from {@link cancelMessageResultSchema}.
  */
-export type CancelMessageResult = {
-  correlationId: string;
-  /** CANCELLED: all messages removed. NOT_CANCELLABLE: at least one was in-flight. NOT_FOUND: no messages in Redis. */
-  result: 'CANCELLED' | 'NOT_CANCELLABLE' | 'NOT_FOUND';
-};
+export type CancelMessageResult = z.infer<typeof cancelMessageResultSchema>;
+
+/**
+ * Command-API response body (enqueue/get) — inferred from
+ * {@link deviceMessageResponseSchema}.
+ */
+export type DeviceMessageResponse = z.infer<typeof deviceMessageResponseSchema>;
+
+/**
+ * Adopter-facing message slice inside the outbound webhook event — inferred
+ * from {@link webhookMessagePayloadSchema} (pick of the response schema).
+ */
+export type WebhookMessagePayload = z.infer<typeof webhookMessagePayloadSchema>;
 
 /**
  * A message to be delivered to a remote device.
  *
- * `commandType` is the full {@link CommandType} vocabulary (wider than the enqueue
- * DTO) so unsolicited ingress types can appear on stored/emitted messages.
- * Create/enqueue wire stays {@link EnqueueableCommandType} via Zod.
+ * Response-wire fields come from {@link DeviceMessageResponse}; `commandType` is the
+ * full {@link CommandType} vocabulary (wider than the enqueue DTO) so unsolicited
+ * ingress types can appear. `concurrencyRateLimitKey` is process-only.
  *
  * Lifecycle:
  * 1. Created via {@link CreateDeviceMessage} and enqueued
@@ -131,27 +128,9 @@ export type CancelMessageResult = {
  * 3. Receives response or times out
  * 4. On failure: retries with backoff or fails permanently
  */
-export type DeviceMessage = Omit<CreateDeviceMessage, 'commandType'> & {
+export type DeviceMessage = Omit<DeviceMessageResponse, 'commandType'> & {
   /** Full vocabulary — enqueue wire is narrower ({@link EnqueueableCommandType}). */
   commandType: CommandType;
-  /** Unique identifier (ULID). */
-  id: string;
-  /** External queue ID from network server (ChirpStack, Calin API, etc.). */
-  deliveryQueueId: string;
-  /** Current position in delivery pipeline. */
-  deliveryStatus: DeviceMessageDeliveryStatus;
-  /** Response data from the device (on success). */
-  response?: {
-    status: MessageResponseStatus;
-    /** Opaque object payload; plugins own the concrete shape. */
-    data?: Record<string, unknown>;
-  };
-  /** True if device sent this message without being asked. */
-  unsolicited?: boolean;
-  /** Number of delivery attempts (0 = first attempt). */
-  retryCount?: number;
-  /** History of failed delivery attempts. */
-  failureHistory?: FailureReason[];
   /**
    * Redis concurrency admission track key, set at distribute claim.
    * Internal only — stripped before adopter-facing emit / GET.
@@ -173,11 +152,7 @@ export type ParsedIncomingEvent = {
   /** Device information from the event. */
   device: DeviceMessageDevice;
   /** Response payload from device (for uplink events). */
-  response?: {
-    status: MessageResponseStatus;
-    /** Opaque object payload; plugins own the concrete shape. */
-    data?: Record<string, unknown>;
-  };
+  response?: MessageResponse;
   /** True if this is an unsolicited uplink from the device. */
   unsolicited?: boolean;
   failureContext?: FailureContext;

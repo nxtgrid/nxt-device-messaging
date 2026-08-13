@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.2A1 scaffold done**; **next = 3.2A2** route schemas → 3.2B webhook docs → 3.3)* | —          |
+| —   | *(none blocking; **3.2A2c type/schema unify done**; **next = 3.2A3** ingress → 3.2B webhook docs → 3.3)* | —          |
 
 
 
@@ -1551,3 +1551,41 @@ provider in `buildApp`; `/healthz` response schema; unit smoke for JSON + UI.
 
 **Next (3.2A2):** migrate command + token routes from hand `safeParse` to Fastify
 route `schema` (same Zod). Then ingress (3.2A3), then webhook components (3.2B).
+
+### 2026-08-12 — session: Phase 3.2A2 — command + token route schemas
+
+**Landed:** message + token routes use Fastify Zod `schema` (body/params/response);
+`deviceMessagePublicSchema` / cancel / token / coarse `errorBodySchema`;
+`registerCoarseValidationErrorHandler` keeps `{ error: 'Invalid request body' }`
+until 3.3; OpenAPI smoke asserts command + token paths.
+
+**Next (3.2A3):** ingress route schema (opaque body + `pluginId` params). Then 3.2B
+webhook description.
+
+### 2026-08-12 — session: Phase 3.2A2b — OpenAPI example polish
+
+Swagger UI was inventing examples from Zod JSON-Schema integer extremes
+(`Number.MIN_SAFE_INTEGER`) for unconstrained `z.number().int()` fields
+(e.g. SET_DATE year/month/day).
+
+**Landed:** calendar/time bounds + `.meta({ examples, description })` on create /
+token / date-time schemas; `networkId` / relay `id` as `z.uint32()` so docs stay
+sane; year still allows 2-digit (`0–9999`). OpenAPI unit asserts SET_DATE branch.
+
+### 2026-08-13 — session: Phase 3.2A2c — Zod owns shared vocabulary
+
+Removed TS/Zod double declarations for delivery status, cancel result, message
+response, failure reason, and public message shape. Zod schemas are source of
+truth; `types.ts` infers. `DeviceMessage` = public wire + `commandType: CommandType`
++ optional `concurrencyRateLimitKey`. `FailureContext` stays TS-only (engine
+`skipRetry`, not on wire). Coarse validation params message →
+`Invalid path parameters` (field-level Zod issues = 3.3).
+
+### 2026-08-13 — session: Phase 3.2A2d–e — public commandType + webhook pick
+
+- **3.2A2d:** `deviceMessagePublicSchema.commandType` → `z.enum(COMMAND_TYPES)`.
+- **3.2A2e:** `webhookMessagePayloadSchema` = pick from public + partial (keep
+  `deliveryStatus`/`device` required); `WebhookMessagePayload` inferred; webhook
+  `types.ts` re-exports (no hand-written message duplicate).
+- **Rename:** `deviceMessagePublicSchema` / `DeviceMessagePublic` →
+  `deviceMessageResponseSchema` / `DeviceMessageResponse` (HTTP outgoing clear).

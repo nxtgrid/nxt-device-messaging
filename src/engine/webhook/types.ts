@@ -2,32 +2,13 @@
  * @fileoverview Types for the outbound event-webhook messenger (ADR-003 §6).
  *
  * The HTTP body is {@link WebhookEvent}. Redis stores {@link WebhookStoredRecord}
- * (event + attempt metadata).
+ * (event + attempt metadata). Message slice is owned by device-message Zod
+ * (`webhookMessagePayloadSchema`).
  */
 
-import type {
-  DeviceMessageDeliveryStatus,
-  DeviceMessageDevice,
-  FailureReason,
-  MessageResponseStatus,
-  PhaseEnum,
-} from '../../lib/device-message/types.js';
+import type { WebhookMessagePayload } from '../../lib/device-message/types.js';
 
-/** Adopter-facing message slice inside the webhook event (no queue internals). */
-export type WebhookMessagePayload = {
-  readonly id?: string;
-  readonly correlationId?: string;
-  readonly commandType?: string;
-  readonly deliveryStatus: DeviceMessageDeliveryStatus;
-  readonly phase?: PhaseEnum;
-  readonly device: DeviceMessageDevice;
-  readonly response?: {
-    readonly status: MessageResponseStatus;
-    readonly data?: unknown;
-  };
-  readonly failureHistory?: readonly FailureReason[];
-  readonly unsolicited?: boolean;
-};
+export type { WebhookMessagePayload };
 
 /**
  * HTTP POST body for one delivery-event notification.
