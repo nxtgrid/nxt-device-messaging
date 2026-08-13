@@ -38,7 +38,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 
 ## Current status
 
-**Phase 0–2 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10).
+**Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
+ADR-003 polish). **Next = Phase 4** (metrics, pino, integration guide).
 
 **Phase 3 — ADR-003 polish (sliced; do not treat as one blob):**
 
@@ -46,7 +47,7 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 |---|---|
 | **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
 | **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7); `/v3/api-docs` + `/swagger`; outbound `webhooks` | **Done** |
-| **3.3** Auth / HTTP polish | **3.3A done** (timing-safe Bearer); next **3.3B** error bodies |
+| **3.3** Auth / HTTP polish (timing-safe Bearer, validation `{ error, issues }`) | **Done** |
 
 Parked (not next): graceful-shutdown v2 (await in-flight ticks); webhook drain concurrency —
 see `docs/decisions-log.md` carried findings.

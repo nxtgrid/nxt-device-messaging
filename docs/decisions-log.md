@@ -16,7 +16,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **3.3A done**; **next = 3.3B** validation error bodies)* | —          |
+| —   | *(none blocking; **Phase 3 done**; **next = Phase 4** metrics / pino / integration guide)* | —          |
 
 
 
@@ -49,10 +49,9 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** sliced: **3.1–3.2** (webhook + OpenAPI) **closed**;
-**3.3A** (timing-safe Bearer) **done**; **next = 3.3B** validation error
-bodies. Cold starts: trust `AGENTS.md` + this log
-+ `docs/plans/001-extraction.md` Phase 3 checklist — not prior chat transcripts.
+**done**. **Phase 3** (**3.1–3.3**) **closed**; **next = Phase 4**
+(metrics / pino / integration guide). Cold starts: trust `AGENTS.md` + this log
++ `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend`:
 
 - Re-cutting `nxt-backend`'s plan 001 into a per-repo pair (blocked on decision 5 — mechanics
@@ -1626,3 +1625,16 @@ hook; `/healthz`, docs, ingress stay open). Helper stays local — no share with
 
 **Phase 3.3A closed.** Next: **3.3B** richer Zod validation error bodies
 (field path + message; lock envelope before coding).
+
+### 2026-08-13 — session: Phase 3.3B — validation error bodies + Phase 3 close
+
+**Landed:** schema failures return
+`{ error: 'Invalid request body' | 'Invalid path parameters', issues: [{ path, message }] }`.
+`path` is dotted (`device.externalReference`); messages are Zod's. Domain/auth
+errors still `{ error }` only (`issues` optional on `errorBodySchema`).
+`registerCoarseValidationErrorHandler` → `registerValidationErrorHandler`.
+Unit: `test/unit/http/validation-errors.spec.ts`.
+
+**Phase 3.3 / Phase 3 closed.** Next: **Phase 4** (ADR-005 metrics, pino sweep,
+integration guide). Parked unchanged: shutdown v2, webhook drain concurrency.
+

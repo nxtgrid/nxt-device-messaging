@@ -1,14 +1,21 @@
 /**
  * @fileoverview Shared HTTP response Zod schemas (OpenAPI + serializer).
- *
- * Coarse error bodies stay until Phase 3.3 auth / HTTP polish.
  */
 
 import { z } from 'zod';
 
-/** Command / domain error payload. */
+/** One Zod field failure (validation 400s only). */
+export const validationIssueSchema = z.object({
+  path: z.string(),
+  message: z.string(),
+}).strict();
+
+/**
+ * Error payload. Domain / auth errors omit `issues`; schema failures include them.
+ */
 export const errorBodySchema = z.object({
   error: z.string(),
+  issues: z.array(validationIssueSchema).optional(),
 }).strict();
 
 /** `POST /token/generate` success body. */
