@@ -4,6 +4,7 @@ import { buildApp } from '#src/app.js';
 import { InvalidEnqueueError } from '#src/engine/errors.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const enqueueBody = {
   commandType: 'READ_CREDIT',
@@ -20,7 +21,7 @@ const enqueueBody = {
 describe('message command routes (enqueue / get / cancel)', () => {
   it('enqueues via outgoing and returns via get (camelCase)', async () => {
     const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
-    const app = await buildApp({ outgoingService });
+    const app = await buildApp({ metrics: noopMetrics, outgoingService });
 
     const enqueue = await app.inject({
       method: 'POST',
@@ -48,6 +49,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('maps UnknownPluginError from outgoing to 400', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
@@ -66,6 +68,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('maps UnsupportedCommandTypeError from outgoing to 400', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({
         knownPluginIds: [ STUB_PUSH_ID ],
         supportedCommandTypes: [ 'TURN_ON' ],
@@ -93,7 +96,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
       throw new InvalidEnqueueError(STUB_PUSH_ID, 'device.relayNode.id is required');
     };
 
-    const app = await buildApp({ outgoingService });
+    const app = await buildApp({ metrics: noopMetrics, outgoingService });
     const response = await app.inject({
       method: 'POST',
       url: '/message/enqueue',
@@ -109,6 +112,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('returns 404 when correlation id is missing', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService(),
     });
 
@@ -123,6 +127,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('requires Bearer when apiKey is configured', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       apiKey: 'secret',
     });
@@ -150,6 +155,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('rejects invalid bodies', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
@@ -172,7 +178,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('cancels one via POST /message/cancel', async () => {
     const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
-    const app = await buildApp({ outgoingService });
+    const app = await buildApp({ metrics: noopMetrics, outgoingService });
 
     await app.inject({
       method: 'POST',
@@ -210,7 +216,7 @@ describe('message command routes (enqueue / get / cancel)', () => {
 
   it('cancels many via POST /messages/cancel', async () => {
     const outgoingService = createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] });
-    const app = await buildApp({ outgoingService });
+    const app = await buildApp({ metrics: noopMetrics, outgoingService });
 
     await app.inject({
       method: 'POST',

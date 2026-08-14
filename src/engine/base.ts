@@ -20,6 +20,7 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
+import type { MetricsRecorder } from '../metrics/index.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { WebhookService } from './webhook/service.js';
 
@@ -47,6 +48,7 @@ export type CreateBaseServiceOptions = {
    * Outbound event webhook. When omitted (no `eventWebhook` in config), emits are no-ops.
    */
   readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -55,7 +57,7 @@ export type CreateBaseServiceOptions = {
  * @param options - Registry, delivery knobs, optional webhook messenger
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { registry, delivery, webhook } = options;
+  const { registry, delivery, webhook, metrics } = options;
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;
@@ -108,6 +110,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
         failureHistory: newFailureHistory,
         deliveryStatus: 'DELIVERY_FAILED',
       });
+      metrics.recordMessageTerminal('DELIVERY_FAILED', currentRetryCount);
       await redisRepo.messageFullCleanup(message);
       return;
     }

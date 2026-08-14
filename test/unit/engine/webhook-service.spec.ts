@@ -12,6 +12,7 @@ import {
 } from '#src/engine/webhook/sign.js';
 import type { WebhookStore } from '#src/engine/webhook/store.js';
 import type { WebhookStoredRecord } from '#src/engine/webhook/types.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const CONFIG = {
   url: 'https://consumer.example/hooks',
@@ -131,7 +132,7 @@ describe('createWebhookService', () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
 
     await service.storeAndEmit({
       pluginId: 'stub-push',
@@ -180,6 +181,7 @@ describe('createWebhookService', () => {
       config: CONFIG,
       store,
       signingSecret,
+      metrics: noopMetrics,
     });
 
     await service.storeAndEmit({
@@ -215,6 +217,7 @@ describe('createWebhookService', () => {
     const service = createWebhookService({
       config: { ...CONFIG, maxAttempts: 6 },
       store,
+      metrics: noopMetrics,
     });
     activeTimers = await tickDrain(service, fetchMock);
 
@@ -230,7 +233,7 @@ describe('createWebhookService', () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 400 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
     activeTimers = await tickDrain(service, fetchMock);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -247,7 +250,7 @@ describe('createWebhookService', () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
     activeTimers = await tickDrain(service, fetchMock);
 
     expect(store.dlq.size).toBe(0);
@@ -266,7 +269,7 @@ describe('createWebhookService', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
     activeTimers = await tickDrain(service, fetchMock);
 
     expect(store.dlq.size).toBe(0);
@@ -287,7 +290,7 @@ describe('createWebhookService', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
     activeTimers = await tickDrain(service, fetchMock);
 
     expect(cancel).toHaveBeenCalledTimes(1);
@@ -301,7 +304,7 @@ describe('createWebhookService', () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const service = createWebhookService({ config: CONFIG, store });
+    const service = createWebhookService({ config: CONFIG, store, metrics: noopMetrics });
     activeTimers = service.startTimers({ intervalMs: WEBHOOK_DRAIN_INTERVAL_MS });
     expect(fetchMock).not.toHaveBeenCalled();
 

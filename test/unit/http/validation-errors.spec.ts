@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '#src/app.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const enqueueBase = {
   commandType: 'READ_CREDIT',
@@ -19,6 +20,7 @@ const enqueueBase = {
 describe('HTTP validation error bodies', () => {
   it('includes dotted field paths and Zod messages for invalid bodies', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
@@ -49,6 +51,7 @@ describe('HTTP validation error bodies', () => {
 
   it('lists each missing required field', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 

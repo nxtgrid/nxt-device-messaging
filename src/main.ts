@@ -7,6 +7,7 @@ import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
+import { createMetrics } from './metrics/index.js';
 import { config, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -35,11 +36,14 @@ if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigning
   );
 }
 
+const metrics = createMetrics();
+
 const webhookService = config.eventWebhook
   ? createWebhookService({
     config: config.eventWebhook,
     store: createWebhookStore({ client: redisRepo.client }),
     signingSecret: webhookSigningSecret,
+    metrics,
   })
   : undefined;
 
@@ -47,16 +51,19 @@ const baseService = createBaseService({
   registry: pluginRegistry,
   delivery: config.delivery,
   webhook: webhookService,
+  metrics,
 });
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  metrics,
 });
 const incomingService = createIncomingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  metrics,
 });
 const tokenService = createTokenService({
   registry: pluginRegistry,
@@ -68,6 +75,7 @@ const app = await buildApp({
   tokenService,
   registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
+  metrics,
 });
 
 const engineTimers = startEngineTimers({

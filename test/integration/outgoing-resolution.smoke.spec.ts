@@ -16,6 +16,7 @@ import { QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
@@ -35,10 +36,12 @@ describe.skipIf(!shouldRun)('outgoing runMessageResolutionCycle', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
+    const metrics = noopMetrics;
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery, metrics }),
+      metrics,
       kickDistributeOnEnqueue: false,
     });
 

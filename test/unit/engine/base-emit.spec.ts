@@ -4,6 +4,7 @@ import { createBaseService } from '#src/engine/base.js';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
@@ -14,6 +15,7 @@ describe('createBaseService emitDeliveryEvent', () => {
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
       webhook: { storeAndEmit },
+      metrics: noopMetrics,
     });
 
     const message = {
@@ -31,6 +33,7 @@ describe('createBaseService emitDeliveryEvent', () => {
     const baseService = createBaseService({
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
+      metrics: noopMetrics,
     });
 
     await expect(

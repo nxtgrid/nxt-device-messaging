@@ -16,6 +16,7 @@ import type {
   FailureReason,
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
+import type { MetricsRecorder } from '../metrics/index.js';
 import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { BaseService } from './base.js';
@@ -48,6 +49,7 @@ export type CreateIncomingServiceOptions = {
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -56,7 +58,7 @@ export type CreateIncomingServiceOptions = {
  * @param options - Registry, delivery knobs, and peer {@link BaseService}
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
-  const { registry, delivery, baseService } = options;
+  const { registry, delivery, baseService, metrics } = options;
 
   /**
    * Process a parsed incoming event from PUSH (or later PULL poll).
@@ -143,6 +145,10 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     // Persist webhook before dropping the device-message hash (durable notify).
     await baseService.emitDeliveryEvent(updatedMessage);
+    metrics.recordMessageTerminal(
+      'DELIVERY_SUCCESSFUL',
+      storedMessage.retryCount ?? 0,
+    );
     await redisRepo.messageFullCleanup(storedMessage);
   }
 
@@ -162,7 +168,10 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     if (!parse) return;
 
     const parsedEvent = parse(event, meta);
-    if (!parsedEvent) return;
+    if (!parsedEvent) {
+      metrics.recordIngressUnhandled(plugin.id);
+      return;
+    }
 
     await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY, plugin);
   }

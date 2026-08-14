@@ -14,11 +14,12 @@ import { createBaseService } from '#src/engine/base.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { QUEUE_NS_KEY } from '#src/lib/queue-moving.js';
 import { QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   STUB_PULL_ID,
   STUB_PUSH_ID,
 } from '#src/plugins/stub/index.js';
-import { createPluginRegistry } from '#src/plugins/registry.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 import {
   POST_SEND_STATUS,
   waitForPostSend,
@@ -42,10 +43,12 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
+    const metrics = noopMetrics;
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery, metrics }),
+      metrics,
       kickDistributeOnEnqueue: false,
     });
 
@@ -95,10 +98,12 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PULL_ID } ]);
+    const metrics = noopMetrics;
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery, metrics }),
+      metrics,
       kickDistributeOnEnqueue: false,
     });
 

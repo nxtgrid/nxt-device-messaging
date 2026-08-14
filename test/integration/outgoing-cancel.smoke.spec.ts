@@ -16,9 +16,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { createBaseService } from '#src/engine/base.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
-import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
-import { createPluginRegistry } from '#src/plugins/registry.js';
 import { sleep } from '#src/lib/utilities.js';
+import { createPluginRegistry } from '#src/plugins/registry.js';
+import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const goSlow = false;
@@ -40,11 +41,13 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const { deviceMessagingConfigSchema } = await import('../../src/config/schema.js');
     const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
+    const metrics = noopMetrics;
     // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery }),
+      baseService: createBaseService({ registry, delivery, metrics }),
+      metrics,
       kickDistributeOnEnqueue: false,
     });
 

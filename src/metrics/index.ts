@@ -1,20 +1,39 @@
 /**
- * @fileoverview Prometheus metrics (ADR-005 §5). One module: registry, series, and
- * the unauthenticated `GET /metrics` route. Engine call sites will increment here
- * later; scrapers only hit this HTTP handler.
+ * @fileoverview Prometheus metrics (ADR-005 §5). One module: registry, series,
+ * increment helpers, and the unauthenticated `GET /metrics` route.
  *
  * Dedicated {@link Registry} so tests do not share process-global counters.
+ * Engine factories take {@link MetricsRecorder}; HTTP registers the same
+ * {@link Metrics} instance so scrapes see in-process increments.
  */
 
 import type { FastifyInstance } from 'fastify';
-import { Gauge, Registry } from 'prom-client';
+import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 
-export type Metrics = {
+/** Terminal statuses exported on `device_messaging_messages_total`. */
+export type MessageTerminalStatus =
+  | 'DELIVERY_SUCCESSFUL'
+  | 'DELIVERY_FAILED'
+  | 'CANCELLED';
+
+/** Outbound webhook drain outcomes on `device_messaging_webhook_events_total`. */
+export type WebhookResult = 'posted' | 'retried' | 'dlq';
+
+/** Increment API used by engine factories (no Fastify). */
+export type MetricsRecorder = {
+  recordMessageTerminal(status: MessageTerminalStatus, retryCount: number): void;
+  recordWebhookResult(result: WebhookResult): void;
+  recordIngressUnhandled(pluginId: string): void;
+};
+
+export type Metrics = MetricsRecorder & {
   readonly registerRoutes: (app: FastifyInstance) => Promise<void>;
 };
 
+const RETRY_COUNT_BUCKETS = [ 0, 1, 2, 3, 4, 5, 6, 8, 11, 16 ];
+
 /**
- * Builds an isolated metrics registry and the `/metrics` route.
+ * Builds an isolated metrics registry, series, and the `/metrics` route.
  */
 export function createMetrics(): Metrics {
   const registry = new Registry();
@@ -24,6 +43,50 @@ export function createMetrics(): Metrics {
     help: '1 while this process is exporting metrics',
     registers: [ registry ],
   }).set(1);
+
+  const messagesTotal = new Counter({
+    name: 'device_messaging_messages_total',
+    help: 'Device messages that reached a terminal status',
+    labelNames: [ 'status' ],
+    registers: [ registry ],
+  });
+
+  const retryCount = new Histogram({
+    name: 'device_messaging_retry_count',
+    help: 'Retry count at terminal resolution',
+    buckets: RETRY_COUNT_BUCKETS,
+    registers: [ registry ],
+  });
+
+  const webhookEventsTotal = new Counter({
+    name: 'device_messaging_webhook_events_total',
+    help: 'Outbound webhook drain results',
+    labelNames: [ 'result' ],
+    registers: [ registry ],
+  });
+
+  const ingressUnhandledTotal = new Counter({
+    name: 'device_messaging_ingress_unhandled_total',
+    help: 'PUSH ingress events the plugin ignored (handle returned null)',
+    labelNames: [ 'pluginId' ],
+    registers: [ registry ],
+  });
+
+  function recordMessageTerminal(
+    status: MessageTerminalStatus,
+    retries: number,
+  ): void {
+    messagesTotal.inc({ status });
+    retryCount.observe(retries);
+  }
+
+  function recordWebhookResult(result: WebhookResult): void {
+    webhookEventsTotal.inc({ result });
+  }
+
+  function recordIngressUnhandled(pluginId: string): void {
+    ingressUnhandledTotal.inc({ pluginId });
+  }
 
   async function registerRoutes(app: FastifyInstance): Promise<void> {
     app.get('/metrics', {
@@ -38,5 +101,10 @@ export function createMetrics(): Metrics {
     });
   }
 
-  return { registerRoutes };
+  return {
+    recordMessageTerminal,
+    recordWebhookResult,
+    recordIngressUnhandled,
+    registerRoutes,
+  };
 }

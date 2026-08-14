@@ -22,6 +22,7 @@ import type {
   CreateDeviceMessage,
   DeviceMessage,
 } from '../lib/device-message/types.js';
+import type { MetricsRecorder } from '../metrics/index.js';
 import {
   buildConcurrencyRateLimitKey,
   getPluginIdFromInitialQueueKey,
@@ -88,6 +89,7 @@ export type CreateOutgoingServiceOptions = {
    * `QUEUED` (e.g. cancel smoke).
    */
   readonly kickDistributeOnEnqueue?: boolean;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -96,7 +98,7 @@ export type CreateOutgoingServiceOptions = {
  * @param options - Registry, delivery, baseService, and optional enqueue-kick flag
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
-  const { registry, delivery, baseService, kickDistributeOnEnqueue = true } = options;
+  const { registry, delivery, baseService, kickDistributeOnEnqueue = true, metrics } = options;
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -274,6 +276,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
     for (const { message } of pullTimeouts) {
       await baseService.emitDeliveryEvent(message);
+      metrics.recordMessageTerminal('DELIVERY_FAILED', message.retryCount ?? 0);
       await redisRepo.messageFullCleanup(message);
     }
 
@@ -365,6 +368,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     if (removed === 0) return false;
 
     await redisRepo.messageFullCleanup(message);
+    metrics.recordMessageTerminal('CANCELLED', message.retryCount ?? 0);
     return true;
   }
 

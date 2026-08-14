@@ -7,6 +7,7 @@
 
 import type { EventWebhookConfig } from '../../config/schema.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
+import type { MetricsRecorder } from '../../metrics/index.js';
 import { calculateWebhookBackoffDelay } from './backoff.js';
 import { buildWebhookEvent } from './build-event.js';
 import {
@@ -43,6 +44,7 @@ export type CreateWebhookServiceOptions = {
    * From `DEVICE_MESSAGING_WEBHOOK_SECRET` at the composition root.
    */
   readonly signingSecret?: string;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -74,7 +76,7 @@ async function releaseResponseBody(response: Response): Promise<void> {
  * @param options - Config, Redis store, optional signing secret
  */
 export function createWebhookService(options: CreateWebhookServiceOptions): WebhookService {
-  const { config, store, signingSecret } = options;
+  const { config, store, signingSecret, metrics } = options;
   const secret = signingSecret !== undefined && signingSecret !== ''
     ? signingSecret
     : undefined;
@@ -154,6 +156,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
 
     if (response.ok) {
       await store.complete(eventId);
+      metrics.recordWebhookResult('posted');
       return;
     }
 
@@ -167,6 +170,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
         },
         config.deadLetterTtlSeconds,
       );
+      metrics.recordWebhookResult('dlq');
       return;
     }
 
@@ -182,6 +186,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
 
     if (attemptCount >= config.maxAttempts) {
       await store.deadLetter(updated, config.deadLetterTtlSeconds);
+      metrics.recordWebhookResult('dlq');
       console.error(
         '[webhook] exhausted retries → DLQ',
         {
@@ -195,6 +200,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
 
     const delayMs = calculateWebhookBackoffDelay(attemptCount, config);
     await store.reschedule(updated, Date.now() + delayMs);
+    metrics.recordWebhookResult('retried');
   }
 
   function startTimers(

@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **4.1A done**; **next = 4.1B** in-process metric counters)* | —          |
+| —   | *(none blocking; **4.1B done**; **next = 4.1C** queue-depth gauges)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -85,7 +85,7 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**4.1A done**; **next = 4.1B**). Cold starts: trust `AGENTS.md` + this log
+(**4.1A–B done**; **next = 4.1C**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1698,6 +1698,21 @@ registers metrics by default (injectable for later tests).
 **Phase 4.1A closed.** Next: **4.1B** in-process counters / histogram (terminals,
 retries, webhook results, unhandled ingress) — still inside `src/metrics/`;
 engine only calls increment helpers.
+
+### 2026-08-14 — session: Phase 4.1B — in-process counters
+
+**Landed:** `src/metrics/` series + increment helpers (`recordMessageTerminal`,
+`recordWebhookResult`, `recordIngressUnhandled`). Required `metrics: MetricsRecorder`
+on base / incoming / outgoing / webhook factories and `buildApp`. Tests that do
+not scrape pass `noopMetrics`; `metrics.spec.ts` uses `createMetrics()`. `main.ts`
+shares one instance with HTTP and the engine. Call
+sites: final `retryOrFail`, incoming success, PULL age timeout, successful cancel,
+webhook posted/retried/dlq, PUSH `handle` returning null. Isolated-registry unit
+tests.
+
+**Phase 4.1B closed.** Next: **4.1C** queue-depth gauges (scrape-time Redis
+pipeline; no new keys).
+
 
 
 

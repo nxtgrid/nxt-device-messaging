@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '#src/app.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const API_KEY = 'secret';
 const UNAUTHORIZED = { error: 'Unauthorized' };
 
 async function commandApp(apiKey?: string) {
   return buildApp({
+    metrics: noopMetrics,
     outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     apiKey,
   });
