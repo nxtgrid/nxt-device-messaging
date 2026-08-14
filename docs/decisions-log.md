@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **Phase 3 done**; **next = Phase 4** metrics / pino / integration guide)* | —          |
+| —   | *(none blocking; **4.1A done**; **next = 4.1B** in-process metric counters)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -84,8 +84,8 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** (**3.1–3.3**) **closed**; **next = Phase 4**
-(metrics / pino / integration guide). Cold starts: trust `AGENTS.md` + this log
+**done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
+(**4.1A done**; **next = 4.1B**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1687,5 +1687,17 @@ facts-not-todos.
 
 **Next:** **Phase 4** when prompted. Use the new table; do not relitigate parked
 items unless the maintainer picks one.
+
+### 2026-08-14 — session: Phase 4.1A — `GET /metrics` scaffold
+
+**Landed:** `prom-client` + `src/metrics/` (`createMetrics` dedicated `Registry`,
+`GET /metrics` unauthenticated, hidden from OpenAPI). Smoke series
+`device_messaging_up 1`. No engine increments; no Redis scrape. `buildApp`
+registers metrics by default (injectable for later tests).
+
+**Phase 4.1A closed.** Next: **4.1B** in-process counters / histogram (terminals,
+retries, webhook results, unhandled ingress) — still inside `src/metrics/`;
+engine only calls increment helpers.
+
 
 

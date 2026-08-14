@@ -20,6 +20,7 @@ import {
   type TokenRoutesOpts,
 } from './http/token-routes.js';
 import { registerValidationErrorHandler } from './http/validation-errors.js';
+import { createMetrics, type Metrics } from './metrics/index.js';
 
 /**
  * HTTP composition deps. Services are optional so probes (e.g. `/healthz`) can
@@ -32,6 +33,8 @@ export type BuildAppOptions = {
   readonly tokenService?: TokenRoutesOpts['tokenService'];
   readonly incomingService?: IngressRoutesOpts['incomingService'];
   readonly registry?: IngressRoutesOpts['registry'];
+  /** Isolated Prometheus registry; default {@link createMetrics} when omitted. */
+  readonly metrics?: Metrics;
 };
 
 const healthzResponseSchema = z.object({
@@ -51,6 +54,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerValidationErrorHandler(app);
 
   await registerOpenApi(app);
+
+  const metrics = options.metrics ?? createMetrics();
+  await metrics.registerRoutes(app);
 
   app.get('/healthz', {
     schema: {
