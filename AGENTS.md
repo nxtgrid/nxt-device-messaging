@@ -39,8 +39,8 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
-ADR-003 polish). **Phase 4** in progress: **4.2 done**; next **4.3**
-(CONTRIBUTING / README / integration guide).
+ADR-003 polish). **Phase 4 complete** (4.1–4.3). Parked follow-ups:
+`docs/decisions-log.md` § Parked / revisit.
 
 **Phase 4 — ADR-005 observability (sliced):**
 
@@ -48,7 +48,7 @@ ADR-003 polish). **Phase 4** in progress: **4.2 done**; next **4.3**
 |---|---|
 | **4.1** `GET /metrics` (`prom-client`; `src/metrics/`) | **Done** (4.1A–C) |
 | **4.2** Pino (pretty default, JSON opt-in) | **Done** (4.2A–C) |
-| **4.3** CONTRIBUTING / README / integration guide | Not started |
+| **4.3** CONTRIBUTING / README / integration guide | **Done** |
 
 **Phase 3 — ADR-003 polish (closed):**
 
