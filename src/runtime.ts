@@ -8,10 +8,14 @@
  */
 
 import { loadConfig } from './config/load.js';
+import { createRootLogger } from './log.js';
 import { createPluginRegistry } from './plugins/registry.js';
 
 /** Frozen service config (ADR-002). */
 export const config = await loadConfig();
+
+/** Process pino instance (ADR-005 §7). Extra sinks deferred. */
+export const logger = createRootLogger(config.logging);
 
 /** Plugins enabled in config, constructed once at boot. */
 export const pluginRegistry = createPluginRegistry(config.plugins);

@@ -15,6 +15,13 @@ const engineSchema = z.object({
 }).strict();
 
 /**
+ * Process logging (ADR-005 §7). Stdout format only in v1; extra sinks deferred.
+ */
+const loggingSchema = z.object({
+  stdout: z.enum([ 'pretty', 'json' ]).default('pretty'),
+}).strict();
+
+/**
  * Outbound delivery-event webhook (ADR-003 §6).
  * Present ⇒ notify adopter; absent ⇒ no outbound callbacks.
  * Tuning defaults: 6 attempts, ~62s first→last, 10s POST timeout, 7d DLQ TTL.
@@ -44,6 +51,7 @@ export const deviceMessagingConfigSchema = z.object({
   $schema: z.string().optional(),
   $schemaVersion: z.literal('1'),
   engine: engineSchema.default({ enabled: true }),
+  logging: loggingSchema.default({ stdout: 'pretty' }),
   delivery: deliverySchema.default({
     maxRetries: 11,
     retryBaseDelayMs: 2000,
@@ -59,6 +67,9 @@ export type DeviceMessagingConfig = z.infer<typeof deviceMessagingConfigSchema>;
 
 /** Shared delivery-engine knobs (`config.delivery`) — retry / TTL only after D5. */
 export type DeliveryConfig = DeviceMessagingConfig['delivery'];
+
+/** Process logging knobs (`config.logging`). */
+export type LoggingConfig = DeviceMessagingConfig['logging'];
 
 /** Outbound event-webhook knobs when `eventWebhook` is configured. */
 export type EventWebhookConfig = NonNullable<DeviceMessagingConfig['eventWebhook']>;

@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **4.1 done**; **next = 4.2** Pino sweep)* | —          |
+| —   | *(none blocking; **4.2A done**; **next = 4.2B** engine/lib console.*)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -85,7 +85,7 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**4.1 done**; **next = 4.2**). Cold starts: trust `AGENTS.md` + this log
+(**4.2A done**; **next = 4.2B**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1725,6 +1725,16 @@ labels reset each scrape so departed queues disappear. Unit tests use a fake Red
 (no Valkey).
 
 **Phase 4.1 closed.** Next: **4.2** Pino sweep.
+
+### 2026-08-14 — session: Phase 4.2A — pino factory + `logging.stdout`
+
+**Landed:** `pino` + `pino-pretty`. `config.logging.stdout` (`pretty` default, `json`
+opt-in). `createRootLogger` in `src/log.ts`; `runtime.logger` is the process instance.
+`main.ts` boot/shutdown uses it (structured fields, not `[prefix]` strings). Fastify
+stays `logger: false` (pino 10 vs Fastify logger generics); request lines can share this
+root via a hook later. Extra sinks still deferred. ADR-002 / ADR-005 §7 amended.
+
+**Phase 4.2A closed.** Next: **4.2B** engine / `lib` `console.*` → named children.
 
 
 

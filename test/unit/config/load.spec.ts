@@ -110,6 +110,7 @@ describe('loadConfig', () => {
     expect(config.delivery.retryBackoffMultiplier).toBe(2);
     expect(config.delivery.retryMaxDelayMs).toBe(3_600_000);
     expect(config.delivery.messageTtlSeconds).toBe(604_800);
+    expect(config.logging.stdout).toBe('pretty');
   });
 
   it('applies eventWebhook tuning defaults when only url is set', async () => {
@@ -143,5 +144,16 @@ describe('loadConfig', () => {
     await expect(loadConfig({ defaultConfigPath: FROM_DEFAULT_FIXTURE }))
       .rejects
       .toThrow(/backoffMultiplier/);
+  });
+
+  it('accepts logging.stdout json', async () => {
+    process.env.DEVICE_MESSAGING_CONFIG_JSON = JSON.stringify({
+      $schemaVersion: '1',
+      logging: { stdout: 'json' },
+      plugins: [],
+    });
+
+    const config = await loadConfig({ defaultConfigPath: FROM_DEFAULT_FIXTURE });
+    expect(config.logging.stdout).toBe('json');
   });
 });
