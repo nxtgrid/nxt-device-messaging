@@ -6,6 +6,7 @@
  */
 
 import type { PhaseEnum } from '../../../lib/device-message/types.js';
+import { logger } from '../../../log.js';
 import { CalinMetaBytes, type DecodedLorawanCalinEvent } from './types.js';
 
 enum CalinControlCode {
@@ -73,13 +74,19 @@ export function decodeResponseData(
     || bytes[7] !== CalinMetaBytes.HEADER_BYTE
     || bytes[bytes.length - 1] !== CalinMetaBytes.END_BYTE
   ) {
-    console.warn('[LORAWAN CALIN DECODE] Invalid frame headers', bytes);
+    logger.warn({
+      module: 'calin-chirpstack.decode',
+      hex: bytes.toString('hex'),
+    }, 'invalid frame headers');
     return null;
   }
 
   const operation = CONTROL_CODE_MAP[bytes[8]!];
   if (operation === undefined) {
-    console.warn('[LORAWAN CALIN DECODE] Couldn\'t match control code', bytes[8]);
+    logger.warn({
+      module: 'calin-chirpstack.decode',
+      controlCode: bytes[8],
+    }, 'unmatched control code');
     return null;
   }
 
@@ -87,9 +94,11 @@ export function decodeResponseData(
     .reduce((sum, byte) => sum + byte, 0) % 256;
   const receivedChecksum = bytes[bytes.length - 2]!;
   if (computedChecksum !== receivedChecksum) {
-    console.warn(
-      `[LORAWAN CALIN DECODE] Checksum mismatch: Expected ${ computedChecksum } but got ${ receivedChecksum }`,
-    );
+    logger.warn({
+      module: 'calin-chirpstack.decode',
+      expected: computedChecksum,
+      received: receivedChecksum,
+    }, 'checksum mismatch');
     return null;
   }
 
@@ -133,21 +142,23 @@ export function decodeResponseData(
     .padStart(4, '0');
 
   if (!Object.hasOwn(DATA_PROCESSOR_MAP, dataIdentifier)) {
-    console.warn(
-      '[LORAWAN CALIN DECODE] Couldn\'t find parser for data identifier',
+    logger.warn({
+      module: 'calin-chirpstack.decode',
       dataIdentifier,
-    );
-    console.info('Raw bytes:', bytes);
+      hex: bytes.toString('hex'),
+    }, 'no parser for data identifier');
     return null;
   }
 
   const parser = DATA_PROCESSOR_MAP[dataIdentifier as keyof typeof DATA_PROCESSOR_MAP];
   const declaredDataSize = bytes[9]!;
   if (bytes.length < 12 + declaredDataSize) {
-    console.warn(
-      '[LORAWAN CALIN DECODE] Frame shorter than declared data size',
+    logger.warn({
+      module: 'calin-chirpstack.decode',
       dataIdentifier,
-    );
+      declaredDataSize,
+      frameLength: bytes.length,
+    }, 'frame shorter than declared data size');
     return null;
   }
   const data = parser(bytes);

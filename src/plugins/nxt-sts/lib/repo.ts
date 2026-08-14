@@ -6,6 +6,8 @@
  * (`NXT_STS_URL`).
  */
 
+import { logger } from '../../../log.js';
+
 /** Transport / vendor failure from {@link createNxtStsClient}. */
 export class NxtStsError extends Error {
   constructor(message: string) {
@@ -64,8 +66,12 @@ export function createNxtStsClient(deps: { readonly apiBaseUrl: string }) {
         catch {
           responseData = undefined;
         }
-        console.error('[NXT STS TOKEN SERVICE] Fetch error', responseData);
-        console.error('    for data', body);
+        logger.error({
+          module: 'nxt-sts.repo',
+          status: response.status,
+          type: body.type,
+          responseData,
+        }, 'token request failed');
         throw new NxtStsError('[NXT STS TOKEN SERVICE] Failed to generate token');
       }
 
@@ -75,11 +81,11 @@ export function createNxtStsClient(deps: { readonly apiBaseUrl: string }) {
       if (err instanceof NxtStsError) {
         throw err;
       }
-      console.error(
-        '[NXT STS TOKEN SERVICE] Fetch error',
-        err instanceof Error && 'cause' in err ? err.cause : err,
-      );
-      console.error('    for data', body);
+      logger.error({
+        module: 'nxt-sts.repo',
+        type: body.type,
+        err,
+      }, 'token request failed');
       throw new NxtStsError('[NXT STS TOKEN SERVICE] Failed to generate token');
     }
   };

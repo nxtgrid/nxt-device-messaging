@@ -82,7 +82,6 @@ describe('createChirpstackClient', () => {
   });
 
   it('registerDevice resolves isNewRegistration false when create fails', async () => {
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     grpcStub.create.mockImplementation((_req, _meta, _opts, cb) => {
       cb({ code: 6, details: 'already exists' } as ServiceError, null);
     });
@@ -90,10 +89,6 @@ describe('createChirpstackClient', () => {
     const client = createChirpstackClient();
     await expect(client.registerDevice('0000000000000001', 'meter-1'))
       .resolves.toEqual({ isNewRegistration: false });
-    expect(infoSpy).toHaveBeenCalledWith(
-      '[CHIRPSTACK REPO] Device create failed; treating as non-new registration',
-      { devEui: '0000000000000001', code: 6, details: 'already exists' },
-    );
   });
 
   it('registerDevice resolves isNewRegistration true on success', async () => {
@@ -107,7 +102,6 @@ describe('createChirpstackClient', () => {
   });
 
   it('setApplicationKeyForDevice maps errors to success false', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     grpcStub.createKeys.mockImplementation((_req, _meta, _opts, cb) => {
       cb({ details: 'keys failed' } as ServiceError, null);
     });

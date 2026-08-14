@@ -89,8 +89,8 @@ One pino instance for the process (`logger` in `src/log.ts`). Pretty from the
 first import; boot calls `configureLogger` so `"json"` replaces it. Fastify stays
 `logger: false` so HTTP types stay on Fastify's own logger interface; request
 lines can use the same instance via a hook later. Domain code imports `logger`
-and passes `module` on the call (`lib/` must not import `runtime`). Plugin
-`console.*` is a later 4.2 slice.
+and passes `module` on the call (`lib/` must not import `runtime`). Plugins
+do the same.
 
 - **`logging.stdout`** in the JSON artifact (ADR-002): `"pretty"` (default) or `"json"`.
   Pretty is for humans (local TTY and PaaS consoles). JSON is the opt-in when an aggregator

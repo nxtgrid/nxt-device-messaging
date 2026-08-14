@@ -17,6 +17,7 @@ import type {
   MessageResponseStatus,
   ParsedIncomingEvent,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import { toSafeNumberOrNull } from '../_shared/to-safe-number-or-null.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type {
@@ -138,7 +139,7 @@ export function createCalinApiV2Incoming(
       // OTHER COMMANDS
       default: {
         // We know it was successful, but have no additional data (?) so just respond with success.
-        console.warn('[CALIN API-V2 STATUS CHECK] Unknown command', result);
+        logger.warn({ module: 'calin-api-v2.incoming', result }, 'unknown command');
         return _createSuccessfulResponseData();
       }
     }
@@ -170,7 +171,7 @@ export function createCalinApiV2Incoming(
     }
     catch (err) {
       // @TODO :: Revisit this
-      console.error('[CALIN API-V2 INCOMING] Direct error in status check:', err);
+      logger.error({ module: 'calin-api-v2.incoming', err }, 'status check failed');
       const errMessage = err instanceof Error ? err.message : String(err);
       const errCode = err instanceof CalinApiV2Error ? err.code : undefined;
       return {
@@ -186,12 +187,10 @@ export function createCalinApiV2Incoming(
     const _result = res?.result?.data?.[0];
 
     if (!_result) {
-      // We make this big log to see if this even happens..
-      console.info(`
-        ===================================================================
-        [CALIN API-V2 STATUS CHECK] No result returned when fetching status
-        ===================================================================
-      `, res);
+      logger.info({
+        module: 'calin-api-v2.incoming',
+        reason: res?.reason,
+      }, 'no result when fetching status');
       return {
         ..._base,
         deliveryStatus: 'DELIVERY_FAILED',
@@ -232,7 +231,7 @@ export function createCalinApiV2Incoming(
       };
     }
 
-    console.warn('[CALIN API-V2 STATUS CHECK] Received response with unexpected status', _result);
+    logger.warn({ module: 'calin-api-v2.incoming', result: _result }, 'unexpected status');
     return null;
   };
 

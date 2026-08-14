@@ -6,6 +6,7 @@
  */
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV1Client,
@@ -120,7 +121,11 @@ export function createCalinApiV1Token(
       const message = res.failureReason
         ? `${ base } because: ${ res.failureReason }`
         : base;
-      console.warn(message, { type });
+      logger.warn({
+        module: 'calin-api-v1.token',
+        type,
+        failureReason: res.failureReason,
+      }, 'empty token response');
       throw new Error(message);
     }
 

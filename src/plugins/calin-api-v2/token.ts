@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV2Client,
@@ -124,7 +125,11 @@ export function createCalinApiV2Token(
       const message = res.failureReason
         ? `${ base } because: ${ res.failureReason }`
         : base;
-      console.warn(message, { type });
+      logger.warn({
+        module: 'calin-api-v2.token',
+        type,
+        failureReason: res.failureReason,
+      }, 'empty token response');
       throw new Error(message);
     }
 

@@ -47,7 +47,6 @@ describe('createCalinApiV1Client', () => {
   });
 
   it('returns data when vendor result codes are unexpected (logs only)', async () => {
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -59,11 +58,9 @@ describe('createCalinApiV1Client', () => {
     await expect(
       client.sendRequest('/POS_Purchase', { meter_number: 'm-1' }),
     ).resolves.toEqual({ result_code: 1, reason: 'nope' });
-    expect(infoSpy).toHaveBeenCalled();
   });
 
   it('maps HTML responses to CalinApiV1Error', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -85,7 +82,6 @@ describe('createCalinApiV1Client', () => {
   });
 
   it('maps non-OK JSON responses to CalinApiV1Error with Message', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -106,7 +102,6 @@ describe('createCalinApiV1Client', () => {
   });
 
   it('maps ECONNREFUSED (via cause.code) to CalinApiV1Error', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const refused = Object.assign(new Error('fetch failed'), {
       cause: Object.assign(new Error('connect ECONNREFUSED'), {
         code: 'ECONNREFUSED',
@@ -126,7 +121,6 @@ describe('createCalinApiV1Client', () => {
   });
 
   it('maps ECONNRESET (via cause.code) to CalinApiV1Error', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const reset = Object.assign(new Error('fetch failed'), {
       cause: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
     });
@@ -142,7 +136,6 @@ describe('createCalinApiV1Client', () => {
   });
 
   it('maps generic fetch failures to CalinApiV1Error', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new Error('something else')),

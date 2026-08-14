@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **4.2B done**; **next = 4.2C** plugin console.*)* | —          |
+| —   | *(none blocking; **4.2 done**; **next = 4.3** CONTRIBUTING / README / integration guide)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -85,7 +85,7 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**4.2B done**; **next = 4.2C**). Cold starts: trust `AGENTS.md` + this log
+(**4.2 done**; **next = 4.3**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1756,6 +1756,15 @@ without `runtime`. Silent until configured.
 
 Pretty from first import (not silent-for-tests). `configureLogger` only
 rebuilds when stdout is `"json"` — no placeholder logger for unit tests.
+
+### 2026-08-14 — session: Phase 4.2C — plugin `logger` + `module`
+
+**Landed:** plugin `console.*` → `logger` + `{ module }` (calin-api-v1/v2,
+calin-chirpstack, nxt-sts, shared ChirpStack repo). Short `msg` + fields; no
+ASCII banners; no request bodies / tokens / decoder keys. Console spies dropped
+from plugin unit tests (behaviour assertions kept).
+
+**Phase 4.2 closed.** Next: **4.3** CONTRIBUTING / README / integration guide.
 
 
 

@@ -13,6 +13,7 @@ import type {
   SetDatePayload,
   SetTimePayload,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import type { ChirpstackClient } from '../_shared/chirpstack-repository/index.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import { encodeRequestData } from './lib/encode-request-data.js';
@@ -65,7 +66,11 @@ export function createCalinChirpstackOutgoing(deps: {
     });
 
     if (!bytes) {
-      console.error('[LORAWAN CALIN ENCODE REQUEST DATA] Failed to encode', message);
+      logger.error({
+        module: 'calin-chirpstack.outgoing',
+        messageId: message.id,
+        commandType: message.commandType,
+      }, 'encode failed');
       throw new CalinChirpstackError(
         'Could not encode request data prior to sending to device',
         { skipRetry: true },
@@ -113,7 +118,7 @@ export function createCalinChirpstackOutgoing(deps: {
       : {};
     const errorCode = grpcError.code;
     const details = grpcError.details;
-    console.warn('[PARSE GRPC ERROR] code', errorCode);
+    logger.warn({ module: 'calin-chirpstack.outgoing', errorCode }, 'grpc error');
 
     // Device not registered in ChirpStack (unrecoverable)
     if (details?.includes('device_queue_item_dev_eui_fkey')) {

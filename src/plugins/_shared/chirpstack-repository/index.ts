@@ -18,6 +18,7 @@ import { Metadata, credentials, type CallOptions } from '@grpc/grpc-js';
 import deviceGrpc from '@chirpstack/chirpstack-api/api/device_grpc_pb.js';
 import devicePb from '@chirpstack/chirpstack-api/api/device_pb.js';
 
+import { logger } from '../../../log.js';
 import { loadChirpstackSecrets } from './secrets.js';
 
 /** LoRaWAN application port used for all CALIN / ChirpStack downlinks today. */
@@ -98,10 +99,12 @@ export function createChirpstackClient() {
             // Legacy: any create failure → non-new so provisioning can continue.
             // Callers skip key setup when false. Log code so we can narrow to
             // ALREADY_EXISTS once that status is observed in the wild.
-            console.info(
-              '[CHIRPSTACK REPO] Device create failed; treating as non-new registration',
-              { devEui, code: err.code, details: err.details },
-            );
+            logger.info({
+              module: 'chirpstack.repo',
+              devEui,
+              code: err.code,
+              details: err.details,
+            }, 'device create failed; treating as non-new');
             // Always resolve — existing devices should not block provisioning.
             // If we can narrow this so real errors can be cause to reject, we will do so.
             // But for now logging and letting pass is all we can do.
@@ -124,11 +127,11 @@ export function createChirpstackClient() {
       return new Promise(resolve => {
         deviceClient.createKeys(createDeviceKeysRequest, metadata, unaryCallOptions(), err => {
           if (err) {
-            console.error(
-              '[CHIRPSTACK REPO] Error generating application key for device',
+            logger.error({
+              module: 'chirpstack.repo',
               devEui,
               err,
-            );
+            }, 'application key create failed');
             resolve({ success: false });
             return;
           }

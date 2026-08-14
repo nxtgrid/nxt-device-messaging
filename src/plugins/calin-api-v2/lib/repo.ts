@@ -10,6 +10,8 @@
  * coupling stays out of scope here (plan coupling note).
  */
 
+import { logger } from '../../../log.js';
+
 /** Options for {@link CalinApiV2Error}. */
 export type CalinApiV2ErrorOptions = {
   readonly code?: number;
@@ -192,27 +194,22 @@ export function createCalinApiV2Client(deps: {
           const freshToken = data?.result?.token;
           if (typeof freshToken !== 'string' || freshToken === '') {
             // No retry: empty/rejected login body will not improve on another attempt.
-            console.error(
-              '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
-            );
-            console.error(
-              '[CALIN API-V2 LOGIN] Didn\'t receive a login token,',
-              data?.reason,
-            );
+            logger.error({
+              module: 'calin-api-v2.repo',
+              reason: data?.reason,
+            }, 'login returned no token');
             cachedToken = undefined;
             break;
           }
 
           const expMs = readJwtExpMs(freshToken);
           if (expMs === undefined) {
-            console.error(
-              '[CALIN API-V2 LOGIN] Login token missing readable exp claim',
-            );
+            logger.error({ module: 'calin-api-v2.repo' }, 'login token missing exp claim');
             cachedToken = undefined;
             break;
           }
 
-          console.info('[CALIN API-V2 LOGIN] Got a login token');
+          logger.info({ module: 'calin-api-v2.repo' }, 'got login token');
           cachedToken = { token: freshToken, expMs };
           break;
         }
@@ -220,12 +217,11 @@ export function createCalinApiV2Client(deps: {
           const detail = typeof err === 'object' && err !== null && 'cause' in err
             ? (err as { cause?: unknown }).cause
             : err;
-          console.error('[CALIN API-V2 LOGIN] Got a direct error:', detail);
-          if (i === FETCH_RETRIES - 1) {
-            console.error(
-              '⚠️ CALIN API-V2 login is failing. We may have to restart the server.',
-            );
-          }
+          logger.error({
+            module: 'calin-api-v2.repo',
+            err: detail,
+            attempt: i + 1,
+          }, 'login failed');
         }
       }
     })().finally(() => {
@@ -264,43 +260,33 @@ export function createCalinApiV2Client(deps: {
       });
 
       if (response.status === 401) {
-        console.info(
-          '[CALIN API-V2] Unauthorized, going to retry by fetching new token first',
-        );
+        logger.info({ module: 'calin-api-v2.repo', path }, 'unauthorized, will refresh token');
         return { ok: false, unauthorized: true };
       }
 
       if (!response.ok) {
-        console.error(
-          '[CALIN API-V2] Fetch error with statusText:',
-          response.statusText,
-        );
+        logger.error({
+          module: 'calin-api-v2.repo',
+          path,
+          status: response.status,
+          statusText: response.statusText,
+        }, 'non-OK response');
         return { ok: false, unauthorized: false };
       }
 
       const data = await response.json() as CalinApiV2Response & UnexpectedCodeProbe;
       if (data.code !== 0 || data.reason !== 'success') {
-        console.info(`
-          =================================================================
-          CALIN API-V2 responsed with something other than code 0 'success'
-          =================================================================
-        `, data);
+        logger.info({
+          module: 'calin-api-v2.repo',
+          path,
+          code: data.code,
+          reason: data.reason,
+        }, 'unexpected code or reason');
       }
       return { ok: true, data };
     }
     catch (err) {
-      const baseMsg = '[CALIN API-V2] Fetch error';
-      if (
-        typeof err === 'object'
-        && err !== null
-        && 'cause' in err
-        && (err as { cause?: unknown }).cause
-      ) {
-        console.error(`${ baseMsg } with cause:`, (err as { cause: unknown }).cause);
-      }
-      else {
-        console.error(`${ baseMsg } raw:`, err);
-      }
+      logger.error({ module: 'calin-api-v2.repo', path, err }, 'fetch failed');
       return { ok: false, unauthorized: false };
     }
   };
@@ -345,7 +331,7 @@ export function createCalinApiV2Client(deps: {
       }
       if (outcome.unauthorized) {
         // Fresh token already minted for this wave — further 401s are auth, not stale JWT.
-        console.error('[CALIN API-V2] Unauthorized even after token refresh');
+        logger.error({ module: 'calin-api-v2.repo', path }, 'unauthorized after token refresh');
         throw new CalinApiV2Error(
           '[CALIN API-V2] Unauthorized after token refresh',
         );

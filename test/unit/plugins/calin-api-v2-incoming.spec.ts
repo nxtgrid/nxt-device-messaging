@@ -265,7 +265,6 @@ describe('createCalinApiV2Incoming', () => {
   });
 
   it('maps transport errors to DELIVERY_FAILED', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const incoming = createCalinApiV2Incoming({
       secrets: companySecrets,
       client: mockClient(vi.fn().mockRejectedValue(
