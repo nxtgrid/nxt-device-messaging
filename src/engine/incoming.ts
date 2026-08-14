@@ -16,6 +16,7 @@ import type {
   FailureReason,
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
+import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
@@ -88,13 +89,13 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     }
 
     if (!deliveryQueueId) {
-      console.warn('[incoming] No deliveryQueueId', parsedEvent);
+      logger.warn({ module: 'incoming', parsedEvent }, 'no deliveryQueueId');
       return;
     }
 
     const messageId = await redisRepo.getMessageIdFromDeliveryQueueId(deliveryQueueId);
     if (!messageId) {
-      console.warn(`[incoming] Can't find message for deliveryQueueId ${ deliveryQueueId }`, parsedEvent);
+      logger.warn({ module: 'incoming', deliveryQueueId, parsedEvent }, 'message not found for deliveryQueueId');
       return;
     }
 
@@ -115,13 +116,13 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     }
 
     if (deliveryStatus !== 'DELIVERY_SUCCESSFUL') {
-      console.warn(`[incoming] Unexpected delivery status ${ deliveryStatus }`, parsedEvent);
+      logger.warn({ module: 'incoming', deliveryStatus, parsedEvent }, 'unexpected delivery status');
       return;
     }
 
     const storedMessage = await redisRepo.getMessageById(messageId);
     if (!storedMessage) {
-      console.warn(`[incoming] Message not found (already cleaned up?): ${ messageId }`);
+      logger.warn({ module: 'incoming', messageId }, 'message not found (already cleaned up?)');
       return;
     }
 

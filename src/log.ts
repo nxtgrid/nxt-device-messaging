@@ -1,6 +1,10 @@
 /**
- * @fileoverview Process root pino logger (ADR-005 §7). One instance; Fastify
- * and domain code share it. Extra sinks (Loki, Datadog) are deferred.
+ * @fileoverview Process pino logger (ADR-005 §7). Import {@link logger} and
+ * pass `module` (plus any other fields) on the call. Extra sinks deferred.
+ *
+ * Pretty stdout from the first import (the documented default). Boot calls
+ * {@link configureLogger} so `"json"` replaces it. `lib/` must not import
+ * `runtime`.
  */
 
 import pino, { type Logger } from 'pino';
@@ -9,11 +13,7 @@ import type { LoggingConfig } from './config/schema.js';
 
 export type { Logger };
 
-/**
- * Builds the process logger from `config.logging`.
- * Pretty stdout is the default; `"json"` is the aggregator opt-in.
- */
-export function createRootLogger(logging: LoggingConfig): Logger {
+function buildLogger(logging: LoggingConfig): Logger {
   const base = {
     name: 'device-messaging',
     level: 'info',
@@ -34,4 +34,15 @@ export function createRootLogger(logging: LoggingConfig): Logger {
       },
     },
   });
+}
+
+/** Process logger. Pretty from import; {@link configureLogger} applies json. */
+export let logger: Logger = buildLogger({ stdout: 'pretty' });
+
+/** Apply `config.logging`. No-op when stdout is already pretty. */
+export function configureLogger(logging: LoggingConfig): void {
+  if (logging.stdout === 'pretty') {
+    return;
+  }
+  logger = buildLogger(logging);
 }

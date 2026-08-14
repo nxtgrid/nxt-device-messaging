@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **4.2A done**; **next = 4.2B** engine/lib console.*)* | —          |
+| —   | *(none blocking; **4.2B done**; **next = 4.2C** plugin console.*)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -85,7 +85,7 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**4.2A done**; **next = 4.2B**). Cold starts: trust `AGENTS.md` + this log
+(**4.2B done**; **next = 4.2C**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1735,6 +1735,27 @@ stays `logger: false` (pino 10 vs Fastify logger generics); request lines can sh
 root via a hook later. Extra sinks still deferred. ADR-002 / ADR-005 §7 amended.
 
 **Phase 4.2A closed.** Next: **4.2B** engine / `lib` `console.*` → named children.
+
+### 2026-08-14 — session: Phase 4.2B — engine / `lib` named children
+
+**Landed:** engine + `lib` `console.*` → `childLogger('…')` (`incoming`, `base`,
+`outgoing`, `webhook`, `timers`, `lifecycle.push`, `redis`). Short `msg` + fields,
+not `[PREFIX]` strings. `lib/` still must not import `runtime`; `setRootLogger` in
+`runtime` plus a lazy child (looks up root at log time) so module-level `const log`
+works when `main` / plugins load before boot finishes. Unit tests without `runtime`
+stay silent. Plugins still `console.*` (**4.2C**).
+
+**Phase 4.2B closed.** Next: **4.2C** plugin `console.*` → named children.
+
+### 2026-08-14 — review: one `logger`, context on the call
+
+Dropped `createRootLogger` / `setRootLogger` / `childLogger` (and the rebase
+Proxy). `src/log.ts` exports `logger` plus `configureLogger` at boot. Call sites
+pass `{ module, ...fields }`. ESM live binding so `lib/` can import `logger`
+without `runtime`. Silent until configured.
+
+Pretty from first import (not silent-for-tests). `configureLogger` only
+rebuilds when stdout is `"json"` — no placeholder logger for unit tests.
 
 
 

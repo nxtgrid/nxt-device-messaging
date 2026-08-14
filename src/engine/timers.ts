@@ -5,6 +5,7 @@
  * its interval may re-enter (deliberate; matches historical behaviour).
  */
 
+import { logger } from '../log.js';
 import type { IncomingService } from './incoming.js';
 import type { OutgoingService } from './outgoing.js';
 
@@ -45,13 +46,13 @@ export function startEngineTimers({
 
   const resolutionHandle = setInterval(() => {
     void outgoingService.runMessageResolutionCycle().catch(err => {
-      console.error('[engine] runMessageResolutionCycle failed', err);
+      logger.error({ module: 'timers', err }, 'runMessageResolutionCycle failed');
     });
   }, resolutionCycleIntervalMs);
 
   const pollHandle = setInterval(() => {
     void incomingService.pollPullPlugins().catch(err => {
-      console.error('[engine] pollPullPlugins failed', err);
+      logger.error({ module: 'timers', err }, 'pollPullPlugins failed');
     });
   }, pollPullIntervalMs);
 

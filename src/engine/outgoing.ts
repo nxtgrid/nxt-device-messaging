@@ -22,6 +22,7 @@ import type {
   CreateDeviceMessage,
   DeviceMessage,
 } from '../lib/device-message/types.js';
+import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
   buildConcurrencyRateLimitKey,
@@ -179,12 +180,14 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     catch (err) {
       const elapsedMs = Math.round(performance.now() - startedAt);
       if (elapsedMs > slowThresholdMs) {
-        console.warn(
-          `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
-            `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
-            `took ${ elapsedMs }ms before throwing`,
+        logger.warn({
+          module: 'outgoing',
           err,
-        );
+          elapsedMs,
+          externalReference: message.device.externalReference,
+          correlationId: message.correlationId,
+          messageId: message.id,
+        }, 'sendOne slow then threw');
       }
       await baseService.retryOrFail(
         message.id,
@@ -196,11 +199,13 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
     const elapsedMs = Math.round(performance.now() - startedAt);
     if (elapsedMs > slowThresholdMs) {
-      console.warn(
-        `[NS_SLOW] sendOne for device ${ message.device.externalReference } ` +
-          `(correlation ${ message.correlationId ?? 'n/a' }, msg ${ message.id }) ` +
-          `took ${ elapsedMs }ms — resolution cycle may have already scheduled a retry`,
-      );
+      logger.warn({
+        module: 'outgoing',
+        elapsedMs,
+        externalReference: message.device.externalReference,
+        correlationId: message.correlationId,
+        messageId: message.id,
+      }, 'sendOne slow; resolution cycle may have already scheduled a retry');
     }
 
     if (!deliveryQueueId) {
@@ -288,7 +293,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
     // 5. Kick distribution (not awaited — tick completes at handoff)
     void distributeToNetworkServers().catch(err => {
-      console.error('[runMessageResolutionCycle] distributeToNetworkServers failed', err);
+      logger.error({ module: 'outgoing', err }, 'distributeToNetworkServers failed');
     });
   }
 
@@ -325,7 +330,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
       // Fire-and-forget: distribute considers the handoff done once picked.
       void _sendOneToNetworkServer(plugin, messageToSend).catch(err => {
-        console.error('[distributeToNetworkServers] sendOne failed', err);
+        logger.error({ module: 'outgoing', err }, 'sendOne failed');
       });
     }));
   }
@@ -421,7 +426,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       // Fire-and-forget: try a distribute tick after enqueue.
       if (kickDistributeOnEnqueue) {
         void distributeToNetworkServers().catch(err => {
-          console.error('[enqueue] distributeToNetworkServers failed', err);
+          logger.error({ module: 'outgoing', err }, 'distribute after enqueue failed');
         });
       }
 

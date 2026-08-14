@@ -1,3 +1,5 @@
+import { config, logger, pluginRegistry } from './runtime.js';
+
 import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
 import { createIncomingService } from './engine/incoming.js';
@@ -8,7 +10,6 @@ import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
 import { createMetrics } from './metrics/index.js';
-import { config, logger, pluginRegistry } from './runtime.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;

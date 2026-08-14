@@ -8,10 +8,11 @@
  * Functions return data; side effects (retryOrFail) are handled by the caller.
  */
 
+import { logger } from '../log.js';
 import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
-import { redisRepo } from './redis-repository/index.js';
 import type { DeviceMessage } from './device-message/types.js';
 import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
+import { redisRepo } from './redis-repository/index.js';
 
 /** Result of a PUSH pattern timeout: a message that needs retryOrFail. */
 export type PushTimeoutResult = {
@@ -67,7 +68,7 @@ export async function maybeExtendMessageInRelayNodeQueue(
     if (deliveryStatus === 'DELIVERY_FAILED') return false;
   }
   catch (err) {
-    console.error('[maybeExtendMessageInRelayNodeQueue] Error checking status for message', message, err);
+    logger.error({ module: 'lifecycle.push', err, messageId, message }, 'getRemoteStatus failed');
     return false;
   }
 

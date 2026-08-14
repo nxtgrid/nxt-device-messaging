@@ -20,6 +20,7 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
+import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { WebhookService } from './webhook/service.js';
@@ -152,7 +153,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       ]);
 
     if (!priorityStr || !deviceStr || !pluginId) {
-      console.warn(`[requeueMessage] Orphaned retry id ${ messageId }. Removing.`);
+      logger.warn({ module: 'base', messageId }, 'orphaned retry id, removing');
       await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
       return;
     }
@@ -169,7 +170,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       device = JSON.parse(deviceStr) as DeviceMessageDevice;
     }
     catch {
-      console.warn(`[requeueMessage] Malformed device JSON for retry id ${ messageId }. Removing.`);
+      logger.warn({ module: 'base', messageId }, 'malformed device JSON for retry, removing');
       await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
       return;
     }

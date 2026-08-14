@@ -13,6 +13,7 @@ import type {
   DeviceMessageDeliveryStatus,
   PhaseEnum,
 } from '../device-message/types.js';
+import { logger } from '../../log.js';
 
 import type {
   FetchNextMessageResult,
@@ -156,7 +157,7 @@ const addScripts = (): void => {
 addScripts();
 
 _client.on('connect', () => {
-  console.info('[REDIS REPOSITORY :: CONNECTED]');
+  logger.info({ module: 'redis' }, 'connected');
 });
 
 /**
@@ -508,9 +509,11 @@ export const redisRepo = {
 
     if (deadMembers.length > 0) {
       await _client.srem(concurrencyRateLimitKey, ...deadMembers);
-      console.warn(
-        `[validateAndCleanConcurrencyRateLimit] Cleaned ${ deadMembers.length } dead entries from ${ concurrencyRateLimitKey }`,
-      );
+      logger.warn({
+        module: 'redis',
+        deadCount: deadMembers.length,
+        concurrencyRateLimitKey,
+      }, 'cleaned dead concurrency rate-limit entries');
     }
 
     return members.length - deadMembers.length;

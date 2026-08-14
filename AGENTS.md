@@ -39,15 +39,15 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
-ADR-003 polish). **Phase 4** in progress: **4.2A done**; next **4.2B**
-(engine/lib `console.*`).
+ADR-003 polish). **Phase 4** in progress: **4.2A–B done**; next **4.2C**
+(plugin `console.*`).
 
 **Phase 4 — ADR-005 observability (sliced):**
 
 | Slice | Status |
 |---|---|
 | **4.1** `GET /metrics` (`prom-client`; `src/metrics/`) | **Done** (4.1A–C) |
-| **4.2** Pino (pretty default, JSON opt-in) | **4.2A done**; next **4.2B** |
+| **4.2** Pino (pretty default, JSON opt-in) | **4.2A–B done**; next **4.2C** |
 | **4.3** CONTRIBUTING / README / integration guide | Not started |
 
 **Phase 3 — ADR-003 polish (closed):**
