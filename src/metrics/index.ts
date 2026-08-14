@@ -5,10 +5,15 @@
  * Dedicated {@link Registry} so tests do not share process-global counters.
  * Engine factories take {@link MetricsRecorder}; HTTP registers the same
  * {@link Metrics} instance so scrapes see in-process increments.
+ * Queue-depth gauges are filled at scrape time from injected Redis + PULL ids.
  */
 
 import type { FastifyInstance } from 'fastify';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
+
+import { collectQueueDepths, type QueueDepthRedis } from './queue-depth.js';
+
+export type { QueueDepth, QueueDepthRedis } from './queue-depth.js';
 
 /** Terminal statuses exported on `device_messaging_messages_total`. */
 export type MessageTerminalStatus =
@@ -30,12 +35,21 @@ export type Metrics = MetricsRecorder & {
   readonly registerRoutes: (app: FastifyInstance) => Promise<void>;
 };
 
+/**
+ * Wiring for {@link createMetrics}. Redis and PULL plugin ids come from outside
+ * the metrics domain; scrape uses them to read queue depths.
+ */
+export type CreateMetricsOptions = {
+  readonly redis: QueueDepthRedis;
+  readonly pullPluginIds: readonly string[];
+};
+
 const RETRY_COUNT_BUCKETS = [ 0, 1, 2, 3, 4, 5, 6, 8, 11, 16 ];
 
 /**
  * Builds an isolated metrics registry, series, and the `/metrics` route.
  */
-export function createMetrics(): Metrics {
+export function createMetrics(options: CreateMetricsOptions): Metrics {
   const registry = new Registry();
 
   new Gauge({
@@ -72,6 +86,13 @@ export function createMetrics(): Metrics {
     registers: [ registry ],
   });
 
+  const queueDepth = new Gauge({
+    name: 'device_messaging_queue_depth',
+    help: 'Redis sorted-set cardinality by queue key',
+    labelNames: [ 'queue' ],
+    registers: [ registry ],
+  });
+
   function recordMessageTerminal(
     status: MessageTerminalStatus,
     retries: number,
@@ -95,6 +116,14 @@ export function createMetrics(): Metrics {
         tags: [ 'ops' ],
       },
     }, async (_request, reply) => {
+      queueDepth.reset();
+      const depths = await collectQueueDepths({
+        redis: options.redis,
+        pullPluginIds: options.pullPluginIds,
+      });
+      for (const row of depths) {
+        queueDepth.set({ queue: row.queue }, row.depth);
+      }
       return reply
         .header('Content-Type', registry.contentType)
         .send(await registry.metrics());

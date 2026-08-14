@@ -2,8 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '#src/app.js';
 import { createMetrics } from '#src/metrics/index.js';
+import { createFakeQueueDepthRedis } from '../helpers/fake-queue-depth-redis.js';
 
-async function scrape(metrics = createMetrics()): Promise<string> {
+function createTestMetrics(
+  redis = createFakeQueueDepthRedis(),
+  pullPluginIds: readonly string[] = [],
+) {
+  return createMetrics({ redis, pullPluginIds });
+}
+
+async function scrape(
+  metrics = createTestMetrics(),
+): Promise<string> {
   const app = await buildApp({ metrics });
   const response = await app.inject({ method: 'GET', url: '/metrics' });
   await app.close();
@@ -13,7 +23,7 @@ async function scrape(metrics = createMetrics()): Promise<string> {
 
 describe('GET /metrics', () => {
   it('serves Prometheus text without auth', async () => {
-    const app = await buildApp({ metrics: createMetrics() });
+    const app = await buildApp({ metrics: createTestMetrics() });
 
     const response = await app.inject({
       method: 'GET',
@@ -32,7 +42,7 @@ describe('GET /metrics', () => {
   });
 
   it('is omitted from the OpenAPI document (Prometheus text, not the command API)', async () => {
-    const app = await buildApp({ metrics: createMetrics() });
+    const app = await buildApp({ metrics: createTestMetrics() });
 
     const doc = (await app.inject({ method: 'GET', url: '/v3/api-docs' })).json();
     expect(doc.paths['/metrics']).toBeUndefined();
@@ -42,7 +52,7 @@ describe('GET /metrics', () => {
   });
 
   it('exposes in-process counters and the retry histogram after increments', async () => {
-    const metrics = createMetrics();
+    const metrics = createTestMetrics();
     metrics.recordMessageTerminal('DELIVERY_SUCCESSFUL', 0);
     metrics.recordMessageTerminal('DELIVERY_FAILED', 2);
     metrics.recordMessageTerminal('CANCELLED', 1);
@@ -67,9 +77,41 @@ describe('GET /metrics', () => {
   });
 
   it('does not leak increments across isolated registries', async () => {
-    const first = createMetrics();
+    const first = createTestMetrics();
     first.recordMessageTerminal('DELIVERY_FAILED', 0);
-    const secondBody = await scrape(createMetrics());
+    const secondBody = await scrape(createTestMetrics());
     expect(secondBody).not.toContain('status="DELIVERY_FAILED"');
+  });
+
+  it('exports queue-depth gauges from Redis at scrape time', async () => {
+    const body = await scrape(createTestMetrics(createFakeQueueDepthRedis({
+      members: [ 'queue:stub-push:network:42' ],
+      cards: {
+        queue_in_flight_to_ns: 2,
+        'queue:stub-push:network:42': 7,
+      },
+    })));
+
+    expect(body).toContain('device_messaging_queue_depth{queue="queue_in_flight_to_ns"} 2');
+    expect(body).toContain(
+      'device_messaging_queue_depth{queue="queue:stub-push:network:42"} 7',
+    );
+  });
+
+  it('drops stale initial-queue labels between scrapes', async () => {
+    const state = {
+      members: [ 'queue:stub-push:network:42' ],
+      cards: { 'queue:stub-push:network:42': 7 },
+    };
+    const metrics = createTestMetrics(createFakeQueueDepthRedis(state));
+
+    const first = await scrape(metrics);
+    expect(first).toContain(
+      'device_messaging_queue_depth{queue="queue:stub-push:network:42"} 7',
+    );
+
+    state.members = [];
+    const second = await scrape(metrics);
+    expect(second).not.toContain('queue:stub-push:network:42');
   });
 });

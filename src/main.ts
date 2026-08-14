@@ -36,7 +36,10 @@ if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigning
   );
 }
 
-const metrics = createMetrics();
+const metrics = createMetrics({
+  redis: redisRepo.client,
+  pullPluginIds: pluginRegistry.getByDeliveryPattern('PULL').map(plugin => plugin.id),
+});
 
 const webhookService = config.eventWebhook
   ? createWebhookService({

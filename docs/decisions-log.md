@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **4.1B done**; **next = 4.1C** queue-depth gauges)* | —          |
+| —   | *(none blocking; **4.1 done**; **next = 4.2** Pino sweep)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -85,7 +85,7 @@ plan **Phase 1b** / Unit 5.
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
 **done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**4.1A–B done**; **next = 4.1C**). Cold starts: trust `AGENTS.md` + this log
+(**4.1 done**; **next = 4.2**). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1712,6 +1712,19 @@ tests.
 
 **Phase 4.1B closed.** Next: **4.1C** queue-depth gauges (scrape-time Redis
 pipeline; no new keys).
+
+### 2026-08-14 — session: Phase 4.1C — queue-depth gauges
+
+**Landed:** `device_messaging_queue_depth{queue}` filled at scrape time.
+`collectQueueDepths` SMEMBERS `queues_to_distribute_from`, then one pipelined
+ZCARD of known stages (`queue_in_flight_to_ns` / relay / device / retry,
+`webhook:pending`), PULL `queue_awaiting_task:{pluginId}`, and each distributor
+member. No new Redis keys; no metrics timer. `createMetrics({ redis, pullPluginIds })`
+takes those deps from `main.ts` and calls `collectQueueDepths` internally. Gauge
+labels reset each scrape so departed queues disappear. Unit tests use a fake Redis
+(no Valkey).
+
+**Phase 4.1 closed.** Next: **4.2** Pino sweep.
 
 
 
