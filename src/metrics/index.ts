@@ -116,11 +116,11 @@ export function createMetrics(options: CreateMetricsOptions): Metrics {
         tags: [ 'ops' ],
       },
     }, async (_request, reply) => {
-      queueDepth.reset();
       const depths = await collectQueueDepths({
         redis: options.redis,
         pullPluginIds: options.pullPluginIds,
       });
+      queueDepth.reset();
       for (const row of depths) {
         queueDepth.set({ queue: row.queue }, row.depth);
       }

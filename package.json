@@ -1,6 +1,6 @@
 {
   "name": "nxt-device-messaging",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Reliable, prioritized, retrying command delivery to addressable field devices",
   "license": "MPL-2.0",
   "authors": [

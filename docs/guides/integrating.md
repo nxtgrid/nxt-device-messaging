@@ -7,8 +7,12 @@ Live shapes: **`/swagger`** and **`/v3/api-docs`**. This page is the human versi
 
 ## Command API
 
-Authenticate with `Authorization: Bearer <DEVICE_MESSAGING_API_KEY>` when that env is set.
-If it isn't, command routes are open (local only).
+Use `Authorization: Bearer <DEVICE_MESSAGING_API_KEY>`. Unset or empty is for **local
+development only** — command and token routes then accept anyone who can reach the port.
+
+In any reachable deployment, set a **non-empty** key, **or** keep the service on a private
+network / behind a reverse proxy that authenticates callers. Do not expose those routes to
+the internet without one of those.
 
 | You want | Call |
 |---|---|
@@ -105,7 +109,7 @@ the other **us → you**.
 
 ## What you should return
 
-**2xx** means you stored it. Anything else, we retry (network errors, 408, 429, 5xx).
+**2xx** means you stored it. We retry network errors, 408, 429, and 5xx.
 Other 4xx we don't retry. After six attempts (~a minute of backoff) the event sits in a
 Redis DLQ for seven days. Your message still succeeded or failed on the device either way —
 webhook delivery is a separate concern.

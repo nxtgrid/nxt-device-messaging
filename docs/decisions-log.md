@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **Phase 4 done.** Parked / revisit is the follow-up list.)* | —          |
+| —   | *(none blocking; **Phase 4 complete.** Parked / revisit is the follow-up list.)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -84,8 +84,7 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4** in progress
-(**Phase 4 done**). Cold starts: trust `AGENTS.md` + this log
+**done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4 complete** (4.1–4.3). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
