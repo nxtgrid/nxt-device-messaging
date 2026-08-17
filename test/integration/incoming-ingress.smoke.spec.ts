@@ -17,6 +17,7 @@ import { createOutgoingService } from '#src/engine/outgoing.js';
 import { QUEUE_DEVICE_KEY } from '#src/lib/queue-moving.push.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
@@ -37,15 +38,22 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
-    const baseService = createBaseService({ registry, delivery });
+    const metrics = noopMetrics;
+    const baseService = createBaseService({ registry, delivery, metrics });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
       baseService,
+      metrics,
       kickDistributeOnEnqueue: false,
     });
-    const incomingService = createIncomingService({ registry, delivery, baseService });
-    const app = await buildApp({ incomingService, registry });
+    const incomingService = createIncomingService({
+      registry,
+      delivery,
+      baseService,
+      metrics,
+    });
+    const app = await buildApp({ metrics, incomingService, registry });
 
     const correlationId = `ingress-push-${ Date.now() }`;
     const networkId = 92;

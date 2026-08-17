@@ -137,7 +137,6 @@ describe('createCalinChirpstackIncoming', () => {
   });
 
   it('returns null when uplink frame cannot be decoded', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(incoming.handle?.({
       deduplicationId: 'd-bad',
       deviceInfo: { devEui: DEV_EUI },

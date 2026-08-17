@@ -12,6 +12,7 @@ import type {
   FailureContext,
   SetDatePayload,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV2Client,
@@ -229,10 +230,10 @@ export function createCalinApiV2Outgoing(
       };
     }
     if (err instanceof Error) {
-      console.error('[CALIN V2 API] Parsing a non-custom error', err);
+      logger.error({ module: 'calin-api-v2.outgoing', err }, 'non-custom error');
       return { reason: err.message };
     }
-    console.error('[CALIN V2 API] Parsing a non-custom error', err);
+    logger.error({ module: 'calin-api-v2.outgoing', err }, 'non-custom error');
     return { reason: String(err) };
   };
 

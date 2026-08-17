@@ -3,6 +3,9 @@
   "engine": {
     "enabled": true
   },
+  "logging": {
+    "stdout": "pretty"
+  },
   "delivery": {
     "maxRetries": 11,
     "retryBaseDelayMs": 2000,

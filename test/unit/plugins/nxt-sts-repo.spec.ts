@@ -52,7 +52,6 @@ describe('createNxtStsClient', () => {
   });
 
   it('maps non-OK responses to NxtStsError', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse({ error: 'nope' }, { status: 503 })),
@@ -65,7 +64,6 @@ describe('createNxtStsClient', () => {
   });
 
   it('maps network failures to NxtStsError', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockRejectedValue(new Error('fetch failed')),

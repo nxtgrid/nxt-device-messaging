@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildApp } from '#src/app.js';
 import { STUB_PUSH_ID, STUB_TOKEN_VALUE } from '#src/plugins/stub/index.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const generateBody = {
   pluginId: STUB_PUSH_ID,
@@ -18,6 +19,7 @@ const generateBody = {
 describe('POST /token/generate', () => {
   it('returns { token } on success', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       tokenService: createInMemoryTokenService({
         knownPluginIds: [ STUB_PUSH_ID ],
         tokenValue: STUB_TOKEN_VALUE,
@@ -38,6 +40,7 @@ describe('POST /token/generate', () => {
 
   it('maps UnknownPluginError to 400', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       tokenService: createInMemoryTokenService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
@@ -57,6 +60,7 @@ describe('POST /token/generate', () => {
 
   it('maps TokenNotSupportedError to 400', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       tokenService: createInMemoryTokenService({
         knownPluginIds: [ STUB_PUSH_ID ],
         unsupportedPluginIds: [ STUB_PUSH_ID ],
@@ -79,6 +83,7 @@ describe('POST /token/generate', () => {
 
   it('returns 400 for invalid body', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       tokenService: createInMemoryTokenService(),
     });
 
@@ -102,6 +107,7 @@ describe('POST /token/generate', () => {
 
   it('requires Bearer when apiKey is configured', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       tokenService: createInMemoryTokenService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       apiKey: 'secret',
     });

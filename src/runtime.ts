@@ -8,10 +8,15 @@
  */
 
 import { loadConfig } from './config/load.js';
+import { configureLogger } from './log.js';
 import { createPluginRegistry } from './plugins/registry.js';
+
+export { logger } from './log.js';
 
 /** Frozen service config (ADR-002). */
 export const config = await loadConfig();
+
+configureLogger(config.logging);
 
 /** Plugins enabled in config, constructed once at boot. */
 export const pluginRegistry = createPluginRegistry(config.plugins);

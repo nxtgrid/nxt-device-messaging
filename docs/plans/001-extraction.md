@@ -5,8 +5,7 @@ ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backe
 its 2026-07-27 amendment
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0–3 done. Phase 3 sliced: **3.1** + **3.2** (OpenAPI) + **3.3**
-(auth / validation errors) **done**. **Next = Phase 4.** See Phase 3 checklist below.
+**Status:** Phase 0–4 done. Parked follow-ups: `docs/decisions-log.md` § Parked / revisit.
 
 Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
 stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
@@ -49,12 +48,11 @@ need them (same pattern as Intermezzo enqueue/get).
 | **1b** | **Walking skeleton Intermezzo** — stub plugins, thin HTTP, enqueue→Redis | **Closed** (I0–I3; I4 skipped) |
 | **2** | Adapters as plugins: units 7–10 (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) | **Done** |
 | **3** | ADR-003 **polish** (sliced): **3.1** webhook, **3.2** OpenAPI, **3.3** auth | **Done** |
-| **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | Not started |
+| **4** | Deployment + hygiene: metrics, structured logging, integration guide, CI | **Done** |
 
 Phase 0 is **done**. Phase 1 foundation through Unit **6** is **done**.
 **Phase 1b is closed.** Phase 2 **Units 7–10** are **done**. **Phase 3 is closed**
-(**3.1–3.3**). Phase 4 still owns ADR-005 observability
-hygiene (metrics, pino sweep, CONTRIBUTING/README) — CI/Docker stubs already in Phase 0.
+(**3.1–3.3**). **Phase 4 is done** (4.1–4.3). Parked follow-ups stay in the decisions log.
 
 ### Phase 3 — ADR-003 polish (sliced)
 
@@ -89,6 +87,26 @@ follow-ups).
             same `{ error: 'Unauthorized' }` for missing / malformed / wrong.
       - [x] **3.3B** Richer Zod validation error bodies (`{ error, issues: [{ path, message }] }`;
             domain/auth errors omit `issues`).
+
+### Phase 4 — ADR-005 observability / hygiene (sliced)
+
+Docker/CI/`GET /healthz` already landed in Phase 0. Do **not** pull parked items
+(see `docs/decisions-log.md` § Parked / revisit).
+
+- [x] **4.1 — `GET /metrics`** (`prom-client`; unauthenticated; Redis only on scrape
+      for queue depth). Co-located under `src/metrics/`.
+      - [x] **4.1A** Isolated registry + route; `device_messaging_up`. No engine
+            increments, no Redis scrape.
+      - [x] **4.1B** In-process counters / histogram (terminals, retries, webhook,
+            unhandled ingress).
+      - [x] **4.1C** Queue-depth gauges (ZCARD known stages + `queues_to_distribute_from`
+            members; pipeline; scrape-time only).
+- [x] **4.2 — Pino** (one logger; pretty stdout default; JSON opt-in; sinks deferred).
+      - [x] **4.2A** Factory + `logging.stdout` in the artifact; Fastify + `main` boot/shutdown.
+      - [x] **4.2B** Engine / `lib` `console.*` → `logger` + `module` field.
+      - [x] **4.2C** Plugin `console.*` → `logger` + `module` field.
+- [x] **4.3 — Docs** (`CONTRIBUTING.md`, issue templates, README deploy/health dual-path,
+      integration guide: webhook verify + event set).
 
 ## Port units
 

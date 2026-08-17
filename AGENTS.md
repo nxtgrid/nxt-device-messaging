@@ -39,9 +39,18 @@ two known task descriptions are stale because of it (see `nxt-backend` ADR-010's
 ## Current status
 
 **Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
-ADR-003 polish). **Next = Phase 4** (metrics, pino, integration guide).
+ADR-003 polish). **Phase 4 complete** (4.1–4.3). Parked follow-ups:
+`docs/decisions-log.md` § Parked / revisit.
 
-**Phase 3 — ADR-003 polish (sliced; do not treat as one blob):**
+**Phase 4 — ADR-005 observability (sliced):**
+
+| Slice | Status |
+|---|---|
+| **4.1** `GET /metrics` (`prom-client`; `src/metrics/`) | **Done** (4.1A–C) |
+| **4.2** Pino (pretty default, JSON opt-in) | **Done** (4.2A–C) |
+| **4.3** CONTRIBUTING / README / integration guide | **Done** |
+
+**Phase 3 — ADR-003 polish (closed):**
 
 | Slice | Status |
 |---|---|
@@ -58,7 +67,7 @@ paths (distribute / send / poll / resolution) stay internal — exercise via stu
 plugins + enqueue/get (no public debug trigger for now).
 
 Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
-(`config`, `pluginRegistry`), Fastify `/healthz` + camelCase command routes on **3100**,
+(`config`, `pluginRegistry`), Fastify `/healthz` + `/metrics` + camelCase command routes on **3100**,
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts` +
 `command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
 `device.relayNode`; `generateTokenSchema` type-discriminated), Redis/Lua, queue primitives

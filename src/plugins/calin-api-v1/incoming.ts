@@ -18,6 +18,7 @@ import type {
   ParsedIncomingEvent,
   PhaseEnum,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import { toSafeNumberOrNull } from '../_shared/to-safe-number-or-null.js';
 import type { DeviceMessagingPlugin } from '../plugin.interface.js';
 import type {
@@ -184,7 +185,7 @@ export function createCalinApiV1Incoming(
       // OTHER COMMANDS
       default: {
         // We know it was successful, but have no additional data (?) so just respond with success.
-        console.warn('[CALIN API-V1 STATUS CHECK] Unknown command', fullResult);
+        logger.warn({ module: 'calin-api-v1.incoming', fullResult }, 'unknown command');
         return _createSuccessfulResponseData();
       }
     }
@@ -230,12 +231,12 @@ export function createCalinApiV1Incoming(
 
     if (!_result) {
       if (res.ResultCode === '99') {
-        // @TEMPORARY LOG to see if it's really about tokens
-        console.info(`
-          ===================================================================
-          [CALIN API-V1 STATUS CHECK] Got a token rejected for message id=${ id } correlationId=${ correlationId ?? '—' } of type ${ commandType }
-          ===================================================================
-        `);
+        logger.info({
+          module: 'calin-api-v1.incoming',
+          messageId: id,
+          correlationId,
+          commandType,
+        }, 'token rejected');
         return {
           ..._base,
           deliveryStatus: 'DELIVERY_FAILED',
@@ -247,12 +248,11 @@ export function createCalinApiV1Incoming(
         };
       }
       else {
-        // We make this big log to see if this even happens..
-        console.info(`
-          ===================================================================
-          [CALIN API-V1 STATUS CHECK] No result returned when fetching status
-          ===================================================================
-        `, res);
+        logger.info({
+          module: 'calin-api-v1.incoming',
+          resultCode: res.ResultCode,
+          reason: res.Reason,
+        }, 'no result when fetching status');
         return {
           ..._base,
           deliveryStatus: 'DELIVERY_FAILED',
@@ -279,7 +279,7 @@ export function createCalinApiV1Incoming(
     }
 
     if (_result.Status !== 'True') {
-      console.warn('[CALIN API-V1 STATUS CHECK] Received response with unexpected status', _result);
+      logger.warn({ module: 'calin-api-v1.incoming', result: _result }, 'unexpected status');
       return null;
     }
 

@@ -17,7 +17,7 @@ Ordered by dependency. Nothing below is decided; do not act on any of it without
 
 | #   | Decision                                                                       | Blocked on |
 | --- | ------------------------------------------------------------------------------ | ---------- |
-| —   | *(none blocking; **Phase 3 done**; **next = Phase 4** metrics / pino / integration guide)* | —          |
+| —   | *(none blocking; **Phase 4 complete.** Parked / revisit is the follow-up list.)* | —          |
 
 
 ## Parked / revisit (canonical)
@@ -84,8 +84,7 @@ plan **Phase 1b** / Unit 5.
 
 Phase 0 scaffold is **done**. Phase 1 through Unit **6** is **done**. Intermezzo closed.
 Phase 2 **Units 7–10** (`calin-api-v1`, `nxt-sts`, `calin-api-v2`, `calin-chirpstack`) are
-**done**. **Phase 3** (**3.1–3.3**) **closed**; **next = Phase 4**
-(metrics / pino / integration guide). Cold starts: trust `AGENTS.md` + this log
+**done**. **Phase 3** (**3.1–3.3**) **closed**; **Phase 4 complete** (4.1–4.3). Cold starts: trust `AGENTS.md` + this log
 + `docs/plans/001-extraction.md` — not prior chat transcripts.
 Also outstanding on `nxt-backend` (see **Parked / revisit → Other repo**):
 
@@ -1687,5 +1686,93 @@ facts-not-todos.
 
 **Next:** **Phase 4** when prompted. Use the new table; do not relitigate parked
 items unless the maintainer picks one.
+
+### 2026-08-14 — session: Phase 4.1A — `GET /metrics` scaffold
+
+**Landed:** `prom-client` + `src/metrics/` (`createMetrics` dedicated `Registry`,
+`GET /metrics` unauthenticated, hidden from OpenAPI). Smoke series
+`device_messaging_up 1`. No engine increments; no Redis scrape. `buildApp`
+registers metrics by default (injectable for later tests).
+
+**Phase 4.1A closed.** Next: **4.1B** in-process counters / histogram (terminals,
+retries, webhook results, unhandled ingress) — still inside `src/metrics/`;
+engine only calls increment helpers.
+
+### 2026-08-14 — session: Phase 4.1B — in-process counters
+
+**Landed:** `src/metrics/` series + increment helpers (`recordMessageTerminal`,
+`recordWebhookResult`, `recordIngressUnhandled`). Required `metrics: MetricsRecorder`
+on base / incoming / outgoing / webhook factories and `buildApp`. Tests that do
+not scrape pass `noopMetrics`; `metrics.spec.ts` uses `createMetrics()`. `main.ts`
+shares one instance with HTTP and the engine. Call
+sites: final `retryOrFail`, incoming success, PULL age timeout, successful cancel,
+webhook posted/retried/dlq, PUSH `handle` returning null. Isolated-registry unit
+tests.
+
+**Phase 4.1B closed.** Next: **4.1C** queue-depth gauges (scrape-time Redis
+pipeline; no new keys).
+
+### 2026-08-14 — session: Phase 4.1C — queue-depth gauges
+
+**Landed:** `device_messaging_queue_depth{queue}` filled at scrape time.
+`collectQueueDepths` SMEMBERS `queues_to_distribute_from`, then one pipelined
+ZCARD of known stages (`queue_in_flight_to_ns` / relay / device / retry,
+`webhook:pending`), PULL `queue_awaiting_task:{pluginId}`, and each distributor
+member. No new Redis keys; no metrics timer. `createMetrics({ redis, pullPluginIds })`
+takes those deps from `main.ts` and calls `collectQueueDepths` internally. Gauge
+labels reset each scrape so departed queues disappear. Unit tests use a fake Redis
+(no Valkey).
+
+**Phase 4.1 closed.** Next: **4.2** Pino sweep.
+
+### 2026-08-14 — session: Phase 4.2A — pino factory + `logging.stdout`
+
+**Landed:** `pino` + `pino-pretty`. `config.logging.stdout` (`pretty` default, `json`
+opt-in). `createRootLogger` in `src/log.ts`; `runtime.logger` is the process instance.
+`main.ts` boot/shutdown uses it (structured fields, not `[prefix]` strings). Fastify
+stays `logger: false` (pino 10 vs Fastify logger generics); request lines can share this
+root via a hook later. Extra sinks still deferred. ADR-002 / ADR-005 §7 amended.
+
+**Phase 4.2A closed.** Next: **4.2B** engine / `lib` `console.*` → named children.
+
+### 2026-08-14 — session: Phase 4.2B — engine / `lib` named children
+
+**Landed:** engine + `lib` `console.*` → `childLogger('…')` (`incoming`, `base`,
+`outgoing`, `webhook`, `timers`, `lifecycle.push`, `redis`). Short `msg` + fields,
+not `[PREFIX]` strings. `lib/` still must not import `runtime`; `setRootLogger` in
+`runtime` plus a lazy child (looks up root at log time) so module-level `const log`
+works when `main` / plugins load before boot finishes. Unit tests without `runtime`
+stay silent. Plugins still `console.*` (**4.2C**).
+
+**Phase 4.2B closed.** Next: **4.2C** plugin `console.*` → named children.
+
+### 2026-08-14 — review: one `logger`, context on the call
+
+Dropped `createRootLogger` / `setRootLogger` / `childLogger` (and the rebase
+Proxy). `src/log.ts` exports `logger` plus `configureLogger` at boot. Call sites
+pass `{ module, ...fields }`. ESM live binding so `lib/` can import `logger`
+without `runtime`. Silent until configured.
+
+Pretty from first import (not silent-for-tests). `configureLogger` only
+rebuilds when stdout is `"json"` — no placeholder logger for unit tests.
+
+### 2026-08-14 — session: Phase 4.2C — plugin `logger` + `module`
+
+**Landed:** plugin `console.*` → `logger` + `{ module }` (calin-api-v1/v2,
+calin-chirpstack, nxt-sts, shared ChirpStack repo). Short `msg` + fields; no
+ASCII banners; no request bodies / tokens / decoder keys. Console spies dropped
+from plugin unit tests (behaviour assertions kept).
+
+**Phase 4.2 closed.** Next: **4.3** CONTRIBUTING / README / integration guide.
+
+### 2026-08-14 — session: Phase 4.3 — human docs
+
+**Landed:** `CONTRIBUTING.md`; `.github/ISSUE_TEMPLATE/` (bug + feature); README
+status, observability, health dual-path, GHCR pin-tags, single-replica note;
+`docs/guides/integrating.md` (command API, event set, HMAC verify, 2xx/retry).
+
+**Phase 4 closed.** Follow-ups: **Parked / revisit**.
+
+
 
 

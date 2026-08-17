@@ -7,6 +7,8 @@
 
 import type { EventWebhookConfig } from '../../config/schema.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
+import type { MetricsRecorder } from '../../metrics/index.js';
 import { calculateWebhookBackoffDelay } from './backoff.js';
 import { buildWebhookEvent } from './build-event.js';
 import {
@@ -43,6 +45,7 @@ export type CreateWebhookServiceOptions = {
    * From `DEVICE_MESSAGING_WEBHOOK_SECRET` at the composition root.
    */
   readonly signingSecret?: string;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -74,7 +77,7 @@ async function releaseResponseBody(response: Response): Promise<void> {
  * @param options - Config, Redis store, optional signing secret
  */
 export function createWebhookService(options: CreateWebhookServiceOptions): WebhookService {
-  const { config, store, signingSecret } = options;
+  const { config, store, signingSecret, metrics } = options;
   const secret = signingSecret !== undefined && signingSecret !== ''
     ? signingSecret
     : undefined;
@@ -85,7 +88,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
   async function storeAndEmit(message: Partial<DeviceMessage>): Promise<void> {
     const built = buildWebhookEvent(message);
     if (!built.ok) {
-      console.warn(`[webhook] drop storeAndEmit: ${ built.reason }`);
+      logger.warn({ module: 'webhook', reason: built.reason }, 'drop storeAndEmit');
       return;
     }
 
@@ -103,7 +106,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
     drainChain = drainChain
       .then(() => _drainOnce())
       .catch(err => {
-        console.error('[webhook] drain failed', err);
+        logger.error({ module: 'webhook', err }, 'drain failed');
       });
     return drainChain;
   }
@@ -154,6 +157,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
 
     if (response.ok) {
       await store.complete(eventId);
+      metrics.recordWebhookResult('posted');
       return;
     }
 
@@ -167,6 +171,7 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
         },
         config.deadLetterTtlSeconds,
       );
+      metrics.recordWebhookResult('dlq');
       return;
     }
 
@@ -182,19 +187,19 @@ export function createWebhookService(options: CreateWebhookServiceOptions): Webh
 
     if (attemptCount >= config.maxAttempts) {
       await store.deadLetter(updated, config.deadLetterTtlSeconds);
-      console.error(
-        '[webhook] exhausted retries → DLQ',
-        {
-          eventId: record.event.eventId,
-          correlationId: record.event.message.correlationId,
-          lastError,
-        },
-      );
+      metrics.recordWebhookResult('dlq');
+      logger.error({
+        module: 'webhook',
+        eventId: record.event.eventId,
+        correlationId: record.event.message.correlationId,
+        lastError,
+      }, 'exhausted retries → DLQ');
       return;
     }
 
     const delayMs = calculateWebhookBackoffDelay(attemptCount, config);
     await store.reschedule(updated, Date.now() + delayMs);
+    metrics.recordWebhookResult('retried');
   }
 
   function startTimers(

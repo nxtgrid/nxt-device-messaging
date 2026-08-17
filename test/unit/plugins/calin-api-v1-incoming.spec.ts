@@ -175,7 +175,6 @@ describe('createCalinApiV1Incoming', () => {
   });
 
   it('maps ResultCode 99 with no Result to skipRetry failure', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
     const incoming = createCalinApiV1Incoming({
       secrets: adminSecrets,
       client: mockClient(vi.fn().mockResolvedValue({

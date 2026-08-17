@@ -1,0 +1,91 @@
+/**
+ * @fileoverview Scrape-time Redis queue depths (ADR-005 §5). Read-only; no new keys.
+ *
+ * Known stage keys match `src/lib/queue-moving.ts` / `queue-moving.push.ts` and
+ * `webhookRedisKeys.pending()`. Initial queues come from
+ * `queues_to_distribute_from`; PULL awaiting-task keys from enabled plugin ids.
+ */
+
+import { redisKeys } from '../lib/redis-repository/keys.js';
+
+/** One sorted-set cardinality to export as `device_messaging_queue_depth{queue}`. */
+export type QueueDepth = {
+  readonly queue: string;
+  readonly depth: number;
+};
+
+/** Redis surface used by {@link collectQueueDepths} (no iovalkey types). */
+export type QueueDepthRedis = {
+  smembers(key: string): Promise<string[]>;
+  pipeline(): QueueDepthPipeline;
+};
+
+type QueueDepthPipeline = {
+  zcard(key: string): QueueDepthPipeline;
+  exec(): Promise<[Error | null, unknown][] | null>;
+};
+
+/**
+ * Fixed in-flight / retry / webhook keys. Must stay aligned with queue-moving
+ * and `webhook:pending` — listed here so this module does not import Redis.
+ */
+const KNOWN_STAGE_KEYS = [
+  'queue_in_flight_to_ns',
+  'queue_in_flight_to_relay_node',
+  'queue_in_flight_to_device',
+  'queue_awaiting_retry',
+  'webhook:pending',
+] as const;
+
+/**
+ * SMEMBERS the distributor set, then one pipelined ZCARD for known stages,
+ * PULL awaiting-task keys, and each initial-queue member.
+ *
+ * @param options - Redis client and enabled PULL plugin ids
+ */
+export async function collectQueueDepths(options: {
+  readonly redis: QueueDepthRedis;
+  readonly pullPluginIds: readonly string[];
+}): Promise<readonly QueueDepth[]> {
+  const awaitingTaskKeys = options.pullPluginIds.map(
+    pluginId => redisKeys.queueAwaitingTask(pluginId),
+  );
+  const initialKeys = await options.redis.smembers(
+    redisKeys.listOfInitialQueuesToDistributeFrom(),
+  );
+
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const key of [ ...KNOWN_STAGE_KEYS, ...awaitingTaskKeys, ...initialKeys ]) {
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+
+  const pipeline = options.redis.pipeline();
+  for (const key of keys) {
+    pipeline.zcard(key);
+  }
+  const results = await pipeline.exec();
+  if (results === null) {
+    throw new Error('[metrics] queue-depth pipeline aborted');
+  }
+
+  return keys.map((queue, index) => {
+    const pair = results[index];
+    if (pair === undefined) {
+      throw new Error(`[metrics] queue-depth missing result for ${ queue }`);
+    }
+    const [ err, raw ] = pair;
+    if (err) {
+      throw err;
+    }
+    const depth = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(depth)) {
+      throw new Error(`[metrics] queue-depth non-numeric ZCARD for ${ queue }`);
+    }
+    return { queue, depth };
+  });
+}

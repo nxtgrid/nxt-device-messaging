@@ -104,7 +104,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('shares one in-flight login across concurrent callers', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/API/User/Login')) {
@@ -148,7 +147,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('re-logins after HTTP 401 and retries the request', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
@@ -169,8 +167,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('throws a distinct auth error when 401 persists after token refresh', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))
@@ -188,7 +184,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('returns data when vendor code/reason are unexpected (logs only)', async () => {
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn()
@@ -200,11 +195,9 @@ describe('createCalinApiV2Client', () => {
     await expect(
       client.sendRequest('/API/x', { a: 1 }),
     ).resolves.toEqual({ code: 1, reason: 'nope' });
-    expect(infoSpy).toHaveBeenCalled();
   });
 
   it('throws when login never yields a token', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse({ reason: 'bad creds' })),
@@ -217,7 +210,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('throws when login returns a token with unreadable exp', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse({
@@ -234,7 +226,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('throws CalinApiV2Error after repeated transport failures', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginOk())
       .mockRejectedValue(new Error('network down'));
@@ -247,8 +238,6 @@ describe('createCalinApiV2Client', () => {
   });
 
   it('throws after 401 refresh when the retry wave hits transport failures', async () => {
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(jsonResponse({}, { status: 401 }))

@@ -14,6 +14,7 @@ import {
   STUB_PUSH_ID,
   STUB_TOKEN_VALUE,
 } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 
 describe('token generate (stub-push)', () => {
   it('POST /token/generate → { token: stub-token }', async () => {
@@ -22,7 +23,7 @@ describe('token generate (stub-push)', () => {
       { id: STUB_PULL_ID },
     ]);
     const tokenService = createTokenService({ registry });
-    const app = await buildApp({ tokenService });
+    const app = await buildApp({ metrics: noopMetrics, tokenService });
 
     const ok = await app.inject({
       method: 'POST',

@@ -69,7 +69,6 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('sendOne throws CalinChirpstackError(skipRetry) when encode fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const client = mockClient();
     const outgoing = createCalinChirpstackOutgoing({ client });
 
@@ -109,7 +108,6 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('parseError sets skipRetry for unregistered-device FK violation', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
 
     expect(outgoing.parseError({
@@ -134,7 +132,6 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('parseError falls back for unknown gRPC errors', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
 
     expect(outgoing.parseError({
@@ -148,7 +145,6 @@ describe('createCalinChirpstackOutgoing', () => {
   });
 
   it('parseError does not throw on nullish err', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const outgoing = createCalinChirpstackOutgoing({ client: mockClient() });
 
     expect(outgoing.parseError(null)).toEqual({

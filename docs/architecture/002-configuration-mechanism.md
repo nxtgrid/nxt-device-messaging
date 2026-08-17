@@ -23,6 +23,9 @@
 > **Amendment (2026-08-10):** Config key rename `resultWebhook` → **`eventWebhook`**
 > (outbound delivery **events**, not terminal-only). Retry/DLQ tuning under that object
 > (defaults locked session 32; schema fields session 33) — see ADR-003 §6.
+>
+> **Amendment (2026-08-14):** Root object **`logging`** (`stdout`: `"pretty"` | `"json"`,
+> default pretty). Extra sinks deferred. Secrets for a future sink stay in env. See ADR-005 §7.
 
 ---
 
@@ -92,6 +95,7 @@ therefore safe to inline in an environment variable, serve from object storage, 
 {
   "$schemaVersion": "1",
   "engine": { "enabled": true },
+  "logging": { "stdout": "pretty" },
   "delivery": {                          // shared engine knobs, all optional
     "maxRetries": 11,
     "retryBaseDelayMs": 2000,

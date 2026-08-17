@@ -134,7 +134,6 @@ describe('createCalinApiV2Token', () => {
   });
 
   it('throws when the vendor returns no token, including failure reason', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const token = createCalinApiV2Token({
       secrets: tokenSecrets,
       client: mockClient(vi.fn().mockResolvedValue({
@@ -155,7 +154,6 @@ describe('createCalinApiV2Token', () => {
   });
 
   it('throws a generic empty-response message when the vendor omits reason', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const token = createCalinApiV2Token({
       secrets: tokenSecrets,
       client: mockClient(vi.fn().mockResolvedValue({

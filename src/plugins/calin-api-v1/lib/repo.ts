@@ -6,6 +6,7 @@
  * attached by outgoing / token / incoming (Units 7.3–7.5).
  */
 
+import { logger } from '../../../log.js';
 import { toSafeNumberOrNull } from '../../_shared/to-safe-number-or-null.js';
 
 /** Options for {@link CalinApiV1Error}. */
@@ -155,7 +156,7 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
       if (contentType?.includes('text/html')) {
         const message = '[CALIN API-V1] responded with a HTML page..';
         const code = toSafeNumberOrNull(response.status);
-        console.error(message, code);
+        logger.error({ module: 'calin-api-v1.repo', path, status: code }, 'HTML response');
         throw new CalinApiV1Error(message, { code });
       }
 
@@ -168,13 +169,14 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         catch {
           responseMessage = undefined;
         }
-        console.error(
-          '[CALIN API-V1] Error with a response object for path',
-          path,
-        );
         const message = `[CALIN API-V1] is down: ${ String(responseMessage) }`;
         const code = toSafeNumberOrNull(response.status);
-        console.error(message, code);
+        logger.error({
+          module: 'calin-api-v1.repo',
+          path,
+          status: code,
+          responseMessage,
+        }, 'non-OK response');
         throw new CalinApiV1Error(message, { code });
       }
 
@@ -187,11 +189,12 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         || (data.Reason !== undefined
           && ![ 'OK', 'other error' ].includes(String(data.Reason)))
       ) {
-        console.info(`
-        =====================================================
-        [CALIN API-V1 Got an unexpected result code or reason
-        =====================================================
-      `, data);
+        logger.info({
+          module: 'calin-api-v1.repo',
+          path,
+          resultCode: data.result_code ?? data.ResultCode,
+          reason: data.reason ?? data.Reason,
+        }, 'unexpected result code or reason');
       }
       return data;
     }
@@ -205,12 +208,12 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
       const networkCode = getNetworkErrorCode(err);
 
       if (networkCode === 'ECONNREFUSED') {
-        console.error('ECONNREFUSED on path', path);
+        logger.error({ module: 'calin-api-v1.repo', path, err }, 'ECONNREFUSED');
         message = '[CALIN API-V1] could not be reached, connection was refused';
         code = networkCode;
       }
       else if (networkCode === 'ECONNRESET') {
-        console.error('ECONNRESET on path', path);
+        logger.error({ module: 'calin-api-v1.repo', path, err }, 'ECONNRESET');
         message = '[CALIN API-V1] abruptly closed its end of the connection';
         code = networkCode;
       }
@@ -220,24 +223,20 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         && 'cause' in err
         && (err as { cause?: unknown }).cause
       ) {
-        console.error('[CALIN API-V1] Error with (unhandled) cause', err);
+        logger.error({ module: 'calin-api-v1.repo', path, err }, 'unhandled cause');
         message = '[CALIN API-V1] is down';
         code = getNetworkErrorCode((err as { cause: unknown }).cause)
           ?? getNetworkErrorCode(err);
       }
       else if (err instanceof Error && err.message) {
-        console.error('[CALIN API-V1] Error with a message', err);
+        logger.error({ module: 'calin-api-v1.repo', path, err }, 'fetch failed');
         message = '[CALIN API-V1] is down';
       }
       else {
-        console.error(
-          '[CALIN API-V1] Error without response, cause, or message',
-          err,
-        );
+        logger.error({ module: 'calin-api-v1.repo', path, err }, 'fetch failed');
         message = '[CALIN API-V1] is down';
       }
 
-      console.error(message, code);
       throw new CalinApiV1Error(message, { code });
     }
   };

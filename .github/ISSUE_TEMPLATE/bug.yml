@@ -1,0 +1,30 @@
+name: Bug
+description: Something doesn't work the way you expected
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      placeholder: What you saw, including status codes or log lines if you have them.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      placeholder: Plugin id, command type, and the smallest steps that show it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Git tag, commit, or image tag. Optional.

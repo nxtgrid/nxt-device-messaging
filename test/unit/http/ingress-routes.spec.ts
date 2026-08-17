@@ -4,11 +4,13 @@ import { buildApp } from '#src/app.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PULL_ID, STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 describe('POST /ingress/:pluginId', () => {
   it('forwards body to incoming.handle without Bearer auth', async () => {
     const onHandle = vi.fn();
     const app = await buildApp({
+      metrics: noopMetrics,
       incomingService: createInMemoryIncomingService({ onHandle }),
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       apiKey: 'secret',
@@ -38,6 +40,7 @@ describe('POST /ingress/:pluginId', () => {
 
   it('returns 400 for unknown pluginId', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       incomingService: createInMemoryIncomingService(),
       registry: createPluginRegistry([]),
     });
@@ -59,6 +62,7 @@ describe('POST /ingress/:pluginId', () => {
 
   it('returns 400 when plugin has no PUSH handle', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       incomingService: createInMemoryIncomingService(),
       registry: createPluginRegistry([ { id: STUB_PULL_ID } ]),
     });

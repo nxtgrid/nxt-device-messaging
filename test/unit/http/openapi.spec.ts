@@ -7,10 +7,11 @@ import packageJson from '../../../package.json' with { type: 'json' };
 import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
+import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 describe('OpenAPI / Swagger UI', () => {
   it('serves OpenAPI JSON at /v3/api-docs including /healthz', async () => {
-    const app = await buildApp();
+    const app = await buildApp({ metrics: noopMetrics });
 
     const response = await app.inject({
       method: 'GET',
@@ -29,6 +30,7 @@ describe('OpenAPI / Swagger UI', () => {
 
   it('documents command, token, and ingress paths when services are wired', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       tokenService: createInMemoryTokenService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       incomingService: createInMemoryIncomingService(),
@@ -61,6 +63,7 @@ describe('OpenAPI / Swagger UI', () => {
 
   it('documents SET_DATE payload with calendar bounds and year example 2026', async () => {
     const app = await buildApp({
+      metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
     });
 
@@ -82,7 +85,7 @@ describe('OpenAPI / Swagger UI', () => {
   });
 
   it('documents outbound deliveryEvent webhook (not an inbound path)', async () => {
-    const app = await buildApp();
+    const app = await buildApp({ metrics: noopMetrics });
 
     const doc = (await app.inject({ method: 'GET', url: '/v3/api-docs' })).json();
 
@@ -98,7 +101,7 @@ describe('OpenAPI / Swagger UI', () => {
   });
 
   it('serves Swagger UI at /swagger without auth', async () => {
-    const app = await buildApp();
+    const app = await buildApp({ metrics: noopMetrics });
 
     const response = await app.inject({
       method: 'GET',

@@ -10,6 +10,9 @@
 >
 > **Amendment (2026-08-12):** Lean process shutdown on `SIGTERM`/`SIGINT` — stop engine +
 > webhook timers, `app.close()`, Redis `quit()`. Does not await in-flight ticks (v1).
+>
+> **Amendment (2026-08-14):** Logging is **pretty stdout by default**; JSON is opt-in via
+> `logging.stdout` in the config artifact. Extra sinks (Loki, Datadog) are deferred. See §7.
 
 ---
 
@@ -82,8 +85,21 @@ Document in the README (same dual-path note as `nxt-sts`):
 
 ### 7. Structured logging via Fastify pino
 
-JSON logs in production; named child loggers. Replaces scattered `console.*` (stale plan 4.2’s
-Nest `Logger` does not apply). Implementation lands in Phase 4; the choice is locked here.
+One pino instance for the process (`logger` in `src/log.ts`). Pretty from the
+first import; boot calls `configureLogger` so `"json"` replaces it. Fastify stays
+`logger: false` so HTTP types stay on Fastify's own logger interface; request
+lines can use the same instance via a hook later. Domain code imports `logger`
+and passes `module` on the call (`lib/` must not import `runtime`). Plugins
+do the same.
+
+- **`logging.stdout`** in the JSON artifact (ADR-002): `"pretty"` (default) or `"json"`.
+  Pretty is for humans (local TTY and PaaS consoles). JSON is the opt-in when an aggregator
+  tails stdout. Colorize only when stdout is a TTY.
+- Extra destinations (`logging.sinks` — Loki, Datadog, …) are **deferred**. The logger
+  factory is the single place that would grow a second pino target; secrets for those sinks
+  stay in env.
+
+Replaces scattered `console.*` (stale plan 4.2’s Nest `Logger` does not apply).
 
 ### 8. Contributor hygiene
 

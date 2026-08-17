@@ -1,0 +1,19 @@
+name: Feature
+description: A change or addition you'd like
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What you want
+      placeholder: The outcome, not a proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      placeholder: Who is blocked today, and what they do instead.
+    validations:
+      required: true

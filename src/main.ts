@@ -1,3 +1,5 @@
+import { config, logger, pluginRegistry } from './runtime.js';
+
 import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
 import { createIncomingService } from './engine/incoming.js';
@@ -7,7 +9,7 @@ import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
-import { config, pluginRegistry } from './runtime.js';
+import { createMetrics } from './metrics/index.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;
@@ -30,16 +32,22 @@ function resolvePort(): number {
 const webhookSigningSecret = process.env.DEVICE_MESSAGING_WEBHOOK_SECRET;
 
 if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigningSecret === '')) {
-  console.warn(
-    '[webhook] eventWebhook.url is set but DEVICE_MESSAGING_WEBHOOK_SECRET is unset — POSTs will be unsigned',
+  logger.warn(
+    'eventWebhook.url is set but DEVICE_MESSAGING_WEBHOOK_SECRET is unset — POSTs will be unsigned',
   );
 }
+
+const metrics = createMetrics({
+  redis: redisRepo.client,
+  pullPluginIds: pluginRegistry.getByDeliveryPattern('PULL').map(plugin => plugin.id),
+});
 
 const webhookService = config.eventWebhook
   ? createWebhookService({
     config: config.eventWebhook,
     store: createWebhookStore({ client: redisRepo.client }),
     signingSecret: webhookSigningSecret,
+    metrics,
   })
   : undefined;
 
@@ -47,16 +55,19 @@ const baseService = createBaseService({
   registry: pluginRegistry,
   delivery: config.delivery,
   webhook: webhookService,
+  metrics,
 });
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  metrics,
 });
 const incomingService = createIncomingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  metrics,
 });
 const tokenService = createTokenService({
   registry: pluginRegistry,
@@ -68,6 +79,7 @@ const app = await buildApp({
   tokenService,
   registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
+  metrics,
 });
 
 const engineTimers = startEngineTimers({
@@ -82,11 +94,12 @@ const webhookTimers = webhookService?.startTimers();
 const port = resolvePort();
 
 await app.listen({ port, host: '0.0.0.0' });
-const pluginIds = `[${ pluginRegistry.getAll().map(plugin => plugin.id).join(', ') }]`;
-const webhookLabel = config.eventWebhook ? 'on' : 'off';
-console.info(
-  `nxt-device-messaging listening on :${ port } (engine.enabled=${ config.engine.enabled }, eventWebhook=${ webhookLabel }, plugins=${ pluginIds })`,
-);
+logger.info({
+  port,
+  engineEnabled: config.engine.enabled,
+  eventWebhook: config.eventWebhook ? 'on' : 'off',
+  plugins: pluginRegistry.getAll().map(plugin => plugin.id),
+}, 'listening');
 
 /** Stop timers → close HTTP → quit Redis. Does not await in-flight ticks (v1). */
 let isShuttingDown = false;
@@ -96,7 +109,7 @@ async function shutdown(signal: string): Promise<void> {
     return;
   }
   isShuttingDown = true;
-  console.info(`[shutdown] ${ signal } — stopping timers, Fastify, Redis`);
+  logger.info({ signal }, 'shutdown — stopping timers, Fastify, Redis');
 
   engineTimers.stop();
   webhookTimers?.stop();
@@ -105,14 +118,14 @@ async function shutdown(signal: string): Promise<void> {
     await app.close();
   }
   catch (err) {
-    console.error('[shutdown] Fastify close failed', err);
+    logger.error({ err }, 'Fastify close failed');
   }
 
   try {
     await redisRepo.client.quit();
   }
   catch (err) {
-    console.error('[shutdown] Redis quit failed', err);
+    logger.error({ err }, 'Redis quit failed');
   }
 
   process.exit(0);

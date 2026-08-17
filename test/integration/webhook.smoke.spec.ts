@@ -16,6 +16,7 @@ import {
 import { webhookRedisKeys } from '#src/engine/webhook/keys.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
@@ -49,15 +50,18 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
+    const metrics = noopMetrics;
     const store = createWebhookStore({ client: redisRepo.client });
     const webhookService = createWebhookService({
       config: WEBHOOK_CONFIG,
       store,
+      metrics,
     });
     const baseService = createBaseService({
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
       webhook: webhookService,
+      metrics,
     });
 
     const correlationId = `webhook-smoke-${ Date.now() }`;

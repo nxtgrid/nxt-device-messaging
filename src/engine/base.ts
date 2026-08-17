@@ -20,6 +20,8 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
+import { logger } from '../log.js';
+import type { MetricsRecorder } from '../metrics/index.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { WebhookService } from './webhook/service.js';
 
@@ -47,6 +49,7 @@ export type CreateBaseServiceOptions = {
    * Outbound event webhook. When omitted (no `eventWebhook` in config), emits are no-ops.
    */
   readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
@@ -55,7 +58,7 @@ export type CreateBaseServiceOptions = {
  * @param options - Registry, delivery knobs, optional webhook messenger
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { registry, delivery, webhook } = options;
+  const { registry, delivery, webhook, metrics } = options;
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;
@@ -108,6 +111,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
         failureHistory: newFailureHistory,
         deliveryStatus: 'DELIVERY_FAILED',
       });
+      metrics.recordMessageTerminal('DELIVERY_FAILED', currentRetryCount);
       await redisRepo.messageFullCleanup(message);
       return;
     }
@@ -149,7 +153,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       ]);
 
     if (!priorityStr || !deviceStr || !pluginId) {
-      console.warn(`[requeueMessage] Orphaned retry id ${ messageId }. Removing.`);
+      logger.warn({ module: 'base', messageId }, 'orphaned retry id, removing');
       await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
       return;
     }
@@ -166,7 +170,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       device = JSON.parse(deviceStr) as DeviceMessageDevice;
     }
     catch {
-      console.warn(`[requeueMessage] Malformed device JSON for retry id ${ messageId }. Removing.`);
+      logger.warn({ module: 'base', messageId }, 'malformed device JSON for retry, removing');
       await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
       return;
     }

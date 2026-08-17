@@ -227,7 +227,6 @@ describe('createCalinApiV2Outgoing', () => {
   });
 
   it('parseError maps CalinApiV2Error skipRetry / code and plain Error', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
     const outgoing = createCalinApiV2Outgoing({
       secrets: taskSecrets,
       client: mockClient(vi.fn()),
