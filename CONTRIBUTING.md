@@ -44,6 +44,57 @@ Use environment variables (see `.env.example`).
 If you find a credential in the tree or in logs, don't open a public issue — tell a
 maintainer.
 
+## Releasing (maintainers)
+
+Bump the project version **before** tagging, in a PR merged to `main`.
+
+### 1. Bump the version
+
+Change only `package.json` `"version"` to the new semver (e.g. `0.1.1`). Leave
+dependency versions alone. Keep the git tag aligned with that value
+(`0.1.1` → `v0.1.1`).
+
+The Docker/GHCR tag comes from the git tag (`vX.Y.Z`), not from `package.json`.
+
+### 2. Merge to `main`
+
+Open a PR for the bump (and any other changes that belong in the release), get
+approval, and merge. Wait for `.github/workflows/build.yml` on `main`.
+
+### 3. Tag and push
+
+On the release commit on `main` (after merge):
+
+```bash
+git checkout main
+git pull
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Use a leading `v` and three numeric components (`v0.1.0`). That pattern
+triggers `.github/workflows/release.yml`.
+
+### 4. Verify the release
+
+Confirm the release workflow succeeded and that these images exist:
+
+```
+ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z
+ghcr.io/nxtgrid/nxt-device-messaging:latest
+```
+
+Prefer the version tag over `:latest`. Optionally create a GitHub Release for
+the tag with notes for operators.
+
+### Notes
+
+- Do **not** retag or force-push an existing `v*` tag unless you are sure no
+  one has pulled that image.
+- If a tag was pushed before the `package.json` version was bumped, leave it
+  and cut the next patch (`vX.Y.Z+1`) after fixing the version — or accept the
+  mismatch for that one tag.
+
 ## License
 
 By opening a pull request you agree that your contribution is licensed under
