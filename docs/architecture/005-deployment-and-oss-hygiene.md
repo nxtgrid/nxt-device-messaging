@@ -13,6 +13,9 @@
 >
 > **Amendment (2026-08-14):** Logging is **pretty stdout by default**; JSON is opt-in via
 > `logging.stdout` in the config artifact. Extra sinks (Loki, Datadog) are deferred. See §7.
+>
+> **Amendment (2026-08-18):** `release.yml` publishes a multi-arch GHCR image
+> (`linux/amd64` and `linux/arm64`) via QEMU + Buildx, same as `nxt-sts`.
 
 ---
 
@@ -58,7 +61,7 @@ three run simultaneously. Overridable by env at runtime.
 | Workflow | Trigger | Job |
 |---|---|---|
 | `build.yml` | PR + push to default branch | Corepack → `pnpm install --frozen-lockfile` → lint → test → build |
-| `release.yml` | push tags `v*.*.*` | Docker build-push to GHCR: `ghcr.io/<org>/<repo>:<tag>` and `:latest` (`GITHUB_TOKEN`, `packages: write`) |
+| `release.yml` | push tags `v*.*.*` | Multi-arch Docker build-push to GHCR (`linux/amd64`, `linux/arm64`): `ghcr.io/<org>/<repo>:<tag>` and `:latest` (`GITHUB_TOKEN`, `packages: write`) |
 
 No deployment pipeline beyond image publish. Operators pull the image or build from the
 Dockerfile. Exact org/repo path follows `github.repository` (expected
@@ -144,7 +147,7 @@ Replaces scattered `console.*` (stale plan 4.2’s Nest `Logger` does not apply)
 
 - Redis-aware readiness (distinct from liveness) is needed — may add `/readyz` without removing
   `/healthz`.
-- Multi-arch images or signed attestations become a release requirement.
+- Signed attestations become a release requirement.
 - Public scrape of `/metrics` needs auth.
 
 ## Related

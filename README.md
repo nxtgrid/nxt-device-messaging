@@ -145,7 +145,9 @@ docker run --rm -p 3100:3100 \
 
 `ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z`
 
-Tags `v*.*.*` on `main` publish that tag and `:latest`.
+Tagged releases publish a multi-arch image (`linux/amd64` and `linux/arm64`) to
+GHCR as that tag and `:latest`. Apple Silicon and x86 hosts pick the matching
+arch.
 
 ## Configuration (summary)
 
