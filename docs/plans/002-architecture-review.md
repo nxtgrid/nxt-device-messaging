@@ -1,6 +1,8 @@
 # Plan 002 — Architecture review and deepening
 
-**Status:** open. Review complete (2026-08-18/19); no code landed yet.
+**Status:** open. Review complete (2026-08-18/19). Item 1 landed; C2 design settled.
+**Branch:** work happens on `chore/post-extraction-refactor` (branch 1), then on a fresh branch cut
+from `main` for the stage-table slice (branch 2). See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -22,6 +24,9 @@ guess at what was meant.
 
 ### Rules of engagement
 
+- **Check the Checklist's `Model` column before starting an item, and switch or delegate to that
+  model.** The column is a cost decision, not a suggestion. If you are a more expensive model than
+  the item calls for, say so and delegate before doing the work — not after.
 - **The maintainer reviews and commits. Always.** Never commit, amend, or push.
 - **Discuss before coding.** Each item gets a shared understanding first, then an implementation.
   For items marked *design settled* below, the discussion already happened — the design is recorded
@@ -38,26 +43,40 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 
 | # | Item | Depends on | Model | Branch | Status |
 |---|---|---|---|---|---|
-| 1 | **B1** — Valkey service container in CI; run the integration smokes | — | Composer 2.5 | `main` | ☑ 2026-08-19 |
-| 2 | **C2 design** — message-lifecycle stage table (discussion, no code) | 1 | Claude Opus 5 | — | ☑ 2026-08-20 |
-| 2b | **B1b** — thicken the engine integration suite *against current behaviour* | 1 | Grok 4.6 | `main` | ☐ |
-| 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | `main` | ☐ |
-| 3 | **ADR-008** — message lifecycle stage table (first commit on the branch) | 2 | Claude Opus 5 | branch | ☐ |
-| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | branch | ☐ |
-| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | branch | ☐ folded into 4 |
-| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | branch | ☐ folded into 4 |
-| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | branch | ☐ folded into 4 |
-| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | branch | ☐ |
-| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | `main` | ☐ |
-| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | `main` | ☐ |
-| 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | `main` | ☐ |
+| 1 | **B1** — Valkey service container in CI; run the integration smokes | — | Composer 2.5 | 1 | ☑ 2026-08-19 |
+| 2 | **C2 design** — message-lifecycle stage table (discussion, no code) | 1 | Claude Opus 5 | 1 | ☑ 2026-08-20 |
+| 2b | **B1b** — thicken the engine integration suite *against current behaviour* | 1 | Grok 4.6 | 1 | ☑ 2026-08-20 |
+| 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | 1 | ☐ |
+| 3 | **ADR-008** — message lifecycle stage table (first commit on branch 2) | 2 | Claude Opus 5 | 2 | ☐ |
+| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☐ |
+| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☐ folded into 4 |
+| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☐ folded into 4 |
+| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☐ folded into 4 |
+| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☐ |
+| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
+| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
+| 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
 
-**Branch discipline.** Items 3–8 land on one feature branch (`refactor/message-lifecycle-stage-table`
-or similar) so the whole stage-table change is reviewable and revertible as a unit. Everything else
-goes on `main` as small independent commits. **2b and 2c go first, on `main`**, because the branch
-should rebase onto a green, thickened suite and a tightened SPI rather than carry them.
+### Branch discipline
 
-**2c, 9, 10 and 11 are independent of C2** and can be picked up at any time after item 1.
+Branches in sequence. Nothing in this plan lands directly on `main`.
+
+**Branch 1 — `chore/post-extraction-refactor`** (current; items 1 and 2 already committed to it).
+Scope: **the prerequisites for C2 and nothing else** — items 2b (B1b) and 2c (C3). Then human review
+and merge to `main`. Keeping the scope this tight is deliberate: it is what makes the review
+tractable and lets branch 2 start from a known-good base.
+
+Nothing else qualifies as a prerequisite. **B2** resolves as a consequence of C1 and so belongs to
+branch 2; **B3**'s single real offender (`kickDistributeOnEnqueue`) disappears inside C2 rather than
+needing a prior fix; **A1–A5** are folded into C2 by design.
+
+**Branch 2 — cut from `main` after branch 1 merges.** The big slice as one reviewable, revertible
+unit: item 3 (ADR-008) as its first commit, then 4, with 5–8 folded in. Name it for the change, e.g.
+`refactor/message-lifecycle-stage-table`.
+
+**Branch 3 — anything after that.** Items 9, 10 and 11 are independent of C2 in both directions, so
+they wait rather than pad branch 1. Note that **9 (C4) rides naturally on 2c (C3)** — both reshape
+the plugin SPI — so if branch 1 is still open when C3 lands, pulling C4 in is a cheap call to make.
 
 ### Why this order
 
@@ -246,6 +265,15 @@ every exit path leaving zero Redis references (**A4**); an orphaned ZSET member 
 restructure and must still pass after it. That is what makes C2 verifiable rather than hopeful.
 
 **Model.** Grok 4.6.
+
+**✅ Landed 2026-08-20.** Four helpers (`test/helpers/programmable-plugin.ts`,
+`redis-references.ts`, `webhook-recorder.ts`, `wait-for.ts`) and four spec files
+(`outgoing-retry-ladder.smoke.spec.ts`, `outgoing-timeouts.smoke.spec.ts`,
+`lifecycle-orphans-and-cleanup.smoke.spec.ts`, `incoming-poll-outcomes.smoke.spec.ts`).
+`test/integration/incoming-poll.smoke.spec.ts` was left untouched; the new PULL coverage
+went into the sibling `incoming-poll-outcomes.smoke.spec.ts` to avoid churning the existing
+file. Verified locally: 12 files, 31 tests (was 8 files, 9 tests). A1/A2/A3/A4 gaps are
+asserted as today's wrong-but-real outcome with comment markers, so C2's diff flips them.
 
 ### B2 — `pnpm test` opens six real Redis connections
 
@@ -621,6 +649,7 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |
+| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, scoped to C2's prerequisites only (B1b, C3), then review and merge. Branch 2 = cut from `main` afterwards, the stage-table slice only. Branch 3 = everything else (C4, D, Optional). |
 | **Stage pipelines** | **Option A now** (pipelines derived from `deliveryPattern`, as data). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed under C2 § *Option B* and built only when its trigger fires. Option A must hold four invariants listed there so B stays a patch. |
 
 ---
@@ -641,4 +670,16 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   discriminated `onDue` result, table-owned edges, one 1000 ms tick, Option A pipelines. Option B
   written up in full as a deferred upgrade path with its trigger, its four concrete changes, the four
   invariants Option A must hold, and a worked SparkMeter example — so it never has to be re-derived.
-  Next: **B1b** on `main`, then **C3** on `main`, then a branch for C2 (ADR-008 as its first commit).
+- **2026-08-20** — Branch strategy corrected. Everything so far (B1, this plan) is already committed
+  to **`chore/post-extraction-refactor`**, not `main`; the plan's earlier "on `main`" column was
+  wrong. Branch 1 continues with **B1b** then **C3**, goes out for review, and merges. Branch 2 is
+  cut from `main` after that merge and carries only the stage-table slice. Branch 1's scope is
+  **C2's prerequisites only**; C4, D and Optional move to a branch 3 after the slice.
+- **2026-08-20** — **B1b landed.** Integration suite is 12 files / 31 tests (was 8 / 9). New
+  helpers: `programmable-plugin`, `redis-references`, `webhook-recorder`, `wait-for`. New specs:
+  retry ladder, stage timeouts, orphans/cleanup, poll outcomes. Existing `incoming-poll.smoke.spec.ts`
+  was left alone; PULL failure paths live in `incoming-poll-outcomes.smoke.spec.ts`. A1/A2/A3/A4
+  are pinned as current (wrong) behaviour with markers — C2 should flip those assertions, not the
+  Direction paragraph's "being scrubbed / always advancing" wording. The poll-outcomes spec matched
+  production on the first run; nothing in the plan's description of current poll behaviour was
+  wrong. Next: **C3**.
