@@ -1797,10 +1797,24 @@ of a delivery plugin and the entire content of a `'NONE'` plugin; the token serv
 resolves `registry.get(id).token` either way. Capability bundles (plan 002 row 12) are the
 deferred way off that surface.
 
-**Parked:** ~~token-only SPI discriminant~~ (session 26 “SPI amend for real omission
-deferred”) **resolved by C3**. Nothing else in Parked / revisit closed.
+**Parked / revisit:** C3 resolved **only** the token-only SPI discriminant item
+(session 26 “SPI amend for real omission deferred”). Shutdown v2, webhook drain
+concurrency, ChirpStack ingress enqueue-then-ack, D2 + thorough cleanup, and
+plugin HTTP hygiene remain open.
 
 **Next:** review and merge branch 1. Branch 2 (ADR-008 + C2) has not started.
+
+### 2026-08-20 — branch 1 review comments
+
+Review nits on `chore/post-extraction-refactor`. No settled call was relitigated
+(`'NONE'`, token double surface, A1–A4 pins).
+
+Docs: Parked/revisit closeout names the one C3-resolved item; C4 evidence fence
+is ` ```text ` (MD040). Test helpers: one `PushPlugin` literal + `makeOutgoing`;
+`withStatus(DeviceMessageDeliveryStatus)`; smoke queue keys from `initialQueueKey`;
+`createSinglePluginRegistry` shared with `incoming-poll.smoke.spec.ts`.
+
+Maintainer commits. Still awaiting merge; branch 2 has not started.
 
 
 

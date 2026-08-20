@@ -23,6 +23,7 @@ import { QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
+import { buildConcurrencyRateLimitKey } from '#src/plugins/_shared/initial-queue-key.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 import {
   createProgrammablePlugin,
@@ -42,8 +43,6 @@ const baseDelivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).
 
 const PLUGIN_ID = 'smoke-poll-pull';
 const RELAY_NODE_ID = 31;
-const QUEUE_KEY = `queue:${ PLUGIN_ID }:relayNode:${ RELAY_NODE_ID }`;
-const RATE_LIMIT_KEY = `rate_limit:${ PLUGIN_ID }:relayNode:${ RELAY_NODE_ID }`;
 const AWAITING_TASK_KEY = redisKeys.queueAwaitingTask(PLUGIN_ID);
 /** First poll becomes due almost immediately, so specs need no real wait. */
 const INITIAL_POLL_DELAY_MS = 1;
@@ -55,6 +54,15 @@ const DEVICE: DeviceMessageDevice = {
   externalReference: 'smoke-poll-meter',
   relayNode: { id: RELAY_NODE_ID },
 };
+
+const QUEUE_KEY = createProgrammablePlugin({
+  id: PLUGIN_ID,
+  deliveryPattern: 'PULL',
+}).initialQueueKey({ device: DEVICE, networkId: null });
+const RATE_LIMIT_KEY = buildConcurrencyRateLimitKey(QUEUE_KEY);
+if (RATE_LIMIT_KEY === undefined) {
+  throw new Error(`expected a concurrency rate-limit key for ${ QUEUE_KEY }`);
+}
 
 type Harness = {
   readonly outgoing: OutgoingService;

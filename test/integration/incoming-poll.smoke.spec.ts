@@ -15,15 +15,11 @@ import { createIncomingService } from '#src/engine/incoming.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '#src/lib/device-message/types.js';
 import { sleep } from '#src/lib/utilities.js';
-import type {
-  DeliveryPattern,
-  DeviceMessagingPlugin,
-  PluginByDeliveryPattern,
-  PullPlugin,
-} from '#src/plugins/plugin.interface.js';
+import type { PullPlugin } from '#src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createSinglePluginRegistry } from '../helpers/programmable-plugin.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
@@ -52,20 +48,7 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
     },
   };
 
-  const plugins: readonly DeviceMessagingPlugin[] = [ plugin ];
-
-  return {
-    get: id => (id === plugin.id ? plugin : undefined),
-    getAll: () => plugins,
-    getByDeliveryPattern: <P extends DeliveryPattern>(
-      pattern: P,
-    ): readonly PluginByDeliveryPattern[P][] => {
-      return plugins.filter(
-        (candidate): candidate is PluginByDeliveryPattern[P] =>
-          candidate.deliveryPattern === pattern,
-      );
-    },
-  };
+  return createSinglePluginRegistry(plugin);
 }
 
 describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {

@@ -42,8 +42,6 @@ const PUSH_PLUGIN_ID = 'smoke-cleanup-push';
 const PULL_PLUGIN_ID = 'smoke-cleanup-pull';
 const NETWORK_ID = 503;
 const RELAY_NODE_ID = 21;
-const PUSH_QUEUE_KEY = `queue:${ PUSH_PLUGIN_ID }:network:${ NETWORK_ID }`;
-const PULL_QUEUE_KEY = `queue:${ PULL_PLUGIN_ID }:relayNode:${ RELAY_NODE_ID }`;
 const AWAITING_TASK_KEY = redisKeys.queueAwaitingTask(PULL_PLUGIN_ID);
 /** Past the hardcoded 48h PULL ceiling in `lifecycle.pull.ts`. */
 const AGED_MESSAGE_OFFSET_MS = 49 * 60 * 60 * 1000;
@@ -56,6 +54,15 @@ const PULL_DEVICE: DeviceMessageDevice = {
   ...PUSH_DEVICE,
   relayNode: { id: RELAY_NODE_ID },
 };
+
+const PUSH_QUEUE_KEY = createProgrammablePlugin({
+  id: PUSH_PLUGIN_ID,
+  deliveryPattern: 'PUSH',
+}).initialQueueKey({ networkId: NETWORK_ID, device: PUSH_DEVICE });
+const PULL_QUEUE_KEY = createProgrammablePlugin({
+  id: PULL_PLUGIN_ID,
+  deliveryPattern: 'PULL',
+}).initialQueueKey({ networkId: null, device: PULL_DEVICE });
 
 type PushHarness = {
   readonly outgoing: OutgoingService;

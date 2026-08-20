@@ -40,10 +40,14 @@ const DEVICE: DeviceMessageDevice = {
   externalReference: 'smoke-retry-meter',
 };
 
+const QUEUE_KEY = createProgrammablePlugin({
+  id: PLUGIN_ID,
+  deliveryPattern: 'PUSH',
+}).initialQueueKey({ networkId: NETWORK_ID, device: DEVICE });
+
 type Harness = {
   readonly outgoing: OutgoingService;
   readonly recorder: WebhookRecorder;
-  readonly queueKey: string;
 };
 
 function createHarness(options: {
@@ -55,7 +59,7 @@ function createHarness(options: {
     maxRetries: options.maxRetries,
     retryBaseDelayMs: RETRY_BASE_DELAY_MS,
   };
-  const { registry, initialQueueKey } = createProgrammablePlugin({
+  const { registry } = createProgrammablePlugin({
     id: PLUGIN_ID,
     deliveryPattern: 'PUSH',
     sendOne: options.sendOne,
@@ -79,7 +83,6 @@ function createHarness(options: {
   return {
     outgoing,
     recorder,
-    queueKey: initialQueueKey({ networkId: NETWORK_ID, device: DEVICE }),
   };
 }
 
@@ -108,7 +111,7 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
       await purgeMessageReferences(id, { correlationId });
     }
     trash.length = 0;
-    await purgeInitialQueue(`queue:${ PLUGIN_ID }:network:${ NETWORK_ID }`);
+    await purgeInitialQueue(QUEUE_KEY);
     await purgeExternalDeliveryIndexes('ext-');
   });
 

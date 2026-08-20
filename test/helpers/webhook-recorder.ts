@@ -7,7 +7,10 @@
  */
 
 import type { WebhookService } from '#src/engine/webhook/service.js';
-import type { DeviceMessage } from '#src/lib/device-message/types.js';
+import type {
+  DeviceMessage,
+  DeviceMessageDeliveryStatus,
+} from '#src/lib/device-message/types.js';
 
 export type WebhookRecorder = {
   /** Events in emit order. */
@@ -15,7 +18,7 @@ export type WebhookRecorder = {
   /** Pass as `webhook` to {@link createBaseService}. */
   readonly webhook: Pick<WebhookService, 'storeAndEmit'>;
   /** Events whose delivery status matches, in emit order. */
-  withStatus(status: string): Array<Partial<DeviceMessage>>;
+  withStatus(status: DeviceMessageDeliveryStatus): Array<Partial<DeviceMessage>>;
 };
 
 /** Capture adopter notifications instead of persisting and POSTing them. */
@@ -29,7 +32,7 @@ export function createWebhookRecorder(): WebhookRecorder {
         events.push(message);
       },
     },
-    withStatus(status: string) {
+    withStatus(status: DeviceMessageDeliveryStatus) {
       return events.filter(event => event.deliveryStatus === status);
     },
   };

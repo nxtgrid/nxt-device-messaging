@@ -41,7 +41,6 @@ const baseDelivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).
 
 const PLUGIN_ID = 'smoke-timeout-push';
 const NETWORK_ID = 502;
-const QUEUE_KEY = `queue:${ PLUGIN_ID }:network:${ NETWORK_ID }`;
 /** Grace for the fire-and-forget send continuation to run after it resolves. */
 const SEND_CONTINUATION_MS = 100;
 
@@ -49,6 +48,11 @@ const DEVICE: DeviceMessageDevice = {
   type: 'ELECTRICITY_METER',
   externalReference: 'smoke-timeout-meter',
 };
+
+const QUEUE_KEY = createProgrammablePlugin({
+  id: PLUGIN_ID,
+  deliveryPattern: 'PUSH',
+}).initialQueueKey({ networkId: NETWORK_ID, device: DEVICE });
 
 type Harness = {
   readonly outgoing: OutgoingService;

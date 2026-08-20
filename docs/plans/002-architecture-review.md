@@ -655,7 +655,7 @@ meaningless for each pattern: PULL plugins carry `relayNodeInFlightTimeoutMs` an
 (one constant shared by both stubs). Three production delivery plugins plus the stubs; `nxt-sts`
 has no `tuning` after C3.
 
-```
+```text
 nsInFlightTimeoutMs:        20_000
 relayNodeInFlightTimeoutMs: 900_000
 deviceInFlightTimeoutMs:    12_000
@@ -795,3 +795,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   (not `DeliveryPattern`); C4 evidence recounts three delivery plugins + stubs, no `nxt-sts`
   tuning; decisions-log records B1b + C3 and strikes the token-only SPI discriminant. Branch 1
   is complete and awaiting review/merge. Branch 2 has not started.
+- **2026-08-20** — Branch 1 review nits. Docs wording/MD040; test-helper DRY and typed
+  `withStatus`; smoke keys from `initialQueueKey`; shared `createSinglePluginRegistry`.
+  Settled calls left alone. Maintainer commits; still awaiting merge.

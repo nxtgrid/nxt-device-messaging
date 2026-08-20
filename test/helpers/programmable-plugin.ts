@@ -3,8 +3,8 @@
  *
  * The bundled stubs always succeed (`sendOne` returns an id, `fetchStatus` returns
  * `null`), so they cannot drive failure, timeout or orphan paths. This builds a
- * {@link DeliveryPlugin} whose vendor calls are supplied per test, and the
- * matching {@link PluginRegistry} literal to hand to the engine factories.
+ * {@link DeliveryPlugin} whose vendor calls are supplied per test, and a
+ * {@link createSinglePluginRegistry} to hand to the engine factories.
  *
  * Give each spec file its own plugin id so initial-queue keys never collide
  * between files (integration files share one Valkey and run serially).
@@ -126,13 +126,18 @@ function makeInitialQueueKey(
   };
 }
 
-function makeRegistry(
-  id: PluginId,
-  plugin: DeliveryPlugin,
+/**
+ * Lookup-only registry holding exactly one plugin. Engine smokes that do not
+ * boot the config catalog use this instead of repeating the three methods.
+ *
+ * @param plugin - The sole registered plugin (delivery or token-only)
+ */
+export function createSinglePluginRegistry(
+  plugin: DeviceMessagingPlugin,
 ): PluginRegistry {
   const plugins: readonly DeviceMessagingPlugin[] = [ plugin ];
   return {
-    get: pluginId => (pluginId === id ? plugin : undefined),
+    get: pluginId => (pluginId === plugin.id ? plugin : undefined),
     getAll: () => plugins,
     getByDeliveryPattern: <P extends DeliveryPattern>(
       pattern: P,
@@ -145,6 +150,20 @@ function makeRegistry(
   };
 }
 
+function makeOutgoing(
+  options: ProgrammableSharedOptions,
+  calls: ProgrammablePluginCalls,
+) {
+  return {
+    async sendOne(message: DeviceMessage): Promise<string> {
+      calls.sendOne.push(message.id);
+      if (!options.sendOne) return `ext-${ ulid() }`;
+      return options.sendOne(message);
+    },
+    parseError: options.parseError ?? defaultParseError,
+  };
+}
+
 function buildProgrammablePush(
   options: ProgrammablePushOptions,
   calls: ProgrammablePluginCalls,
@@ -152,34 +171,6 @@ function buildProgrammablePush(
 ): PushPlugin {
   const { id } = options;
   const getRemoteStatus = options.getRemoteStatus;
-
-  if (getRemoteStatus) {
-    return {
-      id,
-      deliveryPattern: 'PUSH',
-      supportedCommandTypes: ENQUEUEABLE_COMMAND_TYPES,
-      admission: options.admission ?? defaultAdmission('PUSH'),
-      tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, ...options.tuning },
-      initialQueueKey,
-      outgoing: {
-        async sendOne(message: DeviceMessage): Promise<string> {
-          calls.sendOne.push(message.id);
-          if (!options.sendOne) return `ext-${ ulid() }`;
-          return options.sendOne(message);
-        },
-        parseError: options.parseError ?? defaultParseError,
-        async getRemoteStatus(message: DeviceMessage) {
-          calls.getRemoteStatus.push(message.id);
-          return getRemoteStatus(message);
-        },
-      },
-      incoming: {
-        handle: options.handle
-          ?? ((event: unknown) => (isParsedIncomingEvent(event) ? event : null)),
-      },
-    };
-  }
-
   return {
     id,
     deliveryPattern: 'PUSH',
@@ -188,12 +179,15 @@ function buildProgrammablePush(
     tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, ...options.tuning },
     initialQueueKey,
     outgoing: {
-      async sendOne(message: DeviceMessage): Promise<string> {
-        calls.sendOne.push(message.id);
-        if (!options.sendOne) return `ext-${ ulid() }`;
-        return options.sendOne(message);
-      },
-      parseError: options.parseError ?? defaultParseError,
+      ...makeOutgoing(options, calls),
+      ...(getRemoteStatus
+        ? {
+          async getRemoteStatus(message: DeviceMessage) {
+            calls.getRemoteStatus.push(message.id);
+            return getRemoteStatus(message);
+          },
+        }
+        : {}),
     },
     incoming: {
       handle: options.handle
@@ -215,14 +209,7 @@ function buildProgrammablePull(
     admission: options.admission ?? defaultAdmission('PULL'),
     tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, ...options.tuning },
     initialQueueKey,
-    outgoing: {
-      async sendOne(message: DeviceMessage): Promise<string> {
-        calls.sendOne.push(message.id);
-        if (!options.sendOne) return `ext-${ ulid() }`;
-        return options.sendOne(message);
-      },
-      parseError: options.parseError ?? defaultParseError,
-    },
+    outgoing: makeOutgoing(options, calls),
     incoming: {
       async fetchStatus(message: DeviceMessage): Promise<ParsedIncomingEvent | null> {
         calls.fetchStatus.push(message.id);
@@ -261,7 +248,7 @@ export function createProgrammablePlugin(
 
   return {
     plugin,
-    registry: makeRegistry(id, plugin),
+    registry: createSinglePluginRegistry(plugin),
     calls,
     initialQueueKey,
   };
