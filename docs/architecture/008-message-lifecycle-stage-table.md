@@ -186,6 +186,29 @@ command before the process died. That is a genuine at-least-once boundary and ca
 without a durable "send attempted" marker; it is not closed here. Decision 6's counter is what
 makes any remaining occurrence visible instead of silent.
 
+**Dependency: `sendOne` must eventually settle.** Extending the deadline while a send is
+outstanding means a request that hangs forever keeps a message alive forever. `calin-api-v1`'s
+client sets no fetch deadline at all today. So this decision carries one: **every plugin's
+outbound client gets a safety deadline of 120 s** — an order of magnitude above the 20 s stage
+deadline and far beyond any defensible vendor latency, so it never truncates a healthy slow call
+(the observed worst case is 37 s). It exists to guarantee the promise settles, not to enforce
+timeliness; enforcing timeliness is what the stage deadline is for, and doing it in the client
+is rejected below. This unparks the fetch-deadline half of the *Plugin HTTP hygiene* row in
+`docs/decisions-log.md`; the redaction and status-mapping halves stay parked.
+
+**The set is also the seam graceful shutdown needs.** Today `sendOne` promises are anonymous —
+distribute fires them with a `.catch()` and nothing holds a reference, so shutdown has nothing to
+await. The in-flight set is exactly that list. Shutdown therefore becomes: stop the timers so no
+new send starts, await the outstanding sends against a budget, **then** close Redis and Fastify —
+in that order, because a send landing during the drain still has to write its external id and
+move stage, and closing Redis first would recreate the very failure this decision removes.
+
+The budget is an ops number, not the 120 s above: a typical Kubernetes termination grace of 30 s
+means draining for something like 15–20 s and then abandoning the rest, which is the residue
+already described. Wiring this into `SIGTERM` belongs to the parked **Shutdown v2** item (which
+also wants the webhook `drainChain` awaited); what this ADR requires is only that the outgoing
+service *expose* a bounded drain, so Shutdown v2 is wiring rather than a redesign.
+
 ### 9. The PULL age cap becomes a property of the `awaitingTask` stage
 
 Today a separate scan (`getPullTimeouts`) ZRANGEs the *entire* awaiting-task queue every cycle
@@ -301,8 +324,11 @@ five `onDue` implementations). Candidate deletions once those exist: `lib/lifecy
   untouched, so a revert is a code revert) and by the integration suite grown in **B1b**, which
   pins A1–A4 as today's wrong-but-real behaviour so the diff has to flip those assertions
   deliberately.
-- The in-memory in-flight set (decision 8) is process-local state, which is another dependency
-  on ADR-007's single-writer assumption. It is listed there as such rather than hidden.
+- The in-memory in-flight set (decision 8) is process-local state, which is another dependency on
+  ADR-007's single-writer assumption. Named there rather than hidden, with its multi-replica form
+  worked out under *Triggers* so it is a known move rather than a surprise. It also brings a
+  dependency of its own: plugin clients must carry a 120 s safety deadline so the promise always
+  settles.
 - One tick means one place where a pathological stage can consume the loop. Per-row concurrency
   and per-row re-entry guards bound it; the `LIMIT 50` scan batch caps the work per row.
 - Timing changes for PULL polling (decision 10) and for the 48-hour cap (decision 9) are real,
@@ -317,12 +343,13 @@ five `onDue` implementations). Candidate deletions once those exist: `lib/lifecy
   compound member, or the retry wait as a future score on the ready queue). Costs a migration,
   costs operator familiarity, and buys nothing the table does not already give. See decision 2
   for why the retry queue in particular cannot merge.
-- **A fetch deadline on the plugin's HTTP client, so a send cannot outlive its stage deadline.**
-  Attractive until you follow it through: aborting after the vendor has accepted the command
-  means never learning the task id, then retrying — the same duplicate command as A3, arrived at
-  more deliberately. Decision 8 extends the wait instead of severing it. (`docs/decisions-log.md`
-  § *Parked / revisit* reached the same conclusion independently: plugin clients want a
-  *generous safety* deadline, explicitly **not** abort-at-NS-timeout.)
+- **A client fetch deadline set *at* the stage deadline, so a send cannot outlive it.** Attractive
+  until you follow it through: aborting at 20 s after the vendor has accepted the command means
+  never learning the task id, then retrying — the same duplicate command as A3, arrived at more
+  deliberately. Decision 8 extends the wait instead of severing it, and pairs that with a 120 s
+  client deadline whose only job is to guarantee the promise settles. `docs/decisions-log.md`
+  § *Parked / revisit* reached the same conclusion independently: a *generous safety* deadline,
+  explicitly **not** abort-at-NS-timeout.
 - **Building per-plugin pipelines now.** No plugin needs them. See the trigger below.
 - **A `stage` field on the message hash.** Unnecessary under Option A (decision 12) and it would
   break decision 1. Option B adds it when Option B is built.
@@ -426,10 +453,33 @@ means two SPI reshapes instead of one.
 ## Triggers (revisit when)
 
 - Option B's three conditions all hold (see above).
-- Multi-replica is reopened (ADR-007). Decision 8's in-memory in-flight set and the runner's
-  single-writer assumption both need a Redis-backed answer at that point.
+- Multi-replica is reopened (ADR-007). The runner's single-writer assumption needs a leader or a
+  partition at that point; decision 8's in-flight set needs the smaller change described below.
 - The fixed 1000 ms tick shows up as measurable idle cost, or punctuality tighter than ±1 s is
   needed — then implement sleep-until-earliest-due.
+
+### The in-flight set under multi-replica: move the write, not the state
+
+Decision 8's set is process-local, which normally rules a mechanism out of a multi-replica
+future. Here it does not, because what the set encodes — *"some process is actively awaiting this
+send"* — is a lease, and the NS stage score is already a lease with an expiry. The upgrade is to
+move where that lease is written, not to introduce a new key:
+
+| | Single replica (built) | Multi-replica (upgrade) |
+|---|---|---|
+| Who writes | The **scanner**, when the score comes due | The **owner**, on every tick while awaiting |
+| What it writes | Extend the score after consulting its own set | Extend the score as a heartbeat |
+| What a scanner does | Consult the set, then decide | Trust the score; a future score means owned |
+
+Under the built version a *second* replica scanning the NS queue would not find the id in *its*
+set and would wrongly fail a perfectly healthy send — so do not run two replicas expecting this
+to hold. Under the upgrade, the score carries the fact, so any scanner behaves correctly, and a
+dead owner stops heartbeating, lets the score lapse, and hands the message to whoever reclaims
+it. Same set, same tick, same key; the extend moves from the due-check to the sender.
+
+This is the cheapest of the three single-writer dependencies to lift. The other two — the
+ChirpStack correlator's in-memory `Map` and the absence of leader election over the tick — are
+the ones that actually gate multi-replica (ADR-007).
 
 ## Related
 

@@ -374,8 +374,14 @@ property of the `awaitingTask` stage (9); one 1000 ms tick, stages concurrent, m
 per-stage re-entry guard (10); one TTL knob — **A5** (11); the stage stays derivable, no new hash
 field (12); enqueue's distribute kick is gated on the engine, not a test flag — **B3** (13).
 
+Decision 8 carries two riders the maintainer added on review: a **120 s client safety deadline**
+so `sendOne` always settles (unparks that half of *Plugin HTTP hygiene*), and a **bounded drain**
+over the in-flight set that C2 exposes and **Shutdown v2** wires.
+
 ADR-008 also carries the **invariants** the implementation must hold, the *Rejected* alternatives,
-and Option B (per-plugin pipelines) as its deferred upgrade path with the trigger that fires it.
+Option B (per-plugin pipelines) as its deferred upgrade path with the trigger that fires it, and
+— under *Triggers* — the multi-replica form of the in-flight set ("move the write, not the
+state": the owner heartbeats the NS score instead of a scanner consulting a local set).
 
 ### C3 — the plugin SPI should be a discriminated union
 
@@ -663,3 +669,10 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   which is the first pull toward **C1**. Next: item 4 (C2), and per the plan's C1 note, that
   session should write C1's concrete shape — which factories take the store, what the composition
   root looks like — into this plan while the context is cheap.
+- **2026-08-20** — **ADR-008 reviewed and confirmed.** Decision 8 (the in-flight set) stays, with
+  three additions: a 120 s plugin-client safety deadline so `sendOne` always settles; a bounded
+  drain over the in-flight set, which C2 exposes and Shutdown v2 wires (stop timers → drain →
+  close Redis, in that order); and the multi-replica form recorded under *Triggers* — the owner
+  heartbeats the NS score rather than a scanner consulting process-local state, which is a
+  known move rather than a rewrite. C2 therefore also touches the two CALIN clients (fetch
+  deadline). Item 4 starts next.

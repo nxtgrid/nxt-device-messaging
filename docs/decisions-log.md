@@ -30,11 +30,11 @@ the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 
 | Item | Revisit when | Detail |
 | --- | --- | --- |
-| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`) | Before cutover, or when reopening shutdown | ADR-005 amendment; log **2026-08-12** parked shutdown |
+| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`). **C2 supplies the missing seam** — a bounded drain over decision 8's in-flight sends; order is stop timers → drain → close Redis/Fastify | Before cutover, or when reopening shutdown | ADR-005 amendment; **ADR-008 §8**; log **2026-08-12** parked shutdown |
 | **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | 3.1 closeout; log **2026-08-12** cold-start / 3.1E notes |
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
 | **D2 + thorough cleanup suite** — `messageFullCleanup` options; every exit must drop the hash and all references. Includes PULL poll↔retry orphan on `queue_awaiting_retry` | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
-| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; generous fetch safety deadline (not abort-at-NS-timeout); trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass |
+| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; ~~generous fetch safety deadline~~; trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass. **Fetch deadline unparked into C2 at 120 s** — ADR-008 §8 depends on `sendOne` settling; rest of the row stays parked |
 | ~~**Token-only SPI discriminant**~~ — `deliveryPattern: 'NONE'`; no admission / tuning / initialQueueKey | — | **Resolved 2026-08-20** C3 (plan 002). Was session 26 “SPI amend for real omission deferred” |
 
 ### Product / ops trigger
@@ -1855,6 +1855,24 @@ so a vendor error can neither strand a score nor abandon the batch.
 
 Plan 002's § *Design settled* and § *Option B* are now pointers into ADR-008; the ADR is the
 single source of truth, including Option B as its *Upgrade path* section.
+
+**Maintainer review of the ADR — decision 8 confirmed, three additions.** The question put was
+whether A3 keeps its real layer (the in-flight set) or drops back to log-and-count. Kept, plus:
+
+1. **120 s client safety deadline**, maintainer's number ("anything beyond that is outright
+   ridiculous"). Its job is to guarantee the promise settles, not to enforce timeliness — the
+   stage deadline does that. Unparks the fetch-deadline half of *Plugin HTTP hygiene*.
+2. **Shutdown.** The in-flight set is the seam v1 never had: `sendOne` promises are currently
+   anonymous, so shutdown has nothing to await. C2 exposes a bounded drain; **Shutdown v2** wires
+   it. Order is stop timers → drain → close Redis/Fastify, because a send landing mid-drain still
+   writes its external id. Budget is an ops number (~15–20 s against a 30 s grace), not 120 s.
+3. **Multi-replica.** Recorded in ADR-008 § *Triggers* as "move the write, not the state": the set
+   encodes a lease, and the NS score already **is** a lease, so the multi-replica form has the
+   **owner** heartbeat the score while awaiting instead of the **scanner** consulting a local set.
+   No new key. Flagged explicitly because the built version misbehaves under two replicas — a
+   second replica would not find the id in its own set and would fail a healthy send. Still the
+   cheapest of the three ADR-007 single-writer dependencies; the correlator `Map` and the
+   leaderless tick are the ones that actually gate multi-replica.
 
 **Next:** plan 002 item 4 (**C2** — implement the table). That session also writes **C1**'s
 concrete shape into the plan while the context is cheap.
