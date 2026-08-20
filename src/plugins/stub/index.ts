@@ -21,10 +21,10 @@ import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
-  DeliveryPattern,
-  DeviceMessagingPlugin,
   InitialQueueKeyInput,
   PluginTuning,
+  PullPlugin,
+  PushPlugin,
 } from '../plugin.interface.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
@@ -65,11 +65,34 @@ const STUB_PULL_ADMISSION: Admission = {
   maxInFlight: 5,
 };
 
+type StubSharedOptions = {
+  readonly id: PluginId;
+  readonly nodeKind: string;
+  readonly admission: Admission;
+  /** Defaults to all enqueueable command types. */
+  readonly supportedCommandTypes?: readonly EnqueueableCommandType[];
+  /** Defaults to {@link STUB_DEFAULT_TUNING}. */
+  readonly tuning?: PluginTuning;
+};
+
+export type StubPushOptions = StubSharedOptions & {
+  readonly deliveryPattern: 'PUSH';
+};
+
+export type StubPullOptions = StubSharedOptions & {
+  readonly deliveryPattern: 'PULL';
+};
+
 function parseStubError(err: unknown): FailureContext {
   if (err instanceof Error) {
     return { reason: err.message };
   }
   return { reason: String(err) };
+}
+
+async function stubSendOne(_message: DeviceMessage): Promise<string> {
+  // Unique per send so parallel Redis smokes do not share one external-id index.
+  return `stub-ext-${ ulid() }`;
 }
 
 /**
@@ -85,90 +108,107 @@ function isStubParsedIncomingEvent(event: unknown): event is ParsedIncomingEvent
     && !Array.isArray(candidate.device);
 }
 
-/**
- * Build a no-op {@link DeviceMessagingPlugin} for skeleton / tests.
- *
- * PULL stubs expose `incoming.fetchStatus` → `null`. PUSH stubs accept a
- * pre-normalized {@link ParsedIncomingEvent} body (or return null) and expose
- * `token.generate` → {@link STUB_TOKEN_VALUE}.
- */
-export function createStubPlugin(options: {
-  readonly id: PluginId;
-  readonly deliveryPattern: DeliveryPattern;
-  readonly nodeKind: string;
-  readonly admission: Admission;
-  /** Defaults to all enqueueable command types. */
-  readonly supportedCommandTypes?: readonly EnqueueableCommandType[];
-  /** Defaults to {@link STUB_DEFAULT_TUNING}. */
-  readonly tuning?: PluginTuning;
-}): DeviceMessagingPlugin {
+function stubPushInitialQueueKey(
+  id: PluginId,
+  nodeKind: string,
+  input: InitialQueueKeyInput,
+): string {
+  const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
+  return buildInitialQueueKey(id, nodeKind, networkPart);
+}
+
+function stubPullInitialQueueKey(
+  id: PluginId,
+  nodeKind: string,
+  input: InitialQueueKeyInput,
+): string {
+  const relayNodeId = input.device.relayNode?.id;
+  const relayPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+  return buildInitialQueueKey(id, nodeKind, relayPart);
+}
+
+function buildStubPush(options: StubPushOptions): PushPlugin {
   const {
     id,
-    deliveryPattern,
     nodeKind,
     admission,
     supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
     tuning = STUB_DEFAULT_TUNING,
   } = options;
 
-  const initialQueueKey = (input: InitialQueueKeyInput): string => {
-    if (deliveryPattern === 'PUSH') {
-      const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
-      return buildInitialQueueKey(id, nodeKind, networkPart);
-    }
-    const relayNodeId = input.device.relayNode?.id;
-    const relayPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
-    return buildInitialQueueKey(id, nodeKind, relayPart);
-  };
-
-  const outgoing: DeviceMessagingPlugin['outgoing'] = {
-    async sendOne(_message: DeviceMessage): Promise<string> {
-      // Unique per send so parallel Redis smokes do not share one external-id index.
-      return `stub-ext-${ ulid() }`;
-    },
-    parseError: parseStubError,
-    ...(deliveryPattern === 'PUSH'
-      ? {
-        getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
-          return { deliveryStatus: 'QUEUED' };
-        },
-      }
-      : {}),
-  };
-
-  const incoming: DeviceMessagingPlugin['incoming'] =
-    deliveryPattern === 'PUSH'
-      ? {
-        handle: (event: unknown): ParsedIncomingEvent | null => {
-          return isStubParsedIncomingEvent(event) ? event : null;
-        },
-      }
-      : { fetchStatus: async (_message: DeviceMessage) => null };
-
-  const token: DeviceMessagingPlugin['token'] | undefined =
-    deliveryPattern === 'PUSH'
-      ? {
-        async generate(_input: GenerateTokenInput): Promise<string> {
-          return STUB_TOKEN_VALUE;
-        },
-      }
-      : undefined;
-
   return {
     id,
-    deliveryPattern,
+    deliveryPattern: 'PUSH',
     supportedCommandTypes,
     admission,
     tuning,
-    initialQueueKey,
-    outgoing,
-    incoming,
-    ...(token !== undefined ? { token } : {}),
+    initialQueueKey: input => stubPushInitialQueueKey(id, nodeKind, input),
+    outgoing: {
+      sendOne: stubSendOne,
+      parseError: parseStubError,
+      getRemoteStatus(_message: DeviceMessage): { deliveryStatus: string } {
+        return { deliveryStatus: 'QUEUED' };
+      },
+    },
+    incoming: {
+      handle: (event: unknown): ParsedIncomingEvent | null => {
+        return isStubParsedIncomingEvent(event) ? event : null;
+      },
+    },
+    token: {
+      async generate(_input: GenerateTokenInput): Promise<string> {
+        return STUB_TOKEN_VALUE;
+      },
+    },
   };
 }
 
+function buildStubPull(options: StubPullOptions): PullPlugin {
+  const {
+    id,
+    nodeKind,
+    admission,
+    supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
+    tuning = STUB_DEFAULT_TUNING,
+  } = options;
+
+  return {
+    id,
+    deliveryPattern: 'PULL',
+    supportedCommandTypes,
+    admission,
+    tuning,
+    initialQueueKey: input => stubPullInitialQueueKey(id, nodeKind, input),
+    outgoing: {
+      sendOne: stubSendOne,
+      parseError: parseStubError,
+    },
+    incoming: {
+      fetchStatus: async (_message: DeviceMessage) => null,
+    },
+  };
+}
+
+/**
+ * Build a no-op delivery stub for skeleton / tests.
+ *
+ * PULL stubs expose `incoming.fetchStatus` → `null`. PUSH stubs accept a
+ * pre-normalized {@link ParsedIncomingEvent} body (or return null) and expose
+ * `token.generate` → {@link STUB_TOKEN_VALUE}.
+ */
+export function createStubPlugin(options: StubPushOptions): PushPlugin;
+export function createStubPlugin(options: StubPullOptions): PullPlugin;
+export function createStubPlugin(
+  options: StubPushOptions | StubPullOptions,
+): PushPlugin | PullPlugin {
+  if (options.deliveryPattern === 'PUSH') {
+    return buildStubPush(options);
+  }
+  return buildStubPull(options);
+}
+
 /** Bundled PUSH stub (no vendor I/O). Merges config `tuning` over defaults. */
-export function createStubPushPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+export function createStubPushPlugin(entry: PluginConfigEntry): PushPlugin {
   return createStubPlugin({
     id: STUB_PUSH_ID,
     deliveryPattern: 'PUSH',
@@ -179,7 +219,7 @@ export function createStubPushPlugin(entry: PluginConfigEntry): DeviceMessagingP
 }
 
 /** Bundled PULL stub (no vendor I/O). Merges config `tuning` over defaults. */
-export function createStubPullPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+export function createStubPullPlugin(entry: PluginConfigEntry): PullPlugin {
   return createStubPlugin({
     id: STUB_PULL_ID,
     deliveryPattern: 'PULL',

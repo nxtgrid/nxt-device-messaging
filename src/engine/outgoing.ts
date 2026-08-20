@@ -29,7 +29,7 @@ import {
   getPluginIdFromInitialQueueKey,
 } from '../plugins/_shared/initial-queue-key.js';
 import type {
-  DeviceMessagingPlugin,
+  DeliveryPlugin,
   DistributeCtx,
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
@@ -104,10 +104,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
    *
-   * @param plugin - Owning plugin (`admission`)
+   * @param plugin - Owning delivery plugin (`admission`)
    * @param queueKey - Initial-queue Redis key being considered
    */
-  async function _canAdmit(plugin: DeviceMessagingPlugin, queueKey: string): Promise<boolean> {
+  async function _canAdmit(plugin: DeliveryPlugin, queueKey: string): Promise<boolean> {
     const { admission } = plugin;
     const ctx: DistributeCtx = { queueKey, pluginId: plugin.id };
 
@@ -138,11 +138,11 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   /**
    * Post-pick admission hook (concurrency claim / custom `onClaim`).
    *
-   * @param plugin - Owning plugin (`admission`)
+   * @param plugin - Owning delivery plugin (`admission`)
    * @param queueKey - Initial-queue Redis key the message was picked from
    * @param messageId - ULID of the claimed message
    */
-  async function _onClaimAfterPick(plugin: DeviceMessagingPlugin, queueKey: string, messageId: string): Promise<void> {
+  async function _onClaimAfterPick(plugin: DeliveryPlugin, queueKey: string, messageId: string): Promise<void> {
     const { admission } = plugin;
 
     switch (admission.strategy) {
@@ -166,10 +166,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    * Send one message via the plugin; on success move NS → relay-node (PUSH) or awaiting-task (PULL).
    * On failure, {@link BaseService.retryOrFail} from the NS queue.
    *
-   * @param plugin - Owning plugin (`outgoing.sendOne` + tuning)
+   * @param plugin - Owning delivery plugin (`outgoing.sendOne` + tuning)
    * @param message - The message to send (already in NS queue)
    */
-  async function _sendOneToNetworkServer(plugin: DeviceMessagingPlugin, message: DeviceMessage): Promise<void> {
+  async function _sendOneToNetworkServer(plugin: DeliveryPlugin, message: DeviceMessage): Promise<void> {
     let deliveryQueueId: string;
     const startedAt = performance.now();
     const slowThresholdMs = plugin.tuning.nsInFlightTimeoutMs;
@@ -264,13 +264,15 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       if (queueKey === QUEUE_RELAY_NODE_KEY) {
         const message = await redisRepo.getMessageById(messageId);
         if (message) {
-          const plugin = registry.get(message.pluginId)!;
-          const extended = await maybeExtendMessageInRelayNodeQueue(
-            messageId,
-            message,
-            plugin,
-          );
-          if (extended) continue;
+          const plugin = registry.get(message.pluginId);
+          if (plugin?.deliveryPattern === 'PUSH') {
+            const extended = await maybeExtendMessageInRelayNodeQueue(
+              messageId,
+              message,
+              plugin,
+            );
+            if (extended) continue;
+          }
         }
       }
       await baseService.retryOrFail(messageId, queueKey, { reason });
@@ -312,7 +314,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       if (!pluginId) return;
 
       const plugin = registry.get(pluginId);
-      if (!plugin) return;
+      if (!plugin || plugin.deliveryPattern === 'NONE') return;
 
       const admitted = await _canAdmit(plugin, queueKey);
       if (!admitted) return;
@@ -362,7 +364,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     }
     else {
       const plugin = registry.get(message.pluginId);
-      if (!plugin) return false;
+      if (!plugin || plugin.deliveryPattern === 'NONE') return false;
       queueKey = plugin.initialQueueKey({
         networkId: message.networkId,
         device: message.device,
@@ -408,6 +410,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     async enqueue(create: CreateDeviceMessage): Promise<DeviceMessage> {
       const plugin = registry.get(create.pluginId);
       if (!plugin) throw new UnknownPluginError(create.pluginId);
+      if (plugin.deliveryPattern === 'NONE') {
+        throw new UnsupportedCommandTypeError(create.pluginId, create.commandType);
+      }
       if (!plugin.supportedCommandTypes.includes(create.commandType)) {
         throw new UnsupportedCommandTypeError(create.pluginId, create.commandType);
       }

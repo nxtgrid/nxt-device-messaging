@@ -13,7 +13,7 @@ import type {
   SetDatePayload,
 } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PullPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV2Client,
   CalinApiV2CreateTaskResponse,
@@ -74,7 +74,7 @@ type CreateCalinApiV2OutgoingDeps = {
  */
 export function createCalinApiV2Outgoing(
   deps: CreateCalinApiV2OutgoingDeps,
-): DeviceMessagingPlugin['outgoing'] {
+): PullPlugin['outgoing'] {
   const { secrets, client } = deps;
 
   /** Format a calendar date for CALIN V2 `SET_DATE` (`YYYY-MM-DD HH:mm:ss`). */

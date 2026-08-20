@@ -17,6 +17,9 @@ Hardware integrations are **plugins**. Two delivery patterns are supported:
 - **PULL** — the service creates a task on a vendor HTTP API and polls it for status (CALIN
   API V1/V2). The bottleneck is the vendor API itself.
 
+Token-only plugins (`deliveryPattern: 'NONE'`, currently `nxt-sts`) mint tokens and have no
+delivery path, admission, or initial queue.
+
 Redis (or Valkey) is the only infrastructure dependency. There is no relational database.
 
 ## Origin and baseline
@@ -71,12 +74,13 @@ Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` b
 deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts` +
 `command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
 `device.relayNode`; `generateTokenSchema` type-discriminated), Redis/Lua, queue primitives
-(`queue_in_flight_to_relay_node`), lifecycle (typed on `DeviceMessagingPlugin`),
-`src/plugins/` (SPI + `PluginTuning` + `_shared/` helpers incl. ChirpStack gRPC client +
+(`queue_in_flight_to_relay_node`), lifecycle (typed on `PushPlugin` / `PullPlugin`),
+`src/plugins/` (SPI is `PushPlugin | PullPlugin | TokenOnlyPlugin` + `PluginTuning` +
+`_shared/` helpers incl. ChirpStack gRPC client +
 catalog / registry / `stub/` + `calin-api-v1/` PULL — fetch, outgoing, incoming, token;
 enable via `plugins[]` + `CALIN_API_V1_*` — + `calin-api-v2/` PULL — fetch + login cache,
 outgoing, incoming, token; enable via `plugins[]` + `CALIN_API_V2_*` — + `nxt-sts/`
-token-only — fetch + mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
+token-only (`deliveryPattern: 'NONE'`) — mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
 PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `plugins[]` +
 `CHIRPSTACK_*`),
 `src/http/` (lean enqueue/get/cancel; thin ingress + token; Zod route schemas;
@@ -193,6 +197,8 @@ Plugins are authored and tested **in this repository**, not as an external third
 ecosystem. Treat plugin authors as co-maintainers of the SPI.
 
 - Make the plugin ↔ engine contract **clear and documented** (JSDoc, ADR-006, examples).
+  The SPI is a discriminated union on `deliveryPattern`: `PushPlugin` | `PullPlugin` |
+  `TokenOnlyPlugin`.
 - Prefer a sane API over nailing every misuse shut with runtime checks, Zod at call sites,
   or defensive parsing of keys the helper just built.
 - Rely on the implementor to pass correct segments and to cover their plugin with in-repo

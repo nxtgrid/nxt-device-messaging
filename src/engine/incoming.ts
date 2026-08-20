@@ -18,7 +18,11 @@ import type {
 } from '../lib/device-message/types.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
-import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugins/plugin.interface.js';
+import type {
+  DeliveryPlugin,
+  IncomingHandleMeta,
+  PushPlugin,
+} from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { BaseService } from './base.js';
 
@@ -34,7 +38,7 @@ export type IncomingService = {
    */
   handle(
     event: unknown,
-    plugin: DeviceMessagingPlugin,
+    plugin: PushPlugin,
     meta?: IncomingHandleMeta,
   ): Promise<void>;
   /**
@@ -66,12 +70,12 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    *
    * @param parsedEvent - Normalized event from the plugin
    * @param currentQueueKey - Queue for retry/fail (PUSH handle uses device queue)
-   * @param plugin - Owning plugin (tuning for stage moves)
+   * @param plugin - Owning delivery plugin (tuning for stage moves)
    */
   async function _processIncomingEvent(
     parsedEvent: ParsedIncomingEvent,
     currentQueueKey: string,
-    plugin: DeviceMessagingPlugin,
+    plugin: DeliveryPlugin,
   ): Promise<void> {
     const { deliveryQueueId, deliveryStatus, device, commandType, response, unsolicited, failureContext } = parsedEvent;
 
@@ -162,13 +166,10 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    */
   async function handle(
     event: unknown,
-    plugin: DeviceMessagingPlugin,
+    plugin: PushPlugin,
     meta?: IncomingHandleMeta,
   ): Promise<void> {
-    const parse = plugin.incoming.handle;
-    if (!parse) return;
-
-    const parsedEvent = parse(event, meta);
+    const parsedEvent = plugin.incoming.handle(event, meta);
     if (!parsedEvent) {
       metrics.recordIngressUnhandled(plugin.id);
       return;

@@ -12,15 +12,24 @@
 import type { DeviceMessagingConfig } from '../config/schema.js';
 import type { PluginId } from '../lib/device-message/types.js';
 import { PLUGIN_CATALOG } from './catalog.js';
-import type { DeliveryPattern, DeviceMessagingPlugin } from './plugin.interface.js';
+import type {
+  DeliveryPattern,
+  DeviceMessagingPlugin,
+  PluginByDeliveryPattern,
+} from './plugin.interface.js';
 
 export type PluginRegistry = {
   /** Look up by plugin id. */
   get(id: PluginId): DeviceMessagingPlugin | undefined;
   /** All enabled plugins (config order). */
   getAll(): readonly DeviceMessagingPlugin[];
-  /** Plugins matching a delivery pattern (e.g. PULL poll loop). */
-  getByDeliveryPattern(pattern: DeliveryPattern): readonly DeviceMessagingPlugin[];
+  /**
+   * Plugins matching a delivery pattern (e.g. PULL poll loop).
+   * The return member is narrowed to the pattern asked for.
+   */
+  getByDeliveryPattern<P extends DeliveryPattern>(
+    pattern: P,
+  ): readonly PluginByDeliveryPattern[P][];
 };
 
 /**
@@ -55,8 +64,13 @@ export function createPluginRegistry(
       return Object.values(plugins);
     },
 
-    getByDeliveryPattern(pattern: DeliveryPattern): readonly DeviceMessagingPlugin[] {
-      return Object.values(plugins).filter(plugin => plugin.deliveryPattern === pattern);
+    getByDeliveryPattern<P extends DeliveryPattern>(
+      pattern: P,
+    ): readonly PluginByDeliveryPattern[P][] {
+      return Object.values(plugins).filter(
+        (plugin): plugin is PluginByDeliveryPattern[P] =>
+          plugin.deliveryPattern === pattern,
+      );
     },
   };
 }

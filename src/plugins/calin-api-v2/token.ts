@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PluginToken } from '../plugin.interface.js';
 import type {
   CalinApiV2Client,
   CalinApiV2TaskDataResponse,
@@ -34,7 +34,7 @@ type TokenAttempt = {
  */
 export function createCalinApiV2Token(
   deps: CreateCalinApiV2TokenDeps,
-): NonNullable<DeviceMessagingPlugin['token']> {
+): PluginToken {
   const { secrets, client } = deps;
 
   const _generateTopupKwhToken = async (

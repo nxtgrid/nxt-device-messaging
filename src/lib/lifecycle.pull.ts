@@ -15,7 +15,7 @@
  */
 
 import { decodeTime } from 'ulid';
-import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
+import type { PullPlugin } from '../plugins/plugin.interface.js';
 import { redisRepo } from './redis-repository/index.js';
 import { redisKeys } from './redis-repository/keys.js';
 import type { DeviceMessage, ParsedIncomingEvent } from './device-message/types.js';
@@ -60,14 +60,13 @@ function getNextPollDelay(messageAgeMs: number): number {
  * Returns parsed events for completed messages. Pending messages
  * have their next poll time updated internally.
  *
- * @param plugin - PULL plugin (`incoming.fetchStatus`); no-op if missing
+ * @param plugin - PULL plugin (`incoming.fetchStatus` is required)
  * @returns Array of poll results to process
  */
 export async function pollAwaitingTasksFor(
-  plugin: DeviceMessagingPlugin,
+  plugin: PullPlugin,
 ): Promise<PollResult[]> {
   const fetchStatus = plugin.incoming.fetchStatus;
-  if (!fetchStatus) return [];
 
   const queueKey = redisKeys.queueAwaitingTask(plugin.id);
   const messageIds = await redisRepo.getMessagesDueForPolling(queueKey);

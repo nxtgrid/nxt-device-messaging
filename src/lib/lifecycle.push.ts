@@ -9,7 +9,7 @@
  */
 
 import { logger } from '../log.js';
-import type { DeviceMessagingPlugin } from '../plugins/plugin.interface.js';
+import type { PushPlugin } from '../plugins/plugin.interface.js';
 import type { DeviceMessage } from './device-message/types.js';
 import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
 import { redisRepo } from './redis-repository/index.js';
@@ -52,13 +52,13 @@ export async function getPushTimeouts(now: number): Promise<PushTimeoutResult[]>
  *
  * @param messageId - ULID of the message
  * @param message - The full message (already fetched by caller)
- * @param plugin - Owning plugin (`outgoing.getRemoteStatus` + `tuning`)
+ * @param plugin - Owning PUSH plugin (`outgoing.getRemoteStatus` + `tuning`)
  * @returns true if timeout was extended, false if should proceed to retryOrFail
  */
 export async function maybeExtendMessageInRelayNodeQueue(
   messageId: string,
   message: DeviceMessage,
-  plugin: DeviceMessagingPlugin,
+  plugin: PushPlugin,
 ): Promise<boolean> {
   const getRemoteStatus = plugin.outgoing.getRemoteStatus;
   if (!getRemoteStatus) return false;

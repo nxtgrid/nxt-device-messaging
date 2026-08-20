@@ -12,6 +12,13 @@ renamed `bottleneckKey` → `initialQueueKey`. Boot-time `bottleneckKind` regist
 > `lorawan_network` / `gateway`. Complements `deliveryPattern: 'PUSH' | 'PULL'` (Unit 6) —
 > delivery pattern is *how confirmation works after send*; admission is *how hard we hit the
 > constrained node before/while sending*.
+>
+> **Amendment (2026-08-20):** C3 made `DeviceMessagingPlugin` a discriminated union.
+> `'NONE'` is token-only (`nxt-sts`): no `admission`, no `initialQueueKey`, no `tuning`, no
+> `incoming`. Decisions 1–4 and the D4 kind table below still describe **delivery** plugins
+> (`PushPlugin` | `PullPlugin`). `deliveryPattern: 'PUSH' | 'PULL'` in §3 is the two
+> confirmation patterns; `'NONE'` means there is no confirmation path because there is no
+> send. The D4 `nxt-sts` / `kind: none` row is historical — that queue key is no longer built.
 
 **Read this when:** touching `initialQueueKey`, `buildInitialQueueKey`, distribute/admission,
 initial queue keys, `messageFullCleanup` queue lists, plugin SPI (Unit 6), or LoRaWAN/DCU

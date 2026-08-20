@@ -9,24 +9,7 @@ import {
   loadNxtStsSecrets,
   NXT_STS_ENV_KEYS,
 } from '#src/plugins/nxt-sts/lib/secrets.js';
-import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
-
-/** Expected code defaults (asserted via factory; not imported from the plugin). */
-const EXPECTED_DEFAULT_TUNING = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-} as const;
-
-const deviceOnly: InitialQueueKeyInput = {
-  networkId: 42,
-  device: {
-    type: 'ELECTRICITY_METER',
-    externalReference: 'm-1',
-  },
-};
 
 /** Stub every required `NXT_STS_*` key (cleared in {@link afterEach}). */
 function stubValidNxtStsEnv(): void {
@@ -68,19 +51,18 @@ describe('loadNxtStsSecrets', () => {
 });
 
 describe('createNxtStsPlugin', () => {
-  it('builds token-only PULL + empty command types + queue:nxt-sts:none:na', () => {
+  it('builds token-only NONE with empty command types and no delivery fields', () => {
     stubValidNxtStsEnv();
     const plugin = createNxtStsPlugin({ id: NXT_STS_ID });
     expect(plugin.id).toBe(NXT_STS_ID);
-    expect(plugin.deliveryPattern).toBe('PULL');
+    expect(plugin.deliveryPattern).toBe('NONE');
     expect(plugin.supportedCommandTypes).toEqual([]);
-    expect(plugin.tuning).toEqual(EXPECTED_DEFAULT_TUNING);
-    expect(plugin.admission).toEqual({ strategy: 'concurrency', maxInFlight: 1 });
-    expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:nxt-sts:none:na');
-    expect(plugin.incoming.handle).toBeUndefined();
-    expect(plugin.incoming.fetchStatus).toBeUndefined();
+    expect(plugin.incoming).toBeUndefined();
+    expect(plugin.admission).toBeUndefined();
+    expect(plugin.tuning).toBeUndefined();
+    expect(plugin.initialQueueKey).toBeUndefined();
     expect(plugin.outgoing.getRemoteStatus).toBeUndefined();
-    expect(plugin.token?.generate).toBeTypeOf('function');
+    expect(plugin.token.generate).toBeTypeOf('function');
   });
 
   it('outgoing.sendOne rejects (token-only)', async () => {
@@ -91,7 +73,10 @@ describe('createNxtStsPlugin', () => {
       commandType: 'TOP_UP_KWH',
       pluginId: NXT_STS_ID,
       networkId: null,
-      device: deviceOnly.device,
+      device: {
+        type: 'ELECTRICITY_METER',
+        externalReference: 'm-1',
+      },
       deliveryQueueId: '',
       deliveryStatus: 'QUEUED',
     } as DeviceMessage;
@@ -105,34 +90,10 @@ describe('createNxtStsPlugin', () => {
     );
   });
 
-  it('merges config tuning over defaults', () => {
-    stubValidNxtStsEnv();
-    const plugin = createNxtStsPlugin({
-      id: NXT_STS_ID,
-      tuning: { initialPollDelayMs: 30_000 },
-    });
-    expect(plugin.tuning).toEqual({
-      ...EXPECTED_DEFAULT_TUNING,
-      initialPollDelayMs: 30_000,
-    });
-  });
-
-  it('rejects unknown or invalid tuning keys', () => {
-    stubValidNxtStsEnv();
-    expect(() => createNxtStsPlugin({
-      id: NXT_STS_ID,
-      tuning: { notAKnob: 1 },
-    })).toThrow(/Invalid tuning/);
-
-    expect(() => createNxtStsPlugin({
-      id: NXT_STS_ID,
-      tuning: { nsInFlightTimeoutMs: -1 },
-    })).toThrow(/Invalid tuning/);
-  });
-
   it('registers via PLUGIN_CATALOG when env is present', () => {
     stubValidNxtStsEnv();
     const registry = createPluginRegistry([ { id: NXT_STS_ID } ]);
     expect(registry.get(NXT_STS_ID)?.token?.generate).toBeTypeOf('function');
+    expect(registry.get(NXT_STS_ID)?.deliveryPattern).toBe('NONE');
   });
 });
