@@ -1816,6 +1816,49 @@ is ` ```text ` (MD040). Test helpers: one `PushPlugin` literal + `makeOutgoing`;
 
 Maintainer commits. Still awaiting merge; branch 2 has not started.
 
+### 2026-08-20 — plan 002 branch 2: ADR-008 (message lifecycle stage table)
+
+Branch 1 merged as PR #12. Branch `refactor/message-lifecycle-stage-table` cut from `main`;
+first commit is the ADR, no code.
+
+**ADR-008** — `docs/architecture/008-message-lifecycle-stage-table.md`. Absorbs the seven
+decisions the plan already settled and adds six that the plan had deferred to the C2
+implementation session, so C2 is implementation rather than design:
+
+- **A4** — cleanup and `metrics/queue-depth.ts` `KNOWN_STAGE_KEYS` both derive their key lists
+  from the table. `messageFullCleanup` therefore takes the plugin, to resolve the ready-queue
+  key; that is the first pull toward **C1**. `queues_to_distribute_from` stays untouched per
+  message — the distributor Lua GCs it when a queue empties.
+- **A3, real layer** — the `ns` deadline does not fire while this process still holds the
+  `sendOne` promise (in-memory id set, legitimate under ADR-007), same shape as the existing
+  relay-node `getRemoteStatus` extension. Residue named and accepted: a process death mid-send
+  is an at-least-once boundary. Rejected alternative recorded: a fetch deadline that aborts at
+  the NS timeout reproduces the duplicate command (agrees with the parked *Plugin HTTP hygiene*
+  row, which already asked for a generous safety deadline, not abort-at-NS-timeout).
+- **PULL 48 h cap** becomes a property of the `awaitingTask` action, deleting a per-tick full
+  ZRANGE of every awaiting-task queue. Detection window widens from one cycle to ≤30 s (the
+  ladder cap) against a two-day threshold.
+- **Tick** — stage rows run concurrently within the 1000 ms tick, members sequentially, each row
+  with its own re-entry guard. Without the concurrency, collapsing three intervals into one would
+  serialise a slow `fetchStatus` ahead of NS timeouts; today they cannot block each other because
+  they live on separate timers. The per-row guard is stricter than today's `timers.ts`, which has
+  none.
+- **A5** — `delivery.messageTtlSeconds` is the single knob (hash TTL at enqueue, index TTL at
+  moves); `MESSAGE_TTL_SECONDS` goes; the threaded parameter is renamed `indexTtlSeconds`.
+- **B3** — enqueue's distribute kick keys off `engine.enabled` instead of
+  `kickDistributeOnEnqueue`.
+
+Two contract changes C2 must make: `retryOrFail` and the shared incoming-event processor return
+a `StageOutcome` instead of `void` (both decide between "moved to retry" and "cleaned up"), and
+the runner catches a throwing action, treating it as `rescheduled` at the stage's normal wait —
+so a vendor error can neither strand a score nor abandon the batch.
+
+Plan 002's § *Design settled* and § *Option B* are now pointers into ADR-008; the ADR is the
+single source of truth, including Option B as its *Upgrade path* section.
+
+**Next:** plan 002 item 4 (**C2** — implement the table). That session also writes **C1**'s
+concrete shape into the plan while the context is cheap.
+
 
 
 

@@ -146,6 +146,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
+| 008 | Message lifecycle is a stage table — one runner, one 1000 ms tick, pipelines as data |
 
 ### `nxt-backend` ADRs that constrain this repo
 
