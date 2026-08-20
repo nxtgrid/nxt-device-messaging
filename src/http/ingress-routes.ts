@@ -69,7 +69,7 @@ export const ingressRoutes: FastifyPluginAsyncZod<IngressRoutesOpts> = async (ap
       return reply.code(400).send({ error: `Unknown or disabled pluginId: ${ pluginId }` });
     }
 
-    if (!plugin.incoming.handle) {
+    if (plugin.deliveryPattern !== 'PUSH') {
       return reply.code(400).send({ error: `Plugin does not support PUSH ingress: ${ pluginId }` });
     }
 

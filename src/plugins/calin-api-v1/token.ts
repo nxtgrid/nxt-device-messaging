@@ -7,7 +7,7 @@
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PluginToken } from '../plugin.interface.js';
 import type {
   CalinApiV1Client,
   CalinApiV1MaintenanceResponse,
@@ -32,7 +32,7 @@ type TokenAttempt = {
  */
 export function createCalinApiV1Token(
   deps: CreateCalinApiV1TokenDeps,
-): NonNullable<DeviceMessagingPlugin['token']> {
+): PluginToken {
   const { secrets, client } = deps;
 
   const posApiData = {

@@ -24,7 +24,7 @@ import type {
   ParsedIncomingEvent,
   RelayNodeInfo,
 } from '../../lib/device-message/types.js';
-import type { DeviceMessagingPlugin, IncomingHandleMeta } from '../plugin.interface.js';
+import type { IncomingHandleMeta, PushPlugin } from '../plugin.interface.js';
 import { selectGatewayWithBestSignal } from './lib/connectivity-helpers.js';
 import { eventCorrelator } from './lib/correlate-request-response.js';
 import { decodeResponseData } from './lib/decode-response-data.js';
@@ -49,7 +49,7 @@ const METER_REFERENCE_OFFSET = 5;
  *
  * @returns Incoming SPI with `handle` for ChirpStack webhook payloads
  */
-export function createCalinChirpstackIncoming(): DeviceMessagingPlugin['incoming'] {
+export function createCalinChirpstackIncoming(): PushPlugin['incoming'] {
   const handle = (
     event: unknown,
     meta?: IncomingHandleMeta,

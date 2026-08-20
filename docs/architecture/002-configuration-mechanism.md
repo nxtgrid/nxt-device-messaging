@@ -26,6 +26,10 @@
 >
 > **Amendment (2026-08-14):** Root object **`logging`** (`stdout`: `"pretty"` | `"json"`,
 > default pretty). Extra sinks deferred. Secrets for a future sink stay in env. See ADR-005 §7.
+>
+> **Amendment (2026-08-20):** C3 — `tuning` is a delivery-plugin field (`PushPlugin` /
+> `PullPlugin`). Token-only plugins (`deliveryPattern: 'NONE'`) have none. D5's four names
+> are unchanged.
 
 ---
 

@@ -1,8 +1,9 @@
 # Plan 002 — Architecture review and deepening
 
-**Status:** open. Review complete (2026-08-18/19). Item 1 landed; C2 design settled.
-**Branch:** work happens on `chore/post-extraction-refactor` (branch 1), then on a fresh branch cut
-from `main` for the stage-table slice (branch 2). See § *Branch discipline*.
+**Status:** open. Review complete (2026-08-18/19). Branch 1 items (B1, C2 design, B1b, C3) landed;
+awaiting review and merge. Branch 2 has not started.
+**Branch:** `chore/post-extraction-refactor` (branch 1) is complete and awaiting review/merge.
+Branch 2 is cut from `main` afterwards for the stage-table slice. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -46,7 +47,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 1 | **B1** — Valkey service container in CI; run the integration smokes | — | Composer 2.5 | 1 | ☑ 2026-08-19 |
 | 2 | **C2 design** — message-lifecycle stage table (discussion, no code) | 1 | Claude Opus 5 | 1 | ☑ 2026-08-20 |
 | 2b | **B1b** — thicken the engine integration suite *against current behaviour* | 1 | Grok 4.6 | 1 | ☑ 2026-08-20 |
-| 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | 1 | ☐ |
+| 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | 1 | ☑ 2026-08-20 |
 | 3 | **ADR-008** — message lifecycle stage table (first commit on branch 2) | 2 | Claude Opus 5 | 2 | ☐ |
 | 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☐ |
 | 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☐ folded into 4 |
@@ -56,27 +57,28 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
 | 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
+| 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
 
 ### Branch discipline
 
 Branches in sequence. Nothing in this plan lands directly on `main`.
 
-**Branch 1 — `chore/post-extraction-refactor`** (current; items 1 and 2 already committed to it).
-Scope: **the prerequisites for C2 and nothing else** — items 2b (B1b) and 2c (C3). Then human review
-and merge to `main`. Keeping the scope this tight is deliberate: it is what makes the review
-tractable and lets branch 2 start from a known-good base.
+**Branch 1 — `chore/post-extraction-refactor`** (complete; awaiting review and merge).
+Items 1 (B1), 2 (C2 design), 2b (B1b), and 2c (C3) are on this branch. Scope was **the
+prerequisites for C2 and nothing else**. Keeping the scope that tight is deliberate: it is what
+makes the review tractable and lets branch 2 start from a known-good base.
 
 Nothing else qualifies as a prerequisite. **B2** resolves as a consequence of C1 and so belongs to
 branch 2; **B3**'s single real offender (`kickDistributeOnEnqueue`) disappears inside C2 rather than
-needing a prior fix; **A1–A5** are folded into C2 by design.
+needing a prior fix; **A1–A5** are folded into C2 by design. **C4 was not pulled onto branch 1.**
 
 **Branch 2 — cut from `main` after branch 1 merges.** The big slice as one reviewable, revertible
 unit: item 3 (ADR-008) as its first commit, then 4, with 5–8 folded in. Name it for the change, e.g.
-`refactor/message-lifecycle-stage-table`.
+`refactor/message-lifecycle-stage-table`. Has not started.
 
-**Branch 3 — anything after that.** Items 9, 10 and 11 are independent of C2 in both directions, so
-they wait rather than pad branch 1. Note that **9 (C4) rides naturally on 2c (C3)** — both reshape
-the plugin SPI — so if branch 1 is still open when C3 lands, pulling C4 in is a cheap call to make.
+**Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
+directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
+call to pull C4 into branch 1 was not taken; C4 stays on branch 3.
 
 ### Why this order
 
@@ -396,8 +398,9 @@ These were agreed with the maintainer. Implement them; do not relitigate.
    - *Ponytail:* a fixed tick is a deliberate simplification. The exact design is to sleep until the
      earliest due score, which needs recomputation on every insert. Leave a comment at the tick
      naming the ceiling (±1 s punctuality) and the upgrade path (sleep-until-due).
-7. **Stage pipelines are Option A** — two fixed pipelines derived from `deliveryPattern`, as data
-   rather than as `if` branches. **Option B** (per-plugin pipelines) is designed and documented
+7. **Stage pipelines are Option A** — two fixed pipelines derived from the two delivery patterns
+   (`PUSH` / `PULL`), as data rather than as `if` branches. `'NONE'` (token-only) has no pipeline;
+   those plugins never enqueue. **Option B** (per-plugin pipelines) is designed and documented
    below; it is deliberately not built yet. See § *Option B*.
 
 #### Option B — per-plugin stage pipelines (designed, not built)
@@ -419,8 +422,9 @@ These were agreed with the maintainer. Implement them; do not relitigate.
 3. Squeezing it into an existing pipeline would mean putting an `if pluginId === …` inside a stage
    action. That `if` is the smell that says the pipeline should be data.
 
-If only (1) holds, prefer a third fixed pipeline in the pattern table — cheaper than B and honest,
-because the pipeline really is a property of a *pattern*, not of a *vendor*.
+If only (1) holds, prefer a third fixed *delivery* pipeline in the pattern table — cheaper than B
+and honest, because the pipeline really is a property of a *pattern*, not of a *vendor*. (`'NONE'`
+is not a candidate: token-only plugins have no pipeline.)
 
 **Known candidate.** SparkMeter: HTTP/API-shaped (so `PULL`-ish), but one `sparknet-http` instance
 per gateway, with a radio mesh behind each gateway. The vendor API accepting a command says nothing
@@ -434,11 +438,12 @@ Under Option A, core owns the whole map:
 ```ts
 // stage names and definitions: closed, core-owned
 const STAGES = { ns, relayNode, device, awaitingTask, retry } as const;
-// pipelines: data, derived from the pattern
+// pipelines: data, derived from the two delivery patterns — not from DeliveryPattern,
+// which also includes 'NONE'. Token-only plugins have no pipeline; they never enqueue.
 const PIPELINES = {
   PUSH: ['ns', 'relayNode', 'device'],
   PULL: ['ns', 'awaitingTask'],
-} as const satisfies Record<DeliveryPattern, readonly StageName[]>;
+} as const satisfies Record<'PUSH' | 'PULL', readonly StageName[]>;
 ```
 
 Under Option B, a plugin may **contribute stages** and **declare its own pipeline**:
@@ -455,8 +460,8 @@ type StageDefinition = {
   readonly onExpiry: 'fail' | 'retry';
 };
 
-type DeviceMessagingPlugin = {
-  // …existing SPI…
+type DeliveryPlugin = {
+  // …existing PUSH | PULL SPI…
   /** Stages this plugin adds beyond the core set. Optional. */
   readonly stages?: readonly StageDefinition[];
   /** Ordered stages a message traverses. Defaults to PIPELINES[deliveryPattern]. */
@@ -485,7 +490,8 @@ pipeline can express today.
    stages of every enabled plugin". Mechanical, *provided* Option A routed all three through the
    table (see invariants below).
 4. **`advance()` consults the plugin.** `plugin.pipeline ?? PIPELINES[plugin.deliveryPattern]`, then
-   `pipeline[indexOf(current) + 1]`. One function, one call site.
+   `pipeline[indexOf(current) + 1]`. One function, one call site. The plugin here is a
+   `DeliveryPlugin` (`PUSH` | `PULL`); `'NONE'` never reaches `advance`.
 
 Not changed: admission, the ready queue, the retry ladder, the webhook layer, the SPI's transport
 methods. B is confined to the stage table.
@@ -548,14 +554,106 @@ convention for free and the guards delete themselves.
 
 **Independent of C2.** Can be done any time after B1.
 
+**Accepted trade-off — double surface for `token`.** `token` is both an optional facet of a delivery
+plugin (`calin-api-v1`, `calin-api-v2`, `stub-push` all declare it) and the entire content of a
+`'NONE'` plugin. The duplication is in the *declaration* only, not the resolution path — the token
+service resolves `registry.get(id).token` identically either way. This was accepted knowingly to
+keep C3 small. The deferred way off that double surface is § *Capability bundles* below. `'NONE'`
+is a step toward that, not the destination.
+
+**✅ Landed 2026-08-20.** `DeviceMessagingPlugin` is `PushPlugin | PullPlugin | TokenOnlyPlugin`
+(`DeliveryPlugin` = the first two). Discriminant `'NONE'` for token-only; that member has `id`,
+`supportedCommandTypes`, required `token`, and `outgoing.sendOne` + `parseError` only — no
+`admission`, `tuning`, `initialQueueKey`, or `incoming`. Deleted the type-workaround guards in
+`engine/incoming.ts` (`if (!handle) return`) and `lifecycle.pull.ts` (`if (!fetchStatus) return
+[]`); kept `lifecycle.push.ts` `if (!getRemoteStatus) return false` because it is still optional on
+PUSH. `getByDeliveryPattern<P>` narrows via `PluginByDeliveryPattern` (generic + type predicate;
+no casts). Plugin factories restructured into whole PUSH/PULL literals: `stub/index.ts` split into
+`buildStubPush` / `buildStubPull`, `test/helpers/programmable-plugin.ts` likewise. `nxt-sts` dropped
+the unused delivery fields. Ingress gates on `deliveryPattern !== 'PUSH'` rather than missing
+`handle`.
+
+#### Capability bundles — separating token providers from delivery plugins (designed, not built)
+
+> **Status: designed, deliberately deferred.** Do not build this speculatively. When the trigger
+> below fires, implement what is written here — the design is settled and does not need to be
+> re-derived. `'NONE'` is *not* the destination; it is a step toward this. The PUSH/PULL union
+> survives the bundle refactor intact; only the third member is absorbed.
+
+**Trigger — build this when, and only when, either holds:**
+
+1. A **second token-only provider** appears. One token-only plugin is not a pattern.
+2. A plugin wants **`token` plus ingress but no delivery** — a shape `'NONE'` cannot express
+   without growing a fourth member.
+
+Do not build this because the double surface feels inelegant. That was accepted in C3.
+
+**The design.**
+
+A module returns a capability bundle instead of one fat object:
+
+```ts
+type CapabilityBundle = {
+  readonly id: PluginId;
+  readonly delivery?: DeliveryPlugin;  // the PUSH | PULL union
+  readonly token?: TokenProvider;
+};
+```
+
+so `calin-api-v1` returns `{ id, delivery, token }`, `calin-chirpstack` returns `{ id, delivery }`,
+`nxt-sts` returns `{ id, token }`. The registry offers two lookups instead of one, and
+`getByDeliveryPattern` becomes structurally incapable of returning a token-only provider.
+
+**Why it works rather than duplicating effort.** v1/v2's mint and delivery calls share one login
+and one set of credentials. Under a bundle they close over a single client inside the module
+factory — the factory-plus-closure DI the repo already prefers. Two declared capabilities, one
+construction, one set of secrets.
+
+**What it buys.** The double surface disappears; exactly one way to declare "I can mint".
+
+**What changes, concretely:**
+
+1. **Catalog factories return a bundle**, not a `DeviceMessagingPlugin`. The SPI's PUSH/PULL
+   members stay; `TokenOnlyPlugin` / `'NONE'` go away, absorbed into `token?: TokenProvider`.
+2. **The registry splits.** `get(id)` can stay as a convenience for "anything with this id", but
+   delivery and token become two lookups (`getDelivery(id)`, `getToken(id)`).
+   `getByDeliveryPattern` only sees bundles that declared `delivery`.
+3. **Engine call sites read the facet they need.** Enqueue / distribute / ingress / poll take a
+   `DeliveryPlugin`. The token service takes a `TokenProvider`. No `deliveryPattern === 'NONE'`
+   branches.
+
+Not changed: the HTTP contract, adopter config (`plugins[].id`), or the plugin-id namespace.
+`POST /token/generate` with `pluginId` and enqueue with the same id keep working untouched. This
+is a purely internal refactor.
+
+**Why deferring is safe.** The plugin id stays a single namespace, so callers cannot tell the
+difference. `'NONE'` already stopped token-only plugins from growing fake delivery fields; the
+bundle refactor only has to absorb one member, not unwind a lie.
+
+**Relationship to C2 Option B.** This and Option B are two axes of the same idea — a plugin
+declaring which capabilities and which policy it has — and would naturally land together. B
+contributes stages and a pipeline; bundles contribute which of `{delivery, token}` the module
+even has. Neither needs the other, but building them apart means two SPI reshapes instead of one.
+
+**Invariants C3 must hold so that this stays a patch.**
+
+- **PUSH and PULL remain a closed delivery union.** Do not add a fourth `deliveryPattern` to paper
+  over a hybrid. That is the trigger above, not an extension of `'NONE'`.
+- **`token` stays a facet with the same `generate` shape** on delivery plugins and on token-only.
+  The bundle refactor copies that type; it does not rewrite it.
+- **`getByDeliveryPattern('PULL')` never returns a token-only plugin.** Already true after C3
+  (`'NONE'` is a different discriminant). The bundle registry just makes that structural.
+
 ### C4 — `PluginTuning` has four fields and zero real users
 
-**Symptom.** All four production plugins declare byte-identical tuning, and half the fields are
+**Symptom.** The three delivery plugins declare byte-identical tuning, and half the fields are
 meaningless for each pattern: PULL plugins carry `relayNodeInFlightTimeoutMs` and
 `deviceInFlightTimeoutMs`; PUSH carries `initialPollDelayMs`.
 
-**Evidence.** Identical values in `calin-api-v1/index.ts:66-71`, `calin-api-v2/index.ts:66-71`,
-`calin-chirpstack/index.ts:66-71`, `nxt-sts/index.ts:49-54`, `stub/index.ts:51-56`:
+**Evidence.** Identical four-field blobs in `calin-api-v1/index.ts:66-71`,
+`calin-api-v2/index.ts:66-71`, `calin-chirpstack/index.ts:66-71`, and `stub/index.ts:51-56`
+(one constant shared by both stubs). Three production delivery plugins plus the stubs; `nxt-sts`
+has no `tuning` after C3.
 
 ```
 nsInFlightTimeoutMs:        20_000
@@ -649,8 +747,8 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |
-| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, scoped to C2's prerequisites only (B1b, C3), then review and merge. Branch 2 = cut from `main` afterwards, the stage-table slice only. Branch 3 = everything else (C4, D, Optional). |
-| **Stage pipelines** | **Option A now** (pipelines derived from `deliveryPattern`, as data). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed under C2 § *Option B* and built only when its trigger fires. Option A must hold four invariants listed there so B stays a patch. |
+| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, now complete (B1, C2 design, B1b, C3) and awaiting review/merge. Branch 2 = cut from `main` afterwards, the stage-table slice only — not started. Branch 3 = everything else (C4, D, Optional, capability bundles). |
+| **Stage pipelines** | **Option A now** (two pipelines, keyed on `PUSH` / `PULL` as data — not on `DeliveryPattern`, which also has `'NONE'`). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed under C2 § *Option B* and built only when its trigger fires. Option A must hold four invariants listed there so B stays a patch. |
 
 ---
 
@@ -683,3 +781,17 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   Direction paragraph's "being scrubbed / always advancing" wording. The poll-outcomes spec matched
   production on the first run; nothing in the plan's description of current poll behaviour was
   wrong. Next: **C3**.
+- **2026-08-20** — **C3 landed.** `DeviceMessagingPlugin` is now `PushPlugin | PullPlugin |
+  TokenOnlyPlugin` on `deliveryPattern` (`'NONE'` for token-only). The plan was wrong that the
+  `lifecycle.pull.ts` `fetchStatus` guard was only a type-system tax — it was also the runtime skip
+  for `nxt-sts` (PULL with empty `incoming`). That is why C3 grew a third member instead of stuffing
+  `nxt-sts` into PULL. `getByDeliveryPattern<P>` narrowing worked (generic mapped type + type
+  predicate; test helpers widen to `DeviceMessagingPlugin[]` before filtering). Stub and
+  programmable-plugin factories split into whole PUSH/PULL literals. `nxt-sts` unit test now asserts
+  the token-only shape; the two tuning-merge tests went away with the unused fields (284 → 282 unit
+  tests). C2 Option B's `Record<DeliveryPattern, …>` now includes `'NONE'` — exclude it when that
+  ships. Next on this branch: review and merge.
+- **2026-08-20** — Branch 1 docs closeout. Option B pipeline table keyed on `'PUSH' | 'PULL'`
+  (not `DeliveryPattern`); C4 evidence recounts three delivery plugins + stubs, no `nxt-sts`
+  tuning; decisions-log records B1b + C3 and strikes the token-only SPI discriminant. Branch 1
+  is complete and awaiting review/merge. Branch 2 has not started.

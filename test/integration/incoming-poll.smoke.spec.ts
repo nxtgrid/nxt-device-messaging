@@ -15,7 +15,12 @@ import { createIncomingService } from '#src/engine/incoming.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '#src/lib/device-message/types.js';
 import { sleep } from '#src/lib/utilities.js';
-import type { DeviceMessagingPlugin } from '#src/plugins/plugin.interface.js';
+import type {
+  DeliveryPattern,
+  DeviceMessagingPlugin,
+  PluginByDeliveryPattern,
+  PullPlugin,
+} from '#src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -34,7 +39,7 @@ const delivery = deviceMessagingConfigSchema.parse({
  */
 function createPullRegistryWithSuccessFetch(): PluginRegistry {
   const base = createStubPullPlugin({ id: STUB_PULL_ID });
-  const plugin: DeviceMessagingPlugin = {
+  const plugin: PullPlugin = {
     ...base,
     tuning: { ...base.tuning, initialPollDelayMs: 1 },
     incoming: {
@@ -47,10 +52,19 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
     },
   };
 
+  const plugins: readonly DeviceMessagingPlugin[] = [ plugin ];
+
   return {
     get: id => (id === plugin.id ? plugin : undefined),
-    getAll: () => [ plugin ],
-    getByDeliveryPattern: pattern => (pattern === 'PULL' ? [ plugin ] : []),
+    getAll: () => plugins,
+    getByDeliveryPattern: <P extends DeliveryPattern>(
+      pattern: P,
+    ): readonly PluginByDeliveryPattern[P][] => {
+      return plugins.filter(
+        (candidate): candidate is PluginByDeliveryPattern[P] =>
+          candidate.deliveryPattern === pattern,
+      );
+    },
   };
 }
 

@@ -35,6 +35,7 @@ the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
 | **D2 + thorough cleanup suite** — `messageFullCleanup` options; every exit must drop the hash and all references. Includes PULL poll↔retry orphan on `queue_awaiting_retry` | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
 | **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; generous fetch safety deadline (not abort-at-NS-timeout); trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass |
+| ~~**Token-only SPI discriminant**~~ — `deliveryPattern: 'NONE'`; no admission / tuning / initialQueueKey | — | **Resolved 2026-08-20** C3 (plan 002). Was session 26 “SPI amend for real omission deferred” |
 
 ### Product / ops trigger
 
@@ -1772,6 +1773,34 @@ status, observability, health dual-path, GHCR pin-tags, single-replica note;
 `docs/guides/integrating.md` (command API, event set, HMAC verify, 2xx/retry).
 
 **Phase 4 closed.** Follow-ups: **Parked / revisit**.
+
+### 2026-08-20 — plan 002 branch 1: B1b + C3
+
+Branch `chore/post-extraction-refactor` (plan 002 branch 1). Two code items, then this
+docs closeout. Maintainer commits; no merge to `main` yet.
+
+**B1b — thickened integration suite against current behaviour.** Helpers:
+`test/helpers/programmable-plugin.ts`, `redis-references.ts`, `webhook-recorder.ts`,
+`wait-for.ts`. Specs: retry ladder, stage timeouts, orphans/cleanup, poll outcomes.
+`incoming-poll.smoke.spec.ts` left untouched; PULL failure paths live in
+`incoming-poll-outcomes.smoke.spec.ts`. Suite is 12 files / 31 tests (was 8 / 9).
+**A1 / A2 / A3 / A4 are pinned as today's wrong-but-real outcome** with comment markers
+so C2's diff flips those assertions, not the plan's Direction wording.
+
+**C3 — plugin SPI as a discriminated union.** `DeviceMessagingPlugin` is
+`PushPlugin | PullPlugin | TokenOnlyPlugin` on `deliveryPattern`. The third member exists
+because `nxt-sts` was a PULL plugin with empty `incoming`; the `fetchStatus` guard was
+load-bearing for it, not only a type-system tax. `'NONE'` has `id`, empty
+`supportedCommandTypes`, required `token`, and throwing `sendOne` — no admission, tuning,
+initial queue, or incoming. Accepted **double surface:** `token` is both an optional facet
+of a delivery plugin and the entire content of a `'NONE'` plugin; the token service still
+resolves `registry.get(id).token` either way. Capability bundles (plan 002 row 12) are the
+deferred way off that surface.
+
+**Parked:** ~~token-only SPI discriminant~~ (session 26 “SPI amend for real omission
+deferred”) **resolved by C3**. Nothing else in Parked / revisit closed.
+
+**Next:** review and merge branch 1. Branch 2 (ADR-008 + C2) has not started.
 
 
 

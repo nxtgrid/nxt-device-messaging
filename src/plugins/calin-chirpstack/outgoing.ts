@@ -15,7 +15,7 @@ import type {
 } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
 import type { ChirpstackClient } from '../_shared/chirpstack-repository/index.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PushPlugin } from '../plugin.interface.js';
 import { encodeRequestData } from './lib/encode-request-data.js';
 
 /** Options for {@link CalinChirpstackError}. */
@@ -51,7 +51,7 @@ type GrpcError = {
  */
 export function createCalinChirpstackOutgoing(deps: {
   readonly client: ChirpstackClient;
-}): DeviceMessagingPlugin['outgoing'] {
+}): PushPlugin['outgoing'] {
   const { client } = deps;
 
   const sendOne = async (message: DeviceMessage): Promise<string> => {

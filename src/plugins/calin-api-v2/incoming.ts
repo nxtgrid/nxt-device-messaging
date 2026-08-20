@@ -19,7 +19,7 @@ import type {
 } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
 import { toSafeNumberOrNull } from '../_shared/to-safe-number-or-null.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PullPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV2Client,
   CalinApiV2DataItem,
@@ -65,7 +65,7 @@ const _createSuccessfulResponseData = (data?: Record<string, unknown>): ParsedRe
  */
 export function createCalinApiV2Incoming(
   deps: CreateCalinApiV2IncomingDeps,
-): DeviceMessagingPlugin['incoming'] {
+): PullPlugin['incoming'] {
   const { secrets, client } = deps;
 
   const _parseResponseData = (

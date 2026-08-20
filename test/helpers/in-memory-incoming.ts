@@ -4,15 +4,15 @@
 
 import type { IncomingService } from '#src/engine/incoming.js';
 import type {
-  DeviceMessagingPlugin,
   IncomingHandleMeta,
+  PushPlugin,
 } from '#src/plugins/plugin.interface.js';
 
 export type InMemoryIncomingServiceOptions = {
   /** Optional spy — called with the resolved plugin from the route. */
   readonly onHandle?: (
     event: unknown,
-    plugin: DeviceMessagingPlugin,
+    plugin: PushPlugin,
     meta?: IncomingHandleMeta,
   ) => void | Promise<void>;
 };
@@ -24,7 +24,7 @@ export function createInMemoryIncomingService(
   return {
     async handle(
       event: unknown,
-      plugin: DeviceMessagingPlugin,
+      plugin: PushPlugin,
       meta?: IncomingHandleMeta,
     ): Promise<void> {
       await options.onHandle?.(event, plugin, meta);

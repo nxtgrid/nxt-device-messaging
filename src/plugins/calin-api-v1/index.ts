@@ -17,9 +17,9 @@ import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
-  DeviceMessagingPlugin,
   InitialQueueKeyInput,
   PluginTuning,
+  PullPlugin,
 } from '../plugin.interface.js';
 import { createCalinApiV1Incoming } from './incoming.js';
 import { createCalinApiV1Client } from './lib/repo.js';
@@ -76,14 +76,14 @@ const CALIN_API_V1_ADMISSION: Admission = {
 };
 
 /**
- * Build the `calin-api-v1` {@link DeviceMessagingPlugin}.
+ * Build the `calin-api-v1` {@link PullPlugin}.
  *
  * Validates secrets at construct (ADR-002 §6). Vendor I/O is fully wired
  * (Units 7.2–7.5: client, outgoing, incoming, token).
  *
  * @param entry - Config `plugins[]` entry for this id
  */
-export function createCalinApiV1Plugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+export function createCalinApiV1Plugin(entry: PluginConfigEntry): PullPlugin {
   const secrets = loadCalinApiV1Secrets();
   const client = createCalinApiV1Client({ apiBaseUrl: secrets.apiBaseUrl });
   const outgoing = createCalinApiV1Outgoing({ secrets, client });

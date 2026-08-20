@@ -20,9 +20,9 @@ import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
-  DeviceMessagingPlugin,
   InitialQueueKeyInput,
   PluginTuning,
+  PushPlugin,
 } from '../plugin.interface.js';
 import { createCalinChirpstackIncoming } from './incoming.js';
 import { createCalinChirpstackOutgoing } from './outgoing.js';
@@ -77,14 +77,14 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 };
 
 /**
- * Build the `calin-chirpstack` {@link DeviceMessagingPlugin}.
+ * Build the `calin-chirpstack` {@link PushPlugin}.
  *
  * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing and
  * incoming are fully wired (Units 10.4–10.5).
  *
  * @param entry - Config `plugins[]` entry for this id
  */
-export function createCalinChirpstackPlugin(entry: PluginConfigEntry): DeviceMessagingPlugin {
+export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugin {
   const client = createChirpstackClient();
   const tuning = mergePluginTuning(CALIN_CHIRPSTACK_DEFAULT_TUNING, entry);
 

@@ -8,7 +8,7 @@
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';
 import { generateRandomNumber } from '../_shared/generate-random-number.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PluginToken } from '../plugin.interface.js';
 import type { NxtStsClient, NxtStsTokenRequest } from './lib/repo.js';
 import { NxtStsError } from './lib/repo.js';
 
@@ -65,7 +65,7 @@ function assertDecoderKey(decoderKey: string | undefined): asserts decoderKey is
  */
 export function createNxtStsToken(
   deps: CreateNxtStsTokenDeps,
-): NonNullable<DeviceMessagingPlugin['token']> {
+): PluginToken {
   const { client } = deps;
 
   const generate = async (input: GenerateTokenInput): Promise<string> => {

@@ -159,7 +159,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     }
 
     const plugin = registry.get(pluginId);
-    if (!plugin) {
+    if (!plugin || plugin.deliveryPattern === 'NONE') {
       await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
       return;
     }

@@ -16,7 +16,7 @@ import type {
   SetDatePayload,
 } from '../../lib/device-message/types.js';
 import { toSafeNumberOrNull } from '../_shared/to-safe-number-or-null.js';
-import type { DeviceMessagingPlugin } from '../plugin.interface.js';
+import type { PullPlugin } from '../plugin.interface.js';
 import type {
   CalinApiV1Client,
   CalinApiV1CommResponse,
@@ -87,7 +87,7 @@ type CreateCalinApiV1OutgoingDeps = {
  */
 export function createCalinApiV1Outgoing(
   deps: CreateCalinApiV1OutgoingDeps,
-): DeviceMessagingPlugin['outgoing'] {
+): PullPlugin['outgoing'] {
   const { secrets, client } = deps;
 
   const commApiData = {
