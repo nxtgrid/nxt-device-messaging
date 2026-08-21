@@ -13,12 +13,10 @@ import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
 import { createAdmissionStore } from './lib/redis-repository/admission-store.js';
-import { redisRepo } from './lib/redis-repository/index.js';
+import { redis } from './lib/redis-repository/client.js';
 import { createMessageStore } from './lib/redis-repository/message-store.js';
+import { createStageStore } from './lib/redis-repository/stage-store.js';
 import { createMetrics } from './metrics/index.js';
-
-/** One connection for the process; webhook store and metrics share it. */
-const redis = redisRepo.client;
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;
@@ -62,11 +60,13 @@ const webhookService = config.eventWebhook
 
 const admissionStore = createAdmissionStore({ client: redis });
 const messageStore = createMessageStore({ client: redis });
+const stageStore = createStageStore({ client: redis });
 
 const baseService = createBaseService({
   delivery: config.delivery,
   webhook: webhookService,
   messageStore,
+  stageStore,
   metrics,
 });
 /** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
@@ -80,17 +80,23 @@ const outgoingService = createOutgoingService({
   engineEnabled: config.engine.enabled,
   admissionStore,
   messageStore,
+  stageStore,
   metrics,
 });
 const incomingService = createIncomingService({
   delivery: config.delivery,
   baseService,
   messageStore,
+  stageStore,
   metrics,
 });
 
 /** The stage table's runtime half: what to do per stage, and the loop that drives it. */
-const stageMoves = createStageMoves({ delivery: config.delivery, metrics });
+const stageMoves = createStageMoves({
+  delivery: config.delivery,
+  metrics,
+  stageStore,
+});
 const stageActions = createStageActions({
   baseService,
   incomingService,
@@ -104,6 +110,7 @@ const lifecycleRunner = createLifecycleRunner({
   actions: stageActions,
   moves: stageMoves,
   messageStore,
+  stageStore,
   distribute: outgoingService.distributeToNetworkServers,
 });
 const tokenService = createTokenService({

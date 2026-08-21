@@ -2009,6 +2009,33 @@ unit tests pass a stub so they do not open a Redis connection.
 
 **Next:** C1.5 (`StageStore`).
 
+### 2026-08-21 — plan 002 item 8: C1.5 (`StageStore`)
+
+`createStageStore({ client })` in `src/lib/redis-repository/stage-store.ts` holds the
+Lua moves, expiry scan, requeue, cleanup, ready-queue list, and the zscore / hmget /
+zadd XX / multi primitives `enterRetry` and `reschedule` need. Injected into
+`createStageMoves` and `createLifecycleRunner`. Outgoing and the `retry` action do not
+import it: they gained `StageMoves.listReadyQueues` / `claimFromQueue` / `requeue`.
+
+`createRedisRepo` is gone. `redisRepo` is now `{ client }` so tests and `main.ts` still
+have one process-wide connection.
+
+**Orphan ZREM dropped** from `base.retryOrFail`. The runner already scrubs members
+whose hash is gone (A1). Ingress and send paths that hit a vanished hash return
+`orphaned` and leave the member for the next tick. `base` needs no StageStore of its
+own — it only takes one so it can construct `StageMoves` for purge / enterRetry.
+
+**Next:** C1 closed; branch 3 is C4 / docs compact / optionals.
+
+### 2026-08-22 — plan 002 item 8 closeout: delete `redisRepo`
+
+`src/lib/redis-repository/index.ts` was only `{ client: createRedisClient() }`.
+Deleted. The process-wide connection is `redis` from `client.ts`. Tests and `main.ts`
+import that. The three stores share `assertExecSucceeded`. Plan checklist items 4–8
+ticked (C2 and C1).
+
+**Next:** branch 3 (C4 / docs compact / optionals).
+
 
 
 

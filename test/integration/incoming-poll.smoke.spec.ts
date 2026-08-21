@@ -50,17 +50,17 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
 }
 
 describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('stub-pull: awaiting-task → poll success → message cleaned up', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPullRegistryWithSuccessFetch();
@@ -94,7 +94,7 @@ describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () =>
       await outgoingService.distributeToNetworkServers();
       const afterSend = await waitForPostSend(outgoingService, correlationId);
       expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
-      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
+      expect(await redis.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
       // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
       await sleep(5);
@@ -102,20 +102,20 @@ describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () =>
 
       const afterPoll = await outgoingService.getByCorrelationId(correlationId);
       expect(afterPoll).toBeNull();
-      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+      expect(await redis.zscore(awaitingKey, enqueued.id)).toBeNull();
       // Success cleanup must release the slot (key was stored on the message at claim).
-      expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(0);
+      expect(await redis.sismember(rateLimitKey, enqueued.id)).toBe(0);
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.client.zrem(queueKey, leftover.id);
+        await redis.zrem(queueKey, leftover.id);
         await purgeMessageReferences(leftover.id, { correlationId });
       }
       else if (enqueuedId) {
-        await redisRepo.client.srem(rateLimitKey, enqueuedId);
+        await redis.srem(rateLimitKey, enqueuedId);
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );

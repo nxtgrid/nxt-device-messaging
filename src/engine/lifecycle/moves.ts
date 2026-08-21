@@ -12,14 +12,14 @@
  */
 
 import type { DeliveryConfig } from '../../config/schema.js';
-import { deserializeMessage, rawHashToObject } from '../../lib/redis-repository/helpers.js';
-import { redisRepo } from '../../lib/redis-repository/index.js';
-import { redisKeys } from '../../lib/redis-repository/keys.js';
 import type {
   DeviceMessage,
   DeviceMessageDeliveryStatus,
   FailureReason,
 } from '../../lib/device-message/types.js';
+import { deserializeMessage, rawHashToObject } from '../../lib/redis-repository/helpers.js';
+import { redisKeys } from '../../lib/redis-repository/keys.js';
+import type { StageStore } from '../../lib/redis-repository/stage-store.js';
 import { logger } from '../../log.js';
 import type { MetricsRecorder } from '../../metrics/index.js';
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
@@ -51,6 +51,15 @@ export type StageMoves = {
   reschedule(args: RescheduleArgs): Promise<void>;
   /** The terminal move: out of every queue and index the message could be in. */
   purge(args: PurgeArgs): Promise<void>;
+  /** Initial queues the distributor should consider. */
+  listReadyQueues(): Promise<string[]>;
+  /**
+   * ZREM as an atomic claim. Cancel uses this before {@link StageMoves.purge}:
+   * a 0 means the distributor or tick already took the member.
+   */
+  claimFromQueue(queueKey: string, messageId: string): Promise<boolean>;
+  /** Backoff elapsed: retry queue → the plugin's ready queue at original priority. */
+  requeue(args: RequeueArgs): Promise<void>;
 };
 
 /** Arguments for {@link StageMoves.advance}. */
@@ -92,19 +101,28 @@ export type RescheduleArgs = {
   readonly plugin: DeliveryPlugin;
 };
 
+/** Arguments for {@link StageMoves.requeue}. */
+export type RequeueArgs = {
+  readonly messageId: string;
+  readonly fromKey: string;
+  readonly toKey: string;
+  readonly priority: number;
+};
+
 /** Dependencies for {@link createStageMoves}. */
 export type CreateStageMovesOptions = {
   readonly delivery: DeliveryConfig;
   readonly metrics: MetricsRecorder;
+  readonly stageStore: StageStore;
 };
 
 /**
  * Factory for stage transitions.
  *
- * @param options - Shared delivery knobs (retry ladder + index TTL) and the recorder
+ * @param options - Shared delivery knobs, recorder, and the stage Redis port
  */
 export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
-  const { delivery, metrics } = options;
+  const { delivery, metrics, stageStore } = options;
 
   /**
    * Move between two queues under the Lua ZREM gate.
@@ -120,7 +138,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
     deliveryQueueId?: string;
     indexKey?: string;
   }): Promise<boolean> {
-    const result = await redisRepo.client.moveMessageBetweenQueues(
+    const result = await stageStore.moveMessageBetweenQueues(
       args.fromKey,
       args.toKey,
       redisKeys.message(args.messageId),
@@ -146,7 +164,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         retryCount: 0,
       });
 
-      const raw = await redisRepo.client.fetchNextMessageInQueueAndMove(
+      const raw = await stageStore.fetchNextMessageInQueueAndMove(
         readyQueueKey,
         STAGES.ns.key(),
         redisKeys.listOfInitialQueuesToDistributeFrom(),
@@ -221,7 +239,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       failureHistory,
       plugin,
     }: EnterRetryArgs): Promise<void> {
-      const inQueue = await redisRepo.client.zscore(fromKey, messageId);
+      const inQueue = await stageStore.zscore(fromKey, messageId);
       if (inQueue === null) return;
 
       const messageKey = redisKeys.message(messageId);
@@ -231,13 +249,13 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         retryCount: currentRetryCount,
       });
 
-      const [ staleDeliveryQueueId, concurrencyRateLimitKey ] = await redisRepo.client.hmget(
+      const [ staleDeliveryQueueId, concurrencyRateLimitKey ] = await stageStore.hmget(
         messageKey,
         'deliveryQueueId',
         'concurrencyRateLimitKey',
       );
 
-      const pipeline = redisRepo.client.multi();
+      const pipeline = stageStore.multi();
 
       pipeline.hset(messageKey, {
         retryCount: currentRetryCount + 1,
@@ -276,9 +294,8 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         delivery,
       });
 
-      await redisRepo.client.zadd(
+      await stageStore.zaddXx(
         stageKeyFor(stage, plugin.id),
-        'XX',
         Date.now() + waitMs,
         message.id,
       );
@@ -296,10 +313,23 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         device: message.device,
       });
 
-      await redisRepo.messageFullCleanup(message, [
+      await stageStore.messageFullCleanup(message, [
         ...enumerateStageKeys([ message.pluginId ]),
         readyQueueKey,
       ]);
+    },
+
+    listReadyQueues() {
+      return stageStore.fetchQueuesWithMessages();
+    },
+
+    async claimFromQueue(queueKey, messageId) {
+      const removed = await stageStore.removeMessageFromQueue(queueKey, messageId);
+      return removed !== 0;
+    },
+
+    requeue({ messageId, fromKey, toKey, priority }) {
+      return stageStore.requeueMessage(messageId, fromKey, toKey, priority);
     },
   };
 }

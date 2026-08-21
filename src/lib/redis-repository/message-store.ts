@@ -14,30 +14,9 @@ import type {
   DeviceMessage,
   PhaseEnum,
 } from '../device-message/types.js';
+import { assertExecSucceeded } from './assert-exec.js';
 import { deserializeMessage, serializeCreateDeviceMessage } from './helpers.js';
 import { redisKeys } from './keys.js';
-
-/**
- * Fail if a MULTI/EXEC reply is missing or any command errored.
- *
- * @param results - `exec()` reply
- * @param operation - Label for the error message
- */
-function assertExecSucceeded(
-  results: [Error | null, unknown][] | null,
-  operation: string,
-): void {
-  if (results === null) {
-    throw new Error(`[REDIS] ${ operation } aborted (MULTI/EXEC returned null)`);
-  }
-  for (const [ err ] of results) {
-    if (err) {
-      throw err instanceof Error
-        ? err
-        : new Error(`[REDIS] ${ operation } failed: ${ String(err) }`);
-    }
-  }
-}
 
 /** Redis operations for the message hash and its lookup indexes. */
 export type MessageStore = {

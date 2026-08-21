@@ -18,6 +18,7 @@ import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
 import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -28,23 +29,24 @@ const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('stub-push: GW → ingress success → message cleaned up', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
-    const messageStore = createMessageStore({ client: redisRepo.client });
-    const baseService = createBaseService({ delivery, metrics, messageStore });
+    const messageStore = createMessageStore({ client: redis });
+    const stageStore = createStageStore({ client: redis });
+    const baseService = createBaseService({ delivery, metrics, messageStore, stageStore });
     const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
@@ -53,13 +55,15 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       inFlightSends,
       metrics,
       engineEnabled: false,
-      admissionStore: createAdmissionStore({ client: redisRepo.client }),
+      admissionStore: createAdmissionStore({ client: redis }),
       messageStore,
+      stageStore,
     });
     const incomingService = createIncomingService({
       delivery,
       baseService,
       messageStore,
+      stageStore,
       metrics,
     });
     const app = await buildApp({ metrics, incomingService, registry });
@@ -100,7 +104,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
       const afterAck = await outgoingService.getByCorrelationId(correlationId);
       expect(afterAck?.deliveryStatus).toBe('SENT_TO_DEVICE');
-      expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
+      expect(await redis.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
 
       const success = await app.inject({
         method: 'POST',
@@ -117,18 +121,18 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
       const afterSuccess = await outgoingService.getByCorrelationId(correlationId);
       expect(afterSuccess).toBeNull();
-      expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
+      expect(await redis.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
         await purgeMessageReferences(leftover.id, { correlationId });
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );
-      await redisRepo.client.del(redisKeys.lockForQueue(queueKey));
+      await redis.del(redisKeys.lockForQueue(queueKey));
       await app.close();
     }
   });

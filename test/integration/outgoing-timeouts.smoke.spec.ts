@@ -16,8 +16,9 @@ import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -110,7 +111,7 @@ async function sendAndExpireStage(
   const enqueued = await enqueueTracked(outgoing, correlationId);
   await outgoing.distributeToNetworkServers();
   await waitForDeliveryStatus(outgoing, correlationId, [ 'DELIVERED_TO_NS' ]);
-  await redisRepo.client.zadd(stageQueueKey, Date.now() - 1, enqueued.id);
+  await redis.zadd(stageQueueKey, Date.now() - 1, enqueued.id);
   return enqueued;
 }
 
@@ -125,7 +126,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   it('retries a message whose NS deadline passed with no send in flight', async () => {
@@ -136,11 +137,11 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     const correlationId = `ns-timeout-${ Date.now() }`;
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
-    await redisRepo.client.zrem(QUEUE_KEY, enqueued.id);
-    await redisRepo.client.hset(redisKeys.message(enqueued.id), {
+    await redis.zrem(QUEUE_KEY, enqueued.id);
+    await redis.hset(redisKeys.message(enqueued.id), {
       deliveryStatus: 'SENT_TO_NS',
     });
-    await redisRepo.client.zadd(QUEUE_NS_KEY, Date.now() - 1, enqueued.id);
+    await redis.zadd(QUEUE_NS_KEY, Date.now() - 1, enqueued.id);
 
     await runner.tick();
 
@@ -149,8 +150,8 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
       reason: 'Timed out waiting for Network Server to accept message',
       isFinal: false,
     });
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
   });
 
   it('holds the NS deadline open while the send is still in flight (A3)', async () => {
@@ -185,8 +186,8 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
 
     const stillSending = await outgoing.getByCorrelationId(correlationId);
     expect(stillSending?.deliveryStatus).toBe('SENT_TO_NS');
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
 
     // Shutdown's seam sees the same send the ns row is waiting on.
     expect(await outgoing.drainInFlightSends(10)).toBe(1);
@@ -196,11 +197,11 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     releaseFirstSend?.(lateDeliveryQueueId);
     await sleep(SEND_CONTINUATION_MS);
 
-    expect(await redisRepo.client.zscore(STAGES.relayNode.key(), enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(STAGES.relayNode.key(), enqueued.id)).not.toBeNull();
     expect(
-      await redisRepo.client.exists(redisKeys.indexExternalDeliveryId(lateDeliveryQueueId)),
+      await redis.exists(redisKeys.indexExternalDeliveryId(lateDeliveryQueueId)),
     ).toBe(1);
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
     expect(await outgoing.drainInFlightSends(10)).toBe(0);
 
     // The point of all of it: the meter was commanded once.
@@ -218,7 +219,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'Timed out waiting for relay node to transmit message to device',
     });
-    expect(await redisRepo.client.zscore(STAGES.relayNode.key(), enqueued.id)).toBeNull();
+    expect(await redis.zscore(STAGES.relayNode.key(), enqueued.id)).toBeNull();
   });
 
   it('extends a relay-node timeout while the network server still holds the command', async () => {
@@ -231,9 +232,9 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     await runner.tick();
 
     expect(calls.getRemoteStatus).toEqual([ enqueued.id ]);
-    const extendedScore = await redisRepo.client.zscore(STAGES.relayNode.key(), enqueued.id);
+    const extendedScore = await redis.zscore(STAGES.relayNode.key(), enqueued.id);
     expect(Number(extendedScore)).toBeGreaterThan(Date.now());
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 
     const stillWaiting = await outgoing.getByCorrelationId(correlationId);
     expect(stillWaiting?.deliveryStatus).toBe('DELIVERED_TO_NS');
@@ -253,13 +254,17 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
       deliveryPattern: 'PUSH',
       tuning: { deviceInFlightTimeoutMs: 0 },
     });
-    const moves = createStageMoves({ delivery: baseDelivery, metrics: noopMetrics });
+    const moves = createStageMoves({
+      delivery: baseDelivery,
+      metrics: noopMetrics,
+      stageStore: createStageStore({ client: redis }),
+    });
     await moves.advance({
       messageId: enqueued.id,
       plugin,
       from: 'relayNode',
     });
-    expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
 
     await runner.tick();
 
@@ -267,6 +272,6 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'Timed out waiting for device response after transmission',
     });
-    expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
+    expect(await redis.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
   });
 });

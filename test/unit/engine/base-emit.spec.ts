@@ -3,18 +3,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import type { MessageStore } from '#src/lib/redis-repository/message-store.js';
+import type { StageStore } from '#src/lib/redis-repository/stage-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../../helpers/noop-metrics.js';
 
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
-/** Emit-only specs do not hit Redis; the store is required on the factory. */
+const unused = (): never => {
+  throw new Error('unused');
+};
+
+/** Emit-only specs do not hit Redis; the stores are required on the factory. */
 const unusedMessageStore: MessageStore = {
-  enqueueDeviceMessage: () => Promise.reject(new Error('unused')),
+  enqueueDeviceMessage: unused,
   getMessageById: async () => null,
   getMessageFromCorrelationId: async () => null,
   getAllMessagesForCorrelationId: async () => [],
   getMessageIdFromDeliveryQueueId: async () => undefined,
+};
+
+const unusedStageStore: StageStore = {
+  moveMessageBetweenQueues: unused,
+  fetchNextMessageInQueueAndMove: unused,
+  getExpiredMessagesInQueue: unused,
+  removeMessageFromQueue: unused,
+  requeueMessage: unused,
+  messageFullCleanup: unused,
+  fetchQueuesWithMessages: unused,
+  zscore: unused,
+  hmget: unused,
+  zaddXx: unused,
+  multi: unused,
 };
 
 describe('createBaseService emitDeliveryEvent', () => {
@@ -24,6 +43,7 @@ describe('createBaseService emitDeliveryEvent', () => {
       delivery,
       webhook: { storeAndEmit },
       messageStore: unusedMessageStore,
+      stageStore: unusedStageStore,
       metrics: noopMetrics,
     });
 
@@ -42,6 +62,7 @@ describe('createBaseService emitDeliveryEvent', () => {
     const baseService = createBaseService({
       delivery,
       messageStore: unusedMessageStore,
+      stageStore: unusedStageStore,
       metrics: noopMetrics,
     });
 

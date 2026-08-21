@@ -21,17 +21,17 @@ const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 describe.skipIf(!shouldRun)('outgoing retry requeue via runner.tick', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('requeues a due TO_RETRY message and kicks distribute', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
@@ -58,15 +58,15 @@ describe.skipIf(!shouldRun)('outgoing retry requeue via runner.tick', () => {
       });
 
       // Park in retry with an already-due score (resolution step 4).
-      await redisRepo.client.zrem(queueKey, enqueued.id);
-      await redisRepo.client.hset(redisKeys.message(enqueued.id), {
+      await redis.zrem(queueKey, enqueued.id);
+      await redis.hset(redisKeys.message(enqueued.id), {
         deliveryStatus: 'TO_RETRY',
       });
-      await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() - 1, enqueued.id);
+      await redis.zadd(QUEUE_RETRY_KEY, Date.now() - 1, enqueued.id);
 
       await runner.tick();
 
-      expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+      expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 
       // Requeue restores QUEUED; fire-and-forget distribute may already have picked it.
       await sleep(50);
@@ -79,7 +79,7 @@ describe.skipIf(!shouldRun)('outgoing retry requeue via runner.tick', () => {
       if (leftover) {
         await purgeMessageReferences(leftover.id, { correlationId });
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );

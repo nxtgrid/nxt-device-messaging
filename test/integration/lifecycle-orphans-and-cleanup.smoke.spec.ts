@@ -22,8 +22,9 @@ import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
@@ -157,7 +158,7 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   describe('orphan scrubbing', () => {
@@ -169,11 +170,11 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
     ])('scrubs an orphan from the $stage queue', async ({ queueKey }) => {
       const { runner } = createPushHarness();
       const orphanId = trackedOrphanId();
-      await redisRepo.client.zadd(queueKey, Date.now() - 1, orphanId);
+      await redis.zadd(queueKey, Date.now() - 1, orphanId);
 
       await runner.tick();
 
-      expect(await redisRepo.client.zscore(queueKey, orphanId)).toBeNull();
+      expect(await redis.zscore(queueKey, orphanId)).toBeNull();
     });
 
     it('scrubs an orphan from the awaiting-task queue (A1)', async () => {
@@ -182,11 +183,11 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
       // existed, on every tick, forever. The runner scrubs every stage the same way.
       const { runner } = createPullHarness();
       const orphanId = trackedOrphanId();
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() - 1, orphanId);
+      await redis.zadd(AWAITING_TASK_KEY, Date.now() - 1, orphanId);
 
       await runner.tick();
 
-      expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, orphanId)).toBeNull();
+      expect(await redis.zscore(AWAITING_TASK_KEY, orphanId)).toBeNull();
     });
   });
 
@@ -240,7 +241,7 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
       const agedId = ulid(Date.now() - AGED_MESSAGE_OFFSET_MS);
       trash.push({ id: agedId, correlationId });
 
-      await redisRepo.client.hset(redisKeys.message(agedId), {
+      await redis.hset(redisKeys.message(agedId), {
         commandType: 'READ_CREDIT',
         priority: 1,
         pluginId: PULL_PLUGIN_ID,
@@ -249,14 +250,14 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
         deliveryStatus: 'DELIVERED_TO_NS',
         deliveryQueueId: 'ext-aged',
       });
-      await redisRepo.client.set(
+      await redis.set(
         redisKeys.indexCorrelationId(correlationId),
         redisKeys.message(agedId),
       );
       // Due, because the age cap is now a property of the awaiting-task stage rather than
       // a separate full-queue scan (ADR-008 §9): an aged message is caught on its next
       // poll, which the ladder puts at most 30s out against a two-day cap.
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() - 1, agedId);
+      await redis.zadd(AWAITING_TASK_KEY, Date.now() - 1, agedId);
 
       await runner.tick();
 
@@ -281,10 +282,14 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
         id: PUSH_PLUGIN_ID,
         deliveryPattern: 'PUSH',
       });
-      const moves = createStageMoves({ delivery: baseDelivery, metrics: noopMetrics });
+      const moves = createStageMoves({
+        delivery: baseDelivery,
+        metrics: noopMetrics,
+        stageStore: createStageStore({ client: redis }),
+      });
       const correlationId = `cleanup-partial-${ Date.now() }`;
       const enqueued = await enqueuePushTracked(outgoing, correlationId);
-      await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);
+      await redis.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);
 
       await moves.purge({ message: enqueued, plugin });
 

@@ -15,6 +15,7 @@ import {
 } from '#src/engine/webhook/store.js';
 import { webhookRedisKeys } from '#src/engine/webhook/keys.js';
 import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 
@@ -32,26 +33,26 @@ const WEBHOOK_CONFIG = {
 } as const;
 
 describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('storeAndEmit via base drains and POSTs the WebhookEvent', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
 
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const metrics = noopMetrics;
-    const store = createWebhookStore({ client: redisRepo.client });
+    const store = createWebhookStore({ client: redis });
     const webhookService = createWebhookService({
       config: WEBHOOK_CONFIG,
       store,
@@ -60,7 +61,8 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
     const baseService = createBaseService({
       delivery,
       webhook: webhookService,
-      messageStore: createMessageStore({ client: redisRepo.client }),
+      messageStore: createMessageStore({ client: redis }),
+      stageStore: createStageStore({ client: redis }),
       metrics,
     });
 
@@ -97,15 +99,15 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
 
       await vi.waitFor(async () => {
         expect(
-          await redisRepo.client.zscore(webhookRedisKeys.pending(), body.eventId),
+          await redis.zscore(webhookRedisKeys.pending(), body.eventId),
         ).toBeNull();
       });
     }
     finally {
       // Catch leftovers if POST never ran (emit enqueued but drain failed).
-      const pendingIds = await redisRepo.client.zrange(webhookRedisKeys.pending(), 0, -1);
+      const pendingIds = await redis.zrange(webhookRedisKeys.pending(), 0, -1);
       for (const eventId of pendingIds) {
-        const raw = await redisRepo.client.get(webhookRedisKeys.payload(eventId));
+        const raw = await redis.get(webhookRedisKeys.payload(eventId));
         const record = parseWebhookStoredRecord(raw);
         if (record?.event.message.correlationId === correlationId) {
           ownedEventIds.add(eventId);
@@ -113,7 +115,7 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
       }
 
       if (ownedEventIds.size > 0) {
-        const multi = redisRepo.client.multi();
+        const multi = redis.multi();
         for (const eventId of ownedEventIds) {
           multi.zrem(webhookRedisKeys.pending(), eventId);
           multi.del(webhookRedisKeys.payload(eventId));

@@ -14,7 +14,7 @@ import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
 import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
@@ -109,7 +109,7 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   it('parks a thrown send in the retry queue and clears the NS stage', async () => {
@@ -131,9 +131,9 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
       isFinal: false,
     });
     // The failed attempt must not be left holding a stage slot.
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
 
-    const retryScore = await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id);
+    const retryScore = await redis.zscore(QUEUE_RETRY_KEY, enqueued.id);
     expect(retryScore).not.toBeNull();
     // Backoff is base + up to 50% jitter, so only the order of magnitude is assertable.
     expect(Number(retryScore)).toBeGreaterThan(Date.now() - 1_000);
@@ -178,7 +178,7 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
     await waitForMessageGone(outgoing, correlationId);
 
     // skipRetry means terminal on the first attempt, with retries still available.
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 
     const failures = recorder.withStatus('DELIVERY_FAILED');
     expect(failures).toHaveLength(1);

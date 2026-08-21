@@ -14,6 +14,7 @@ import type {
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
+import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type {
@@ -65,6 +66,7 @@ export type CreateIncomingServiceOptions = {
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
   readonly messageStore: MessageStore;
+  readonly stageStore: StageStore;
   readonly metrics: MetricsRecorder;
 };
 
@@ -74,11 +76,11 @@ export type CreateIncomingServiceOptions = {
  * Polling is not here: the `awaitingTask` stage action drives it (ADR-008 §3), and calls
  * back into {@link IncomingService.processEvent} with whatever the vendor returned.
  *
- * @param options - Delivery knobs, peer {@link BaseService}, message store, metrics
+ * @param options - Delivery knobs, peer {@link BaseService}, stores, metrics
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
-  const { delivery, baseService, messageStore, metrics } = options;
-  const moves = createStageMoves({ delivery, metrics });
+  const { delivery, baseService, messageStore, stageStore, metrics } = options;
+  const moves = createStageMoves({ delivery, metrics, stageStore });
 
   /**
    * Process a parsed incoming event from PUSH ingress or the `awaitingTask` poll.

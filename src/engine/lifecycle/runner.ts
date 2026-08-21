@@ -15,8 +15,8 @@
 import { decodeTime } from 'ulid';
 
 import type { DeviceMessage } from '../../lib/device-message/types.js';
-import { redisRepo } from '../../lib/redis-repository/index.js';
 import type { MessageStore } from '../../lib/redis-repository/message-store.js';
+import type { StageStore } from '../../lib/redis-repository/stage-store.js';
 import { logger } from '../../log.js';
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../../plugins/registry.js';
@@ -39,6 +39,7 @@ export type CreateLifecycleRunnerOptions = {
   readonly actions: StageActions;
   readonly moves: StageMoves;
   readonly messageStore: MessageStore;
+  readonly stageStore: StageStore;
   /**
    * Ready-queue distribution. Not a stage (ADR-008 §2) but the same cadence, so the tick
    * kicks it once at the end — fire-and-forget, same as before the stage table.
@@ -49,12 +50,12 @@ export type CreateLifecycleRunnerOptions = {
 /**
  * Factory for the stage runner.
  *
- * @param options - Registry, the stage actions, stage moves, message store, optional distribute kick
+ * @param options - Registry, stage actions, stage moves, stores, optional distribute kick
  */
 export function createLifecycleRunner(
   options: CreateLifecycleRunnerOptions,
 ): LifecycleRunner {
-  const { registry, actions, moves, messageStore, distribute } = options;
+  const { registry, actions, moves, messageStore, stageStore, distribute } = options;
 
   /** Queue keys with a drain still in progress — one guard per row, not one per tick. */
   const draining = new Set<string>();
@@ -104,12 +105,12 @@ export function createLifecycleRunner(
    * @param now - The tick's clock reading, shared by every row
    */
   async function _drain(queue: StageQueue, now: number): Promise<void> {
-    const dueIds = await redisRepo.getExpiredMessagesInQueue(queue.key, now);
+    const dueIds = await stageStore.getExpiredMessagesInQueue(queue.key, now);
 
     for (const messageId of dueIds) {
       const message = await messageStore.getMessageById(messageId);
       if (!message) {
-        await redisRepo.removeMessageFromQueue(queue.key, messageId);
+        await stageStore.removeMessageFromQueue(queue.key, messageId);
         continue;
       }
 
@@ -121,7 +122,7 @@ export function createLifecycleRunner(
           pluginId: message.pluginId,
           stage: queue.stage.name,
         }, 'member of a stage whose plugin is not a registered delivery plugin, removing');
-        await redisRepo.removeMessageFromQueue(queue.key, messageId);
+        await stageStore.removeMessageFromQueue(queue.key, messageId);
         continue;
       }
 
@@ -129,7 +130,7 @@ export function createLifecycleRunner(
       const outcome = await _act(queue, message, plugin, messageAgeMs);
 
       if (outcome === 'orphaned') {
-        await redisRepo.removeMessageFromQueue(queue.key, messageId);
+        await stageStore.removeMessageFromQueue(queue.key, messageId);
         continue;
       }
 

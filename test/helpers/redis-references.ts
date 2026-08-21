@@ -12,8 +12,8 @@
 
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import type { PhaseEnum } from '#src/lib/device-message/types.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
 
 /** Fixed-name stage queues, from the production constants rather than literals. */
 const STAGE_QUEUE_KEYS = [
@@ -38,7 +38,7 @@ export type MessageIdentity = {
 
 /** Every sorted-set key that could hold a message id as a member. */
 async function allQueueKeys(): Promise<string[]> {
-  const client = redisRepo.client;
+  const client = redis;
   const [ awaitingTask, initial ] = await Promise.all([
     client.keys(AWAITING_TASK_PATTERN),
     client.keys(INITIAL_QUEUE_PATTERN),
@@ -73,7 +73,7 @@ export async function findMessageReferences(
   messageId: string,
   identity: MessageIdentity = {},
 ): Promise<string[]> {
-  const client = redisRepo.client;
+  const client = redis;
   const found: string[] = [];
 
   const messageKey = redisKeys.message(messageId);
@@ -107,7 +107,7 @@ export async function purgeMessageReferences(
   messageId: string,
   identity: MessageIdentity = {},
 ): Promise<void> {
-  const client = redisRepo.client;
+  const client = redis;
   const multi = client.multi();
 
   multi.del(redisKeys.message(messageId));
@@ -134,7 +134,7 @@ export async function purgeMessageReferences(
  * @param prefix - External delivery id prefix (the programmable plugin emits `ext-`)
  */
 export async function purgeExternalDeliveryIndexes(prefix: string): Promise<void> {
-  const client = redisRepo.client;
+  const client = redis;
   const keys = await client.keys(redisKeys.indexExternalDeliveryId(`${ prefix }*`));
   if (keys.length > 0) await client.del(...keys);
 }
@@ -145,7 +145,7 @@ export async function purgeExternalDeliveryIndexes(prefix: string): Promise<void
  * @param queueKey - Initial-queue Redis key the spec enqueued into
  */
 export async function purgeInitialQueue(queueKey: string): Promise<void> {
-  const client = redisRepo.client;
+  const client = redis;
   const multi = client.multi();
   multi.del(queueKey);
   multi.del(redisKeys.lockForQueue(queueKey));

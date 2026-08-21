@@ -14,9 +14,9 @@ import type {
   DeviceMessage,
 } from '../lib/device-message/types.js';
 import type { AdmissionStore } from '../lib/redis-repository/admission-store.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
+import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
@@ -101,6 +101,7 @@ export type CreateOutgoingServiceOptions = {
   readonly engineEnabled: boolean;
   readonly admissionStore: AdmissionStore;
   readonly messageStore: MessageStore;
+  readonly stageStore: StageStore;
   readonly metrics: MetricsRecorder;
 };
 
@@ -118,9 +119,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     engineEnabled,
     admissionStore,
     messageStore,
+    stageStore,
     metrics,
   } = options;
-  const moves = createStageMoves({ delivery, metrics });
+  const moves = createStageMoves({ delivery, metrics, stageStore });
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -261,7 +263,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    * or custom hooks — never inferred from the human `kind` segment of the queue key.
    */
   async function distributeToNetworkServers(): Promise<void> {
-    const activeQueues = await redisRepo.fetchQueuesWithMessages();
+    const activeQueues = await moves.listReadyQueues();
 
     await Promise.all(activeQueues.map(async queueKey => {
       const pluginId = getPluginIdFromInitialQueueKey(queueKey);
@@ -322,8 +324,8 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         device: message.device,
       });
 
-    const removed = await redisRepo.removeMessageFromQueue(queueKey, message.id);
-    if (removed === 0) return false;
+    const claimed = await moves.claimFromQueue(queueKey, message.id);
+    if (!claimed) return false;
 
     await moves.purge({ message, plugin });
     metrics.recordMessageTerminal('CANCELLED', message.retryCount ?? 0);

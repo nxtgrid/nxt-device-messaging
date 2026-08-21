@@ -15,8 +15,8 @@ import type {
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
+import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { DeliveryPlugin } from '../plugins/plugin.interface.js';
 import { createStageMoves } from './lifecycle/moves.js';
@@ -58,17 +58,18 @@ export type CreateBaseServiceOptions = {
    */
   readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
   readonly messageStore: MessageStore;
+  readonly stageStore: StageStore;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Factory for shared delivery-outcome helpers (no runtime import).
  *
- * @param options - Delivery knobs, optional webhook messenger, message store, metrics
+ * @param options - Delivery knobs, optional webhook messenger, stores, metrics
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { delivery, webhook, messageStore, metrics } = options;
-  const moves = createStageMoves({ delivery, metrics });
+  const { delivery, webhook, messageStore, stageStore, metrics } = options;
+  const moves = createStageMoves({ delivery, metrics, stageStore });
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;
@@ -96,7 +97,9 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     const message = await messageStore.getMessageById(messageId);
 
     if (!message) {
-      await redisRepo.removeMessageFromQueue(currentQueueKey, messageId);
+      // The runner scrubs members whose hash is gone (A1). Ingress and send
+      // paths that hit a vanished hash report `orphaned` and leave the member;
+      // the next tick removes it.
       return 'orphaned';
     }
 

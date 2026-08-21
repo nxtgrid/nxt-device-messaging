@@ -19,8 +19,8 @@ import type {
   DeviceMessageDevice,
   ParsedIncomingEvent,
 } from '#src/lib/device-message/types.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
 import { buildConcurrencyRateLimitKey } from '#src/plugins/_shared/initial-queue-key.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
@@ -130,7 +130,7 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   it('pushes out the next poll time while the vendor is still working', async () => {
@@ -141,7 +141,7 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
     await runner.tick();
 
     expect(calls.fetchStatus).toEqual([ enqueued.id ]);
-    const nextPollAt = Number(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id));
+    const nextPollAt = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
     expect(nextPollAt).toBeGreaterThan(Date.now() + PENDING_POLL_DELAY_MS - 1_000);
     expect(nextPollAt).toBeLessThan(Date.now() + PENDING_POLL_DELAY_MS + 1_000);
   });
@@ -156,11 +156,11 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
     });
     const correlationId = `poll-error-${ Date.now() }`;
     const enqueued = await enqueueAndAwaitTask(outgoing, correlationId);
-    const dueBefore = Number(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id));
+    const dueBefore = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
 
     await runner.tick();
 
-    const dueAfter = Number(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id));
+    const dueAfter = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
     expect(dueAfter).toBeGreaterThan(dueBefore);
     expect(dueAfter).toBeGreaterThan(Date.now() + PENDING_POLL_DELAY_MS - 1_000);
   });
@@ -196,7 +196,7 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
     }));
     const correlationId = `poll-failed-${ Date.now() }`;
     const enqueued = await enqueueAndAwaitTask(outgoing, correlationId);
-    expect(await redisRepo.client.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(1);
+    expect(await redis.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(1);
 
     await runner.tick();
 
@@ -205,9 +205,9 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
       reason: 'meter rejected the command',
       isFinal: false,
     });
-    expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(AWAITING_TASK_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
     // A held concurrency slot would cap the plugin's throughput forever.
-    expect(await redisRepo.client.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(0);
+    expect(await redis.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(0);
   });
 });

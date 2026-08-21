@@ -1,7 +1,7 @@
 # Plan 002 — Architecture review and deepening
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008 written; C2 landed** (C2.1–C2.6). Next is **C1**.
+Branch 2: **ADR-008, C2, and C1 landed.** Next is branch 3 (C4, docs compact, optionals).
 **Branch:** `refactor/message-lifecycle-stage-table` (branch 2), cut from `main` after branch 1
 merged as PR #12. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
@@ -49,11 +49,11 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 2b | **B1b** — thicken the engine integration suite *against current behaviour* | 1 | Grok 4.6 | 1 | ☑ 2026-08-20 |
 | 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | 1 | ☑ 2026-08-20 |
 | 3 | **ADR-008** — message lifecycle stage table (first commit on branch 2) | 2 | Claude Opus 5 | 2 | ☑ 2026-08-20 |
-| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☐ |
-| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☐ folded into 4 |
-| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☐ folded into 4 |
-| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☐ folded into 4 |
-| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☐ |
+| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☑ 2026-08-21 |
+| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
 | 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
@@ -74,7 +74,7 @@ needing a prior fix; **A1–A5** are folded into C2 by design. **C4 was not pull
 
 **Branch 2 — `refactor/message-lifecycle-stage-table`**, cut from `main` after branch 1 merged.
 The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first commit, then 4,
-with 5–8 folded in. **C2 landed; C1 in progress.**
+with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
 directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
@@ -796,3 +796,9 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-21** — **C1.4 landed.** `createMessageStore({ client })` — five CRUD methods,
   injected into outgoing, incoming, base, and the runner. Incoming no longer imports
   `redisRepo`. Next: **C1.5**.
+- **2026-08-21** — **C1.5 landed.** `createStageStore({ client })`. `createRedisRepo` gone;
+  `redisRepo` is `{ client }`. Orphan ZREM dropped from `base.retryOrFail` (runner A1).
+  **C1 closed.**
+- **2026-08-22** — **C1 closeout.** Deleted `redis-repository/index.ts`. Process-wide
+  client is `redis` from `client.ts`. Shared `assertExecSucceeded`. Checklist items
+  4–8 ticked.

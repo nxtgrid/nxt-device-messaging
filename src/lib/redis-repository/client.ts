@@ -1,9 +1,11 @@
 /**
- * @fileoverview Redis client factory (ADR-002 §8, plan 002 C1.2).
+ * @fileoverview Redis client (ADR-002 §8, plan 002 C1).
  *
- * The composition root creates one client. Lua commands are registered here so every
- * caller sees `fetchNextMessageInQueueAndMove` / `moveMessageBetweenQueues` on the type.
- * Connecting at import time was the old global; this module has no module-level client.
+ * Lua commands are registered here so every caller sees
+ * `fetchNextMessageInQueueAndMove` / `moveMessageBetweenQueues` on the type.
+ * {@link redis} is the one process-wide connection — main and tests import it.
+ * {@link createRedisClient} builds another connection; do not call it in the
+ * same process as {@link redis}.
  */
 
 import { dirname, join } from 'node:path';
@@ -103,7 +105,7 @@ function createRedisClientOptions() {
 /**
  * One Redis client with the queue Lua commands registered.
  *
- * Call this from the composition root. A second call is a second connection — do not.
+ * Prefer {@link redis}. A second call is a second connection.
  *
  * @returns Connected iovalkey client
  */
@@ -125,3 +127,9 @@ export function createRedisClient(): Redis {
 
   return client;
 }
+
+/**
+ * Process-wide client. Main and tests import this so they share one connection.
+ */
+export const redis = createRedisClient();
+

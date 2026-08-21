@@ -9,7 +9,6 @@
  */
 
 import type { DeliveryConfig } from '../../config/schema.js';
-import { redisRepo } from '../../lib/redis-repository/index.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
 import type { MetricsRecorder } from '../../metrics/index.js';
@@ -177,12 +176,12 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
         device: message.device,
       });
 
-      await redisRepo.requeueMessage(
-        message.id,
-        QUEUE_RETRY_KEY,
-        destination,
-        message.priority,
-      );
+      await moves.requeue({
+        messageId: message.id,
+        fromKey: QUEUE_RETRY_KEY,
+        toKey: destination,
+        priority: message.priority,
+      });
 
       return 'movedOn';
     },

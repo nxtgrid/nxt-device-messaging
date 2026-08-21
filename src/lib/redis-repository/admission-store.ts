@@ -8,29 +8,8 @@
 import type { Redis } from 'iovalkey';
 
 import { logger } from '../../log.js';
+import { assertExecSucceeded } from './assert-exec.js';
 import { redisKeys } from './keys.js';
-
-/**
- * Fail if a MULTI/EXEC reply is missing or any command errored.
- *
- * @param results - `exec()` reply
- * @param operation - Label for the error message
- */
-function assertExecSucceeded(
-  results: [Error | null, unknown][] | null,
-  operation: string,
-): void {
-  if (results === null) {
-    throw new Error(`[REDIS] ${ operation } aborted (MULTI/EXEC returned null)`);
-  }
-  for (const [ err ] of results) {
-    if (err) {
-      throw err instanceof Error
-        ? err
-        : new Error(`[REDIS] ${ operation } failed: ${ String(err) }`);
-    }
-  }
-}
 
 /** Redis operations for spacing locks and concurrency admission. */
 export type AdmissionStore = {
