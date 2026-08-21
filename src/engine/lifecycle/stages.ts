@@ -167,6 +167,19 @@ export function stageForStatus(
 }
 
 /**
+ * The Redis key of one stage for one plugin.
+ *
+ * The single place that resolves the two key shapes, so no caller has to ask whether a
+ * stage is plugin-namespaced before it can name a queue.
+ *
+ * @param stage - The stage to build a key for
+ * @param pluginId - Owning plugin; ignored by core stages
+ */
+export function stageKeyFor(stage: StageDefinition, pluginId: PluginId): string {
+  return stage.isPerPlugin ? stage.key(pluginId) : stage.key();
+}
+
+/**
  * How long a member that is still waiting in this stage should wait again.
  *
  * The single home of the `rescheduleWaitMs ?? entryWaitMs` fallback, so the runner never

@@ -1,11 +1,12 @@
 /**
  * @fileoverview Scrape-time Redis queue depths (ADR-005 §5). Read-only; no new keys.
  *
- * Known stage keys match `src/lib/queue-moving.ts` / `queue-moving.push.ts` and
+ * Known stage keys match `src/engine/lifecycle/stages.ts` and
  * `webhookRedisKeys.pending()`. Initial queues come from
  * `queues_to_distribute_from`; PULL awaiting-task keys from enabled plugin ids.
  */
 
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '../engine/lifecycle/stages.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 
 /** One sorted-set cardinality to export as `device_messaging_queue_depth{queue}`. */
@@ -26,14 +27,14 @@ type QueueDepthPipeline = {
 };
 
 /**
- * Fixed in-flight / retry / webhook keys. Must stay aligned with queue-moving
- * and `webhook:pending` — listed here so this module does not import Redis.
+ * Fixed in-flight / retry / webhook keys. Must stay aligned with the stage
+ * table and `webhook:pending`.
  */
 const KNOWN_STAGE_KEYS = [
-  'queue_in_flight_to_ns',
-  'queue_in_flight_to_relay_node',
-  'queue_in_flight_to_device',
-  'queue_awaiting_retry',
+  QUEUE_NS_KEY,
+  STAGES.relayNode.key(),
+  STAGES.device.key(),
+  QUEUE_RETRY_KEY,
   'webhook:pending',
 ] as const;
 

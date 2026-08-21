@@ -13,13 +13,13 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
+import { QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
 import type {
   DeviceMessage,
   DeviceMessageDevice,
   ParsedIncomingEvent,
 } from '#src/lib/device-message/types.js';
-import { QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';

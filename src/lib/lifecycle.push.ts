@@ -8,11 +8,28 @@
  * Functions return data; side effects (retryOrFail) are handled by the caller.
  */
 
+import { decodeTime } from 'ulid';
+
+import type { StageMoves } from '../engine/lifecycle/moves.js';
+import { STAGES } from '../engine/lifecycle/stages.js';
 import { logger } from '../log.js';
 import type { PushPlugin } from '../plugins/plugin.interface.js';
 import type { DeviceMessage } from './device-message/types.js';
-import { PUSH_QUEUE_KEYS, PUSH_TIMEOUT_REASONS, moveQueuePush } from './queue-moving.push.js';
 import { redisRepo } from './redis-repository/index.js';
+
+/** PUSH pattern in-flight queue keys (for timeout scanning). */
+export const PUSH_QUEUE_KEYS = [
+  STAGES.relayNode.key(),
+  STAGES.device.key(),
+] as const;
+
+/** Human-readable timeout reasons for each PUSH queue stage. */
+export const PUSH_TIMEOUT_REASONS: Readonly<Record<string, string>> = {
+  queue_in_flight_to_relay_node:
+    'Timed out waiting for relay node to transmit message to device',
+  queue_in_flight_to_device:
+    'Timed out waiting for device response after transmission',
+};
 
 /** Result of a PUSH pattern timeout: a message that needs retryOrFail. */
 export type PushTimeoutResult = {
@@ -53,12 +70,14 @@ export async function getPushTimeouts(now: number): Promise<PushTimeoutResult[]>
  * @param messageId - ULID of the message
  * @param message - The full message (already fetched by caller)
  * @param plugin - Owning PUSH plugin (`outgoing.getRemoteStatus` + `tuning`)
+ * @param moves - Stage transitions used to reschedule the relay-node wait
  * @returns true if timeout was extended, false if should proceed to retryOrFail
  */
 export async function maybeExtendMessageInRelayNodeQueue(
   messageId: string,
   message: DeviceMessage,
   plugin: PushPlugin,
+  moves: StageMoves,
 ): Promise<boolean> {
   const getRemoteStatus = plugin.outgoing.getRemoteStatus;
   if (!getRemoteStatus) return false;
@@ -72,6 +91,11 @@ export async function maybeExtendMessageInRelayNodeQueue(
     return false;
   }
 
-  await moveQueuePush.extendRelayNodeQueueTimeout(messageId, plugin.tuning);
+  await moves.reschedule({
+    stage: STAGES.relayNode,
+    message,
+    messageAgeMs: Date.now() - decodeTime(message.id),
+    plugin,
+  });
   return true;
 }

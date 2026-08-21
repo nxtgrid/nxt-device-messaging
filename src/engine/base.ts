@@ -5,17 +5,14 @@
  * thin-forwards to the outbound webhook messenger when configured (ADR-003 §6).
  *
  * Concurrency admission: the rate-limit key is stored on the message hash at claim
- * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `fromAnyToRetry` SREM it.
+ * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `enterRetry` SREM it.
  */
 
 import { isNotNil } from 'ramda';
 import type { DeliveryConfig } from '../config/schema.js';
-import { moveQueue, QUEUE_RETRY_KEY } from '../lib/queue-moving.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
-import { calculateBackoffDelay } from '../lib/retry-helpers.js';
 import type {
   DeviceMessage,
-  DeviceMessageDeliveryStatus,
   DeviceMessageDevice,
   FailureContext,
   FailureReason,
@@ -23,6 +20,8 @@ import type {
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { PluginRegistry } from '../plugins/registry.js';
+import { createStageMoves } from './lifecycle/moves.js';
+import { QUEUE_RETRY_KEY } from './lifecycle/stages.js';
 import type { WebhookService } from './webhook/service.js';
 
 /** Shared retry / requeue / adopter-notify operations used by peers. */
@@ -59,6 +58,7 @@ export type CreateBaseServiceOptions = {
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { registry, delivery, webhook, metrics } = options;
+  const moves = createStageMoves({ delivery });
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;
@@ -116,22 +116,20 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       return;
     }
 
-    const backoffMs = calculateBackoffDelay(currentRetryCount, delivery);
-    const newRetryCount = currentRetryCount + 1;
-    const nextRetryAt = Date.now() + backoffMs;
+    const plugin = registry.get(message.pluginId);
+    if (!plugin || plugin.deliveryPattern === 'NONE') {
+      logger.warn({ module: 'base', messageId }, 'unknown plugin for retry, removing');
+      await redisRepo.removeMessageFromQueue(currentQueueKey, messageId);
+      return;
+    }
 
-    const updateProps = {
-      retryCount: newRetryCount,
-      deliveryStatus: 'TO_RETRY' as DeviceMessageDeliveryStatus,
-      failureHistory: newFailureHistory,
-    };
-
-    await moveQueue.fromAnyToRetry(
+    await moves.enterRetry({
       messageId,
-      currentQueueKey,
-      nextRetryAt,
-      updateProps,
-    );
+      fromKey: currentQueueKey,
+      currentRetryCount,
+      failureHistory: newFailureHistory,
+      plugin,
+    });
   }
 
   /**

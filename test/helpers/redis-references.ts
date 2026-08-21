@@ -10,8 +10,7 @@
  * something to copy into `src/`.
  */
 
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
-import { QUEUE_DEVICE_KEY, QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import type { PhaseEnum } from '#src/lib/device-message/types.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
@@ -19,8 +18,8 @@ import { redisRepo } from '#src/lib/redis-repository/index.js';
 /** Fixed-name stage queues, from the production constants rather than literals. */
 const STAGE_QUEUE_KEYS = [
   QUEUE_NS_KEY,
-  QUEUE_RELAY_NODE_KEY,
-  QUEUE_DEVICE_KEY,
+  STAGES.relayNode.key(),
+  STAGES.device.key(),
   QUEUE_RETRY_KEY,
 ] as const;
 

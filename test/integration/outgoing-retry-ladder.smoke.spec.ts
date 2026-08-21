@@ -11,9 +11,9 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';

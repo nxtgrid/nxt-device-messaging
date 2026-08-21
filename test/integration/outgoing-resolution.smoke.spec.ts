@@ -11,8 +11,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import { QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
-import { QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';

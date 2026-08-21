@@ -13,8 +13,8 @@ import { buildApp } from '#src/app.js';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import { createIncomingService } from '#src/engine/incoming.js';
+import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
-import { QUEUE_DEVICE_KEY } from '#src/lib/queue-moving.push.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -91,7 +91,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
       const afterAck = await outgoingService.getByCorrelationId(correlationId);
       expect(afterAck?.deliveryStatus).toBe('SENT_TO_DEVICE');
-      expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).not.toBeNull();
+      expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
 
       const success = await app.inject({
         method: 'POST',
@@ -108,7 +108,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
       const afterSuccess = await outgoingService.getByCorrelationId(correlationId);
       expect(afterSuccess).toBeNull();
-      expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).toBeNull();
+      expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);

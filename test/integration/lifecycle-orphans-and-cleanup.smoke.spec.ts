@@ -18,10 +18,9 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
-import { QUEUE_DEVICE_KEY, QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -179,8 +178,8 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
   describe('orphan scrubbing', () => {
     it.each([
       { stage: 'NS', queueKey: QUEUE_NS_KEY },
-      { stage: 'relay-node', queueKey: QUEUE_RELAY_NODE_KEY },
-      { stage: 'device', queueKey: QUEUE_DEVICE_KEY },
+      { stage: 'relay-node', queueKey: STAGES.relayNode.key() },
+      { stage: 'device', queueKey: STAGES.device.key() },
       { stage: 'retry', queueKey: QUEUE_RETRY_KEY },
     ])('scrubs an orphan from the $stage queue', async ({ queueKey }) => {
       const { outgoing } = createPushHarness();

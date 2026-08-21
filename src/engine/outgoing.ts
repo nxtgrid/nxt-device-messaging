@@ -12,9 +12,6 @@ import {
   maybeExtendMessageInRelayNodeQueue,
 } from '../lib/lifecycle.push.js';
 import { getPullTimeouts } from '../lib/lifecycle.pull.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
-import { moveQueuePull } from '../lib/queue-moving.pull.js';
-import { QUEUE_RELAY_NODE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
@@ -39,6 +36,8 @@ import {
   UnknownPluginError,
   UnsupportedCommandTypeError,
 } from './errors.js';
+import { createStageMoves } from './lifecycle/moves.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from './lifecycle/stages.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
@@ -100,6 +99,7 @@ export type CreateOutgoingServiceOptions = {
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
   const { registry, delivery, baseService, kickDistributeOnEnqueue = true, metrics } = options;
+  const moves = createStageMoves({ delivery });
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -220,22 +220,12 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       return;
     }
 
-    if (plugin.deliveryPattern === 'PULL') {
-      await moveQueuePull.fromNsToAwaitingTask({
-        id: message.id,
-        deliveryQueueId,
-        pluginId: plugin.id,
-        tuning: plugin.tuning,
-        messageTtlSeconds: delivery.messageTtlSeconds,
-      });
-      return;
-    }
-
-    await moveQueuePush.fromNsToRelayNode({
-      id: message.id,
+    await moves.advance({
+      messageId: message.id,
+      plugin,
+      from: 'ns',
       deliveryQueueId,
-      tuning: plugin.tuning,
-      messageTtlSeconds: delivery.messageTtlSeconds,
+      retryCount: message.retryCount ?? 0,
     });
   }
 
@@ -261,7 +251,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     // 2. PUSH: relay-node + device timeouts
     const pushTimeouts = await getPushTimeouts(now);
     for (const { messageId, queueKey, reason } of pushTimeouts) {
-      if (queueKey === QUEUE_RELAY_NODE_KEY) {
+      if (queueKey === STAGES.relayNode.key()) {
         const message = await redisRepo.getMessageById(messageId);
         if (message) {
           const plugin = registry.get(message.pluginId);
@@ -270,6 +260,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
               messageId,
               message,
               plugin,
+              moves,
             );
             if (extended) continue;
           }
@@ -319,7 +310,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       const admitted = await _canAdmit(plugin, queueKey);
       if (!admitted) return;
 
-      const messageToSend = await moveQueue.pickNextAndMoveToNs(queueKey, plugin.tuning);
+      const messageToSend = await moves.pickIntoNs(queueKey, plugin);
       if (!messageToSend) return;
 
       await _onClaimAfterPick(plugin, queueKey, messageToSend.id);

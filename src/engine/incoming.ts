@@ -9,7 +9,6 @@ import { isNotNil } from 'ramda';
 
 import type { DeliveryConfig } from '../config/schema.js';
 import { pollAwaitingTasksFor } from '../lib/lifecycle.pull.js';
-import { QUEUE_DEVICE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import type {
   DeviceMessage,
@@ -25,6 +24,8 @@ import type {
 } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { BaseService } from './base.js';
+import { createStageMoves } from './lifecycle/moves.js';
+import { STAGES } from './lifecycle/stages.js';
 
 /**
  * Incoming operations used by HTTP (and later by the poll loop).
@@ -64,6 +65,7 @@ export type CreateIncomingServiceOptions = {
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
   const { registry, delivery, baseService, metrics } = options;
+  const moves = createStageMoves({ delivery });
 
   /**
    * Process a parsed incoming event from PUSH (or later PULL poll).
@@ -105,11 +107,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     // Relay-node ACK (PUSH): move relay-node → device queue; no adopter event.
     if (deliveryStatus === 'SENT_TO_DEVICE') {
-      await moveQueuePush.fromRelayNodeToDevice({
-        id: messageId,
-        tuning: plugin.tuning,
-        messageTtlSeconds: delivery.messageTtlSeconds,
-      });
+      await moves.advance({ messageId, plugin, from: 'relayNode' });
       return;
     }
 
@@ -175,7 +173,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await _processIncomingEvent(parsedEvent, QUEUE_DEVICE_KEY, plugin);
+    await _processIncomingEvent(parsedEvent, STAGES.device.key(), plugin);
   }
 
   /**

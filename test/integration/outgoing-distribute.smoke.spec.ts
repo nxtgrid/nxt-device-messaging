@@ -11,9 +11,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import { QUEUE_NS_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
-import { QUEUE_NS_KEY } from '#src/lib/queue-moving.js';
-import { QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   STUB_PULL_ID,
@@ -78,7 +77,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       expect(after.deliveryQueueId).toMatch(/^stub-ext-/);
       expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
       expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-      expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).not.toBeNull();
+      expect(await redisRepo.client.zscore(STAGES.relayNode.key(), enqueued.id)).not.toBeNull();
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);

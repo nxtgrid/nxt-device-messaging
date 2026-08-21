@@ -1,0 +1,261 @@
+/**
+ * @fileoverview Stage transitions — the only code that moves a message between queues.
+ *
+ * Every destination score, status and key comes from the stage table (ADR-008 §6). There
+ * is one `advance`, so "what comes next" is decided in a single place: two call sites
+ * deciding it independently is the shape of A3, where a post-send move raced the
+ * resolution cycle and the failure was discarded.
+ *
+ * All moves are ZREM-gated in Lua: the move proceeds only if the message is still in the
+ * source queue and its hash still exists. That gate is what makes a re-run safe, and it is
+ * why `advance` can report a lost claim rather than creating a phantom hash.
+ */
+
+import type { DeliveryConfig } from '../../config/schema.js';
+import { deserializeMessage, rawHashToObject } from '../../lib/redis-repository/helpers.js';
+import { redisRepo } from '../../lib/redis-repository/index.js';
+import { redisKeys } from '../../lib/redis-repository/keys.js';
+import type {
+  DeviceMessage,
+  DeviceMessageDeliveryStatus,
+  FailureReason,
+} from '../../lib/device-message/types.js';
+import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
+import {
+  STAGES,
+  nextStage,
+  rescheduleWaitMsFor,
+  stageKeyFor,
+} from './stages.js';
+import type { StageDefinition, StageName } from './types.js';
+
+/** Stage transitions bound to the shared delivery knobs. */
+export type StageMoves = {
+  /**
+   * Claim the highest-priority message from a ready queue into the `ns` stage.
+   * Atomic in Lua so concurrent distribute passes cannot pick the same message.
+   */
+  pickIntoNs(readyQueueKey: string, plugin: DeliveryPlugin): Promise<DeviceMessage | undefined>;
+  /**
+   * Move a message to the next stage of its plugin's pipeline.
+   * @returns `false` when the claim missed — the message was no longer in `from`,
+   * so something else (usually the tick) already took ownership of it.
+   */
+  advance(args: AdvanceArgs): Promise<boolean>;
+  /** Move a failed message from wherever it is into the retry stage. */
+  enterRetry(args: EnterRetryArgs): Promise<void>;
+  /** Extend the wait of a member still sitting in its stage. */
+  reschedule(args: RescheduleArgs): Promise<void>;
+};
+
+/** Arguments for {@link StageMoves.advance}. */
+export type AdvanceArgs = {
+  readonly messageId: string;
+  readonly plugin: DeliveryPlugin;
+  /** Stage the message is leaving. */
+  readonly from: StageName;
+  /** External reference from the network server; creates the delivery-id index. */
+  readonly deliveryQueueId?: string;
+  /** Only read when the destination's wait depends on it. */
+  readonly retryCount?: number;
+};
+
+/** Arguments for {@link StageMoves.enterRetry}. */
+export type EnterRetryArgs = {
+  readonly messageId: string;
+  /** Queue the message currently sits in. */
+  readonly fromKey: string;
+  /** Attempts *before* this failure — both the backoff input and the stored count minus one. */
+  readonly currentRetryCount: number;
+  readonly failureHistory: readonly FailureReason[];
+  readonly plugin: DeliveryPlugin;
+};
+
+/** Arguments for {@link StageMoves.reschedule}. */
+export type RescheduleArgs = {
+  readonly stage: StageDefinition;
+  readonly message: DeviceMessage;
+  /** Age from the ULID; the row decides whether it matters. */
+  readonly messageAgeMs: number;
+  readonly plugin: DeliveryPlugin;
+};
+
+/** Dependencies for {@link createStageMoves}. */
+export type CreateStageMovesOptions = {
+  readonly delivery: DeliveryConfig;
+};
+
+/**
+ * Factory for stage transitions.
+ *
+ * @param options - Shared delivery knobs (retry ladder + index TTL)
+ */
+export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
+  const { delivery } = options;
+
+  /**
+   * Move between two queues under the Lua ZREM gate.
+   *
+   * @returns true when the move committed, false when the source claim missed
+   */
+  async function _move(args: {
+    messageId: string;
+    fromKey: string;
+    toKey: string;
+    dueAt: number;
+    deliveryStatus: DeviceMessageDeliveryStatus;
+    deliveryQueueId?: string;
+    indexKey?: string;
+  }): Promise<boolean> {
+    const result = await redisRepo.client.moveMessageBetweenQueues(
+      args.fromKey,
+      args.toKey,
+      redisKeys.message(args.messageId),
+      args.indexKey ?? '',
+      args.messageId,
+      args.dueAt,
+      args.deliveryStatus,
+      args.deliveryQueueId ?? '',
+      delivery.messageTtlSeconds,
+    );
+
+    return result === 1;
+  }
+
+  return {
+    async pickIntoNs(
+      readyQueueKey: string,
+      plugin: DeliveryPlugin,
+    ): Promise<DeviceMessage | undefined> {
+      const dueAt = Date.now() + STAGES.ns.entryWaitMs({
+        tuning: plugin.tuning,
+        delivery,
+        retryCount: 0,
+      });
+
+      const raw = await redisRepo.client.fetchNextMessageInQueueAndMove(
+        readyQueueKey,
+        STAGES.ns.key(),
+        redisKeys.listOfInitialQueuesToDistributeFrom(),
+        dueAt,
+        STAGES.ns.entryStatus,
+      );
+
+      if (!raw) return undefined;
+
+      const [ id, rawHash ] = raw;
+      return deserializeMessage(id, rawHashToObject(rawHash));
+    },
+
+    advance({
+      messageId,
+      plugin,
+      from,
+      deliveryQueueId,
+      retryCount = 0,
+    }: AdvanceArgs): Promise<boolean> {
+      const next = nextStage(plugin.deliveryPattern, from);
+      if (!next) {
+        throw new Error(
+          `No stage after "${ from }" on the ${ plugin.deliveryPattern } pipeline`,
+        );
+      }
+
+      const target = STAGES[next];
+      const dueAt = Date.now() + target.entryWaitMs({
+        tuning: plugin.tuning,
+        delivery,
+        retryCount,
+      });
+
+      return _move({
+        messageId,
+        fromKey: stageKeyFor(STAGES[from], plugin.id),
+        toKey: stageKeyFor(target, plugin.id),
+        dueAt,
+        deliveryStatus: target.entryStatus,
+        deliveryQueueId,
+        // A new external reference is the only reason to (re)create the index.
+        indexKey: deliveryQueueId
+          ? redisKeys.indexExternalDeliveryId(deliveryQueueId)
+          : undefined,
+      });
+    },
+
+    /**
+     * Not a Lua move: entering retry also clears the stale external reference, releases
+     * the admission slot, and rewrites retry metadata. The ZSCORE guard plays the role
+     * the Lua gate plays elsewhere — it stops a double-retry when the tick and a failing
+     * send race on the same message.
+     */
+    async enterRetry({
+      messageId,
+      fromKey,
+      currentRetryCount,
+      failureHistory,
+      plugin,
+    }: EnterRetryArgs): Promise<void> {
+      const inQueue = await redisRepo.client.zscore(fromKey, messageId);
+      if (inQueue === null) return;
+
+      const messageKey = redisKeys.message(messageId);
+      const dueAt = Date.now() + STAGES.retry.entryWaitMs({
+        tuning: plugin.tuning,
+        delivery,
+        retryCount: currentRetryCount,
+      });
+
+      const [ staleDeliveryQueueId, concurrencyRateLimitKey ] = await redisRepo.client.hmget(
+        messageKey,
+        'deliveryQueueId',
+        'concurrencyRateLimitKey',
+      );
+
+      const pipeline = redisRepo.client.multi();
+
+      pipeline.hset(messageKey, {
+        retryCount: currentRetryCount + 1,
+        deliveryStatus: STAGES.retry.entryStatus,
+        failureHistory: JSON.stringify(failureHistory),
+      });
+      // @RACE-CONDITION :: Deleting this while a poll has already selected the message
+      // leaves that poll checking an `undefined` deliveryQueueId.
+      pipeline.hdel(messageKey, 'deliveryQueueId');
+
+      pipeline.zrem(fromKey, messageId);
+      pipeline.zadd(STAGES.retry.key(), dueAt, messageId);
+
+      if (staleDeliveryQueueId) {
+        pipeline.del(redisKeys.indexExternalDeliveryId(staleDeliveryQueueId));
+      }
+
+      if (concurrencyRateLimitKey) {
+        pipeline.srem(concurrencyRateLimitKey, messageId);
+        pipeline.hdel(messageKey, 'concurrencyRateLimitKey');
+      }
+
+      await pipeline.exec();
+    },
+
+    /**
+     * `XX` so a member that left the stage between the read and this write is not
+     * resurrected — e.g. an ingress event that advanced it while we were asking the
+     * vendor for status.
+     */
+    async reschedule({ stage, message, messageAgeMs, plugin }: RescheduleArgs): Promise<void> {
+      const waitMs = rescheduleWaitMsFor(stage, {
+        message,
+        messageAgeMs,
+        tuning: plugin.tuning,
+        delivery,
+      });
+
+      await redisRepo.client.zadd(
+        stageKeyFor(stage, plugin.id),
+        'XX',
+        Date.now() + waitMs,
+        message.id,
+      );
+    },
+  };
+}
