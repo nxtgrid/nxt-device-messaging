@@ -312,9 +312,11 @@ five `onDue` implementations).
 
 The table itself holds **no behaviour and no Redis import** — actions are injected at the
 composition root. That is what lets the rows be unit-tested as data, and it keeps the one module
-every other part of the engine reads from being another global connection (B2, C1). Candidate deletions once those exist: `lib/lifecycle.push.ts`,
-`lib/lifecycle.pull.ts`, `lib/queue-moving.push.ts`, `lib/queue-moving.pull.ts`, `PUSH_QUEUE_KEYS`,
-`PUSH_TIMEOUT_REASONS`, and most of `lib/queue-moving.ts`.
+every other part of the engine reads from being another global connection (B2, C1).
+**Deleted in C2:** `lib/lifecycle.push.ts`, `lib/lifecycle.pull.ts`,
+`lib/queue-moving.push.ts`, `lib/queue-moving.pull.ts`, `PUSH_QUEUE_KEYS`,
+`PUSH_TIMEOUT_REASONS`, and `lib/queue-moving.ts`. The table lives in
+`src/engine/lifecycle/` (`stages.ts`, `moves.ts`, `actions.ts`, `runner.ts`).
 
 ---
 

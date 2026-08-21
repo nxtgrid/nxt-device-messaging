@@ -1,7 +1,7 @@
 /**
  * @fileoverview The engine's clock: one interval, gated on `engine.enabled` (ADR-002 §7).
  *
- * One cadence replaces the 2 s resolution cycle and the 5 s PULL poll, because under the
+ * One cadence replaces the old 2 s timeout scan and the 5 s PULL poll, because under the
  * stage table both were the same question asked of different queues (ADR-008 §10). The
  * runner carries a re-entry guard per stage row, so a tick that outlives the interval
  * delays only the rows that are still busy.

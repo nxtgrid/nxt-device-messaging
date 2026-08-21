@@ -4,7 +4,7 @@
  * Every destination score, status and key comes from the stage table (ADR-008 §6). There
  * is one `advance`, so "what comes next" is decided in a single place: two call sites
  * deciding it independently is the shape of A3, where a post-send move raced the
- * resolution cycle and the failure was discarded.
+ * `ns` deadline and the failure was discarded.
  *
  * All moves are ZREM-gated in Lua: the move proceeds only if the message is still in the
  * source queue and its hash still exists. That gate is what makes a re-run safe, and it is

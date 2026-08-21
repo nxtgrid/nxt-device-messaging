@@ -1,7 +1,7 @@
 # Plan 002 — Architecture review and deepening
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2 is under way: **ADR-008 written**; C2 implementation is next.
+Branch 2: **ADR-008 written; C2 landed** (C2.1–C2.6). Next is **C1**.
 **Branch:** `refactor/message-lifecycle-stage-table` (branch 2), cut from `main` after branch 1
 merged as PR #12. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
@@ -786,3 +786,5 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-21** — **C2.5 landed** (**A5** and **B3**). `MESSAGE_TTL_SECONDS` deleted;
   enqueue takes `ttlSeconds` from `delivery.messageTtlSeconds`. `kickDistributeOnEnqueue`
   is now required `engineEnabled`, passed from `config.engine.enabled`. Next: **C2.6**.
+- **2026-08-21** — **C2.6 landed.** Pins already flipped (A1–A4). Stale names swept from
+  live comments/JSDoc/ADR current-behaviour rows. **C2 closed.** Next: **C1**.

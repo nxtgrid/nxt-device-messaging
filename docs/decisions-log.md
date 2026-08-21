@@ -1958,6 +1958,15 @@ harness still defaults to `false` so specs drive distribute themselves.
 
 **Next:** C2.6 (verify no pins remain, sweep stale comments, full green bar).
 
+### 2026-08-21 — plan 002 item 4: C2.6 (closeout)
+
+Pins already asserted the fixed behaviour (A1/A2/A4 in `lifecycle-orphans-and-cleanup`,
+A2 in `incoming-poll-outcomes`, A3 in `outgoing-timeouts`). Swept live comments/JSDoc
+that still named deleted code (`resolution cycle`, `fromAnyToRetry`, candidate-deletion
+lists). Historical diagnosis in plan 002 / ADR Context sections left alone.
+
+**C2 is closed.** Next is **C1**, from plan 002's C1 concrete-shape section.
+
 
 
 

@@ -108,7 +108,7 @@ type Admission =
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
 | `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
-| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `fromAnyToRetry` | DCU / API concurrency (CALIN API-like) |
+| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `enterRetry` | DCU / API concurrency (CALIN API-like) |
 | `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
@@ -206,7 +206,7 @@ Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`)
 SPI `rateLimitKey`. On concurrency claim: SADD the track set and HSET
 `concurrencyRateLimitKey` on the message (`claimConcurrencyRateLimit`). After pick:
 fire-and-forget `sendOne` + PUSH|PULL post-send moves. Send-fail / success / timeout
-cleanup does **not** pass a key — `messageFullCleanup` and `fromAnyToRetry` read and
+cleanup does **not** pass a key — `messageFullCleanup` and `enterRetry` read and
 SREM the stored field. Enqueue fire-and-forget kick when `engineEnabled` is true
 (ADR-008 §13). Cron / `engine.enabled` still Unit 5.6.
 

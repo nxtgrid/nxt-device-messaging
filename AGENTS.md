@@ -87,6 +87,7 @@ PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `
 `registerOpenApi` → `/v3/api-docs` + `/swagger`; `smoke/` httpYac),
 `src/engine/` peer factories — `createBaseService` (optional `webhook`) /
 `createOutgoingService` / `createIncomingService` / `createTokenService` +
+`src/engine/lifecycle/` (stage table, moves, actions, one 1000 ms runner) +
 `startEngineTimers` (`engine.enabled`). Outbound adopter notify →
 `src/engine/webhook/` (`storeAndEmit` / private drain / POST / retry / DLQ / opt-in
 HMAC; OpenAPI `webhooks.deliveryEvent` + `WebhookEvent`); wired from `main` when

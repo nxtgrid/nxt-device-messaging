@@ -39,7 +39,7 @@ export type CreateLifecycleRunnerOptions = {
   readonly moves: StageMoves;
   /**
    * Ready-queue distribution. Not a stage (ADR-008 §2) but the same cadence, so the tick
-   * kicks it once at the end — fire-and-forget, as the resolution cycle always did.
+   * kicks it once at the end — fire-and-forget, same as before the stage table.
    */
   readonly distribute?: () => Promise<void>;
 };

@@ -1,10 +1,6 @@
 /**
  * @fileoverview Compose engine peers the way `src/main.ts` does, for specs that
  * drive the stage table through {@link LifecycleRunner.tick}.
- *
- * Use this wherever a spec previously called `runMessageResolutionCycle()` or
- * `pollPullPlugins()`: both are now one tick that drains every stage queue and
- * then kicks distribute.
  */
 
 import type { DeliveryConfig } from '#src/config/schema.js';
