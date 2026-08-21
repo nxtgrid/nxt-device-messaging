@@ -1,6 +1,6 @@
 /**
- * Real runMessageResolutionCycle smoke (Unit 5.6 Step B):
- * enqueue → park in retry with past score → resolution tick → back to initial queue.
+ * Real lifecycle runner smoke (Unit 5.6 Step B):
+ * enqueue → park in retry with past score → tick → back to initial queue.
  *
  * Opt-in (needs Valkey):
  *
@@ -10,18 +10,16 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
 import { QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
-import { createOutgoingService } from '#src/engine/outgoing.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
-describe.skipIf(!shouldRun)('outgoing runMessageResolutionCycle', () => {
+describe.skipIf(!shouldRun)('outgoing retry requeue via runner.tick', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
@@ -36,13 +34,9 @@ describe.skipIf(!shouldRun)('outgoing runMessageResolutionCycle', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
-    const metrics = noopMetrics;
-    const outgoingService = createOutgoingService({
+    const { outgoing: outgoingService, runner } = createEngineHarness({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery, metrics }),
-      metrics,
-      kickDistributeOnEnqueue: false,
     });
 
     const correlationId = `resolution-smoke-${ Date.now() }`;
@@ -69,7 +63,7 @@ describe.skipIf(!shouldRun)('outgoing runMessageResolutionCycle', () => {
       });
       await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() - 1, enqueued.id);
 
-      await outgoingService.runMessageResolutionCycle();
+      await runner.tick();
 
       expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 

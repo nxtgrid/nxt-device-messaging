@@ -46,7 +46,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics }),
       metrics,
       kickDistributeOnEnqueue: false,
     });

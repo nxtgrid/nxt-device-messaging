@@ -11,15 +11,15 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
 import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import {
   createProgrammablePlugin,
   type ProgrammablePluginCalls,
@@ -51,6 +51,7 @@ const QUEUE_KEY = createProgrammablePlugin({
 
 type Harness = {
   readonly outgoing: OutgoingService;
+  readonly runner: LifecycleRunner;
   readonly calls: ProgrammablePluginCalls;
 };
 
@@ -76,16 +77,9 @@ function createHarness(options: {
     }),
   });
 
-  const metrics = noopMetrics;
-  const outgoing = createOutgoingService({
-    registry,
-    delivery,
-    baseService: createBaseService({ registry, delivery, metrics }),
-    metrics,
-    kickDistributeOnEnqueue: false,
-  });
+  const { outgoing, runner } = createEngineHarness({ registry, delivery });
 
-  return { outgoing, calls };
+  return { outgoing, runner, calls };
 }
 
 const trash: Array<{ readonly id: string; readonly correlationId: string }> = [];
@@ -134,7 +128,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
   });
 
   it('retries a message whose NS deadline passed', async () => {
-    const { outgoing } = createHarness({
+    const { outgoing, runner } = createHarness({
       nsInFlightTimeoutMs: 0,
       // Never resolves: the message sits in the NS stage for the whole test.
       sendOne: () => new Promise<string>(() => {}),
@@ -145,7 +139,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     await outgoing.distributeToNetworkServers();
     expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
@@ -168,7 +162,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
       releaseFirstSend = resolve;
     });
 
-    const { outgoing, calls } = createHarness({
+    const { outgoing, runner, calls } = createHarness({
       nsInFlightTimeoutMs: 0,
       retryBaseDelayMs: 10,
       sendOne: async () => {
@@ -180,7 +174,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
     await outgoing.distributeToNetworkServers();
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
     await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
 
     // The vendor now accepts the command the service has already given up on.
@@ -197,17 +191,17 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
 
     // And the retry re-sends the same command to the same device.
     await sleep(40);
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
     await waitForDeliveryStatus(outgoing, correlationId, [ 'DELIVERED_TO_NS' ]);
     expect(calls.sendOne).toEqual([ enqueued.id, enqueued.id ]);
   });
 
   it('retries a relay-node timeout when the plugin cannot report remote status', async () => {
-    const { outgoing } = createHarness();
+    const { outgoing, runner } = createHarness();
     const correlationId = `relay-timeout-${ Date.now() }`;
     const enqueued = await sendAndExpireStage(outgoing, correlationId, STAGES.relayNode.key());
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
@@ -217,13 +211,13 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
   });
 
   it('extends a relay-node timeout while the network server still holds the command', async () => {
-    const { outgoing, calls } = createHarness({
+    const { outgoing, runner, calls } = createHarness({
       getRemoteStatus: async () => ({ deliveryStatus: 'QUEUED' }),
     });
     const correlationId = `relay-extend-${ Date.now() }`;
     const enqueued = await sendAndExpireStage(outgoing, correlationId, STAGES.relayNode.key());
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     expect(calls.getRemoteStatus).toEqual([ enqueued.id ]);
     const extendedScore = await redisRepo.client.zscore(STAGES.relayNode.key(), enqueued.id);
@@ -235,7 +229,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
   });
 
   it('retries a device timeout', async () => {
-    const { outgoing } = createHarness();
+    const { outgoing, runner } = createHarness();
     const correlationId = `device-timeout-${ Date.now() }`;
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
@@ -256,7 +250,7 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     });
     expect(await redisRepo.client.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({

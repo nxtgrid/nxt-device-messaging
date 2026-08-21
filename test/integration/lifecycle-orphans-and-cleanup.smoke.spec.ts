@@ -16,14 +16,13 @@ import { ulid } from 'ulid';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
 import {
   findMessageReferences,
@@ -42,7 +41,7 @@ const PULL_PLUGIN_ID = 'smoke-cleanup-pull';
 const NETWORK_ID = 503;
 const RELAY_NODE_ID = 21;
 const AWAITING_TASK_KEY = redisKeys.queueAwaitingTask(PULL_PLUGIN_ID);
-/** Past the hardcoded 48h PULL ceiling in `lifecycle.pull.ts`. */
+/** Past the hardcoded 48h PULL ceiling (`PULL_MAX_MESSAGE_AGE_MS`). */
 const AGED_MESSAGE_OFFSET_MS = 49 * 60 * 60 * 1000;
 
 const PUSH_DEVICE: DeviceMessageDevice = {
@@ -65,6 +64,7 @@ const PULL_QUEUE_KEY = createProgrammablePlugin({
 
 type PushHarness = {
   readonly outgoing: OutgoingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
 };
 
@@ -82,28 +82,18 @@ function createPushHarness(options: {
     sendOne: options.sendOne,
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
+  const { outgoing, runner } = createEngineHarness({
+    registry,
+    delivery,
+    webhook: recorder.webhook,
+  });
 
-  return {
-    recorder,
-    outgoing: createOutgoingService({
-      registry,
-      delivery,
-      baseService: createBaseService({
-        registry,
-        delivery,
-        webhook: recorder.webhook,
-        metrics,
-      }),
-      metrics,
-      kickDistributeOnEnqueue: false,
-    }),
-  };
+  return { recorder, outgoing, runner };
 }
 
 type PullHarness = {
   readonly outgoing: OutgoingService;
-  readonly incoming: IncomingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
 };
 
@@ -114,24 +104,16 @@ function createPullHarness(): PullHarness {
     deliveryPattern: 'PULL',
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
-  const baseService = createBaseService({
+  const { outgoing, runner } = createEngineHarness({
     registry,
     delivery,
     webhook: recorder.webhook,
-    metrics,
   });
 
   return {
     recorder,
-    outgoing: createOutgoingService({
-      registry,
-      delivery,
-      baseService,
-      metrics,
-      kickDistributeOnEnqueue: false,
-    }),
-    incoming: createIncomingService({ registry, delivery, baseService, metrics }),
+    outgoing,
+    runner,
   };
 }
 
@@ -182,28 +164,26 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
       { stage: 'device', queueKey: STAGES.device.key() },
       { stage: 'retry', queueKey: QUEUE_RETRY_KEY },
     ])('scrubs an orphan from the $stage queue', async ({ queueKey }) => {
-      const { outgoing } = createPushHarness();
+      const { runner } = createPushHarness();
       const orphanId = trackedOrphanId();
       await redisRepo.client.zadd(queueKey, Date.now() - 1, orphanId);
 
-      await outgoing.runMessageResolutionCycle();
+      await runner.tick();
 
       expect(await redisRepo.client.zscore(queueKey, orphanId)).toBeNull();
     });
 
-    it('never scrubs an orphan from the awaiting-task queue (A1/A2)', async () => {
-      // A1: the poll loop `continue`s past a missing hash without removing the member.
-      // A2: it also leaves the score untouched, so the orphan is re-read every tick
-      // and the vendor is asked about it forever. The stage table must scrub here and
-      // advance the score on every branch; this should then be null.
-      const { incoming } = createPullHarness();
+    it('scrubs an orphan from the awaiting-task queue (A1)', async () => {
+      // The stage the poll loop used to skip: a missing hash left the member in place at
+      // an unchanged score, so the vendor was asked about a message that no longer
+      // existed, on every tick, forever. The runner scrubs every stage the same way.
+      const { runner } = createPullHarness();
       const orphanId = trackedOrphanId();
-      const dueAt = Date.now() - 1;
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, dueAt, orphanId);
+      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() - 1, orphanId);
 
-      await incoming.pollPullPlugins();
+      await runner.tick();
 
-      expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, orphanId)).toBe(String(dueAt));
+      expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, orphanId)).toBeNull();
     });
   });
 
@@ -252,7 +232,7 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
     });
 
     it('leaves nothing behind when a PULL message exceeds its maximum age', async () => {
-      const { outgoing, recorder } = createPullHarness();
+      const { runner, recorder } = createPullHarness();
       const correlationId = `cleanup-pull-aged-${ Date.now() }`;
       const agedId = ulid(Date.now() - AGED_MESSAGE_OFFSET_MS);
       trash.push({ id: agedId, correlationId });
@@ -270,10 +250,12 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
         redisKeys.indexCorrelationId(correlationId),
         redisKeys.message(agedId),
       );
-      // Not yet due for polling — the age reaper, not the poll loop, must claim it.
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() + 60_000, agedId);
+      // Due, because the age cap is now a property of the awaiting-task stage rather than
+      // a separate full-queue scan (ADR-008 §9): an aged message is caught on its next
+      // poll, which the ladder puts at most 30s out against a two-day cap.
+      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() - 1, agedId);
 
-      await outgoing.runMessageResolutionCycle();
+      await runner.tick();
 
       const failures = recorder.withStatus('DELIVERY_FAILED');
       expect(failures).toHaveLength(1);

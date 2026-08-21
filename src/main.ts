@@ -3,6 +3,9 @@ import { config, logger, pluginRegistry } from './runtime.js';
 import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
 import { createIncomingService } from './engine/incoming.js';
+import { createStageActions } from './engine/lifecycle/actions.js';
+import { createStageMoves } from './engine/lifecycle/moves.js';
+import { createLifecycleRunner } from './engine/lifecycle/runner.js';
 import { createOutgoingService } from './engine/outgoing.js';
 import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
@@ -52,7 +55,6 @@ const webhookService = config.eventWebhook
   : undefined;
 
 const baseService = createBaseService({
-  registry: pluginRegistry,
   delivery: config.delivery,
   webhook: webhookService,
   metrics,
@@ -64,10 +66,25 @@ const outgoingService = createOutgoingService({
   metrics,
 });
 const incomingService = createIncomingService({
-  registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
   metrics,
+});
+
+/** The stage table's runtime half: what to do per stage, and the loop that drives it. */
+const stageMoves = createStageMoves({ delivery: config.delivery });
+const stageActions = createStageActions({
+  baseService,
+  incomingService,
+  moves: stageMoves,
+  delivery: config.delivery,
+  metrics,
+});
+const lifecycleRunner = createLifecycleRunner({
+  registry: pluginRegistry,
+  actions: stageActions,
+  moves: stageMoves,
+  distribute: outgoingService.distributeToNetworkServers,
 });
 const tokenService = createTokenService({
   registry: pluginRegistry,
@@ -84,8 +101,7 @@ const app = await buildApp({
 
 const engineTimers = startEngineTimers({
   enabled: config.engine.enabled,
-  outgoingService,
-  incomingService,
+  runner: lifecycleRunner,
 });
 
 /** Webhook drain is independent of `engine.enabled` (ingress can still emit). */

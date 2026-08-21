@@ -85,9 +85,5 @@ export function createInMemoryOutgoingService(
     async distributeToNetworkServers(): Promise<void> {
       // no-op — HTTP unit tests do not exercise distribute
     },
-
-    async runMessageResolutionCycle(): Promise<void> {
-      // no-op — HTTP unit tests do not exercise the resolution cycle
-    },
   };
 }

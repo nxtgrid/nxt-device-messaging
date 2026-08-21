@@ -46,7 +46,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics }),
       metrics,
       kickDistributeOnEnqueue: false,
     });
@@ -101,7 +101,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics }),
       metrics,
       kickDistributeOnEnqueue: false,
     });

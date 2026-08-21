@@ -3,7 +3,12 @@
  */
 
 import type { IncomingService } from '#src/engine/incoming.js';
+import type { StageOutcome } from '#src/engine/lifecycle/types.js';
 import type {
+  ParsedIncomingEvent,
+} from '#src/lib/device-message/types.js';
+import type {
+  DeliveryPlugin,
   IncomingHandleMeta,
   PushPlugin,
 } from '#src/plugins/plugin.interface.js';
@@ -29,8 +34,13 @@ export function createInMemoryIncomingService(
     ): Promise<void> {
       await options.onHandle?.(event, plugin, meta);
     },
-    async pollPullPlugins(): Promise<void> {
-      // no-op — HTTP unit tests do not exercise poll
+    async processEvent(
+      _parsedEvent: ParsedIncomingEvent,
+      _queueKey: string,
+      _plugin: DeliveryPlugin,
+    ): Promise<StageOutcome> {
+      // HTTP unit tests do not exercise poll / processEvent.
+      return 'movedOn';
     },
   };
 }

@@ -19,7 +19,7 @@ import type {
   DeviceMessageDeliveryStatus,
   PluginId,
 } from '../../lib/device-message/types.js';
-import type { PluginTuning } from '../../plugins/plugin.interface.js';
+import type { DeliveryPlugin, PluginTuning } from '../../plugins/plugin.interface.js';
 
 /**
  * The closed set of stages a message can wait in.
@@ -141,3 +141,32 @@ export type StageQueue = {
   /** Set only for per-plugin stages. */
   readonly pluginId?: PluginId;
 };
+
+/**
+ * One due member, as handed to a stage action.
+ *
+ * The runner has already loaded the message, resolved its plugin and computed its age, so
+ * an action never re-reads what the loop just read. There is no `now`: an action decides
+ * *what* happened, and the stage row decides *when* to look again.
+ */
+export type StageActionContext = {
+  readonly stage: StageDefinition;
+  /** The concrete queue the member sits in — per-plugin stages differ per plugin. */
+  readonly queueKey: string;
+  readonly message: DeviceMessage;
+  readonly plugin: DeliveryPlugin;
+  /** Age from the ULID timestamp, computed once per member by the runner. */
+  readonly messageAgeMs: number;
+};
+
+/**
+ * What to do with a member whose wait has run out.
+ *
+ * Actions perform the domain work (ask the vendor, retry, clean up) and report back; the
+ * runner performs the ZADD and the ZREM. That division is what makes A1 and A2
+ * unrepresentable rather than merely fixed (ADR-008 §5).
+ */
+export type StageAction = (context: StageActionContext) => Promise<StageOutcome>;
+
+/** One action per stage — total, so a new row cannot ship without one. */
+export type StageActions = Record<StageName, StageAction>;

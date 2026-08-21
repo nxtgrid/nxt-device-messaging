@@ -1,6 +1,6 @@
 /**
- * Real createIncomingService.pollPullPlugins smoke (Unit 5.5 Step B):
- * enqueue → distribute → sendOne → awaiting-task → poll tick → cleanup.
+ * Real lifecycle-runner PULL poll smoke (Unit 5.5 Step B):
+ * enqueue → distribute → sendOne → awaiting-task → tick → cleanup.
  *
  * Opt-in (needs Valkey):
  *
@@ -10,15 +10,12 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createIncomingService } from '#src/engine/incoming.js';
-import { createOutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '#src/lib/device-message/types.js';
 import { sleep } from '#src/lib/utilities.js';
 import type { PullPlugin } from '#src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '#src/plugins/stub/index.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createSinglePluginRegistry } from '../helpers/programmable-plugin.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
@@ -30,7 +27,7 @@ const delivery = deviceMessagingConfigSchema.parse({
 
 /**
  * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
- * completes the message (same shared `_processIncomingEvent` as ingress).
+ * completes the message (same shared `processEvent` as ingress).
  * Short `initialPollDelayMs` so the smoke need not wait 10s.
  */
 function createPullRegistryWithSuccessFetch(): PluginRegistry {
@@ -51,7 +48,7 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
   return createSinglePluginRegistry(plugin);
 }
 
-describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
+describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () => {
   let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
@@ -66,20 +63,9 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPullRegistryWithSuccessFetch();
-    const metrics = noopMetrics;
-    const baseService = createBaseService({ registry, delivery, metrics });
-    const outgoingService = createOutgoingService({
+    const { outgoing: outgoingService, runner } = createEngineHarness({
       registry,
       delivery,
-      baseService,
-      metrics,
-      kickDistributeOnEnqueue: false,
-    });
-    const incomingService = createIncomingService({
-      registry,
-      delivery,
-      baseService,
-      metrics,
     });
 
     const correlationId = `poll-pull-${ Date.now() }`;
@@ -111,7 +97,7 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
 
       // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
       await sleep(5);
-      await incomingService.pollPullPlugins();
+      await runner.tick();
 
       const afterPoll = await outgoingService.getByCorrelationId(correlationId);
       expect(afterPoll).toBeNull();

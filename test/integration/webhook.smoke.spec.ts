@@ -14,7 +14,6 @@ import {
   parseWebhookStoredRecord,
 } from '#src/engine/webhook/store.js';
 import { webhookRedisKeys } from '#src/engine/webhook/keys.js';
-import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 
@@ -58,7 +57,6 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
       metrics,
     });
     const baseService = createBaseService({
-      registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
       webhook: webhookService,
       metrics,

@@ -39,7 +39,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
-    const baseService = createBaseService({ registry, delivery, metrics });
+    const baseService = createBaseService({ delivery, metrics });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
@@ -48,7 +48,6 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       kickDistributeOnEnqueue: false,
     });
     const incomingService = createIncomingService({
-      registry,
       delivery,
       baseService,
       metrics,

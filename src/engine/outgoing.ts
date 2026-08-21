@@ -1,17 +1,13 @@
 /**
- * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel,
- * distribute, send, resolution cycle.
+ * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel, distribute,
+ * send.
  *
- * Unit 5.4 — fire-and-forget `sendOne` + post-send PUSH|PULL queue moves.
- * Unit 5.6 — `runMessageResolutionCycle` (timer wiring in `timers.ts`).
+ * Stage timeouts and retry requeueing are not here — they are rows in the stage table,
+ * driven by `lifecycle/runner.ts` (ADR-008). What remains is the ready queue: admission,
+ * the claim into `ns`, and the handoff to the plugin.
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
-import {
-  getPushTimeouts,
-  maybeExtendMessageInRelayNodeQueue,
-} from '../lib/lifecycle.push.js';
-import { getPullTimeouts } from '../lib/lifecycle.pull.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
@@ -37,7 +33,7 @@ import {
   UnsupportedCommandTypeError,
 } from './errors.js';
 import { createStageMoves } from './lifecycle/moves.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from './lifecycle/stages.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from './lifecycle/stages.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
@@ -66,15 +62,9 @@ export type OutgoingService = {
   cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]>;
   /**
    * One distribute tick: admit + pick into NS + fire-and-forget `sendOne`.
-   * Also invoked at the end of {@link OutgoingService.runMessageResolutionCycle}.
-   * Tests may call this directly.
+   * Kicked at the end of every engine tick; tests may call it directly.
    */
   distributeToNetworkServers(): Promise<void>;
-  /**
-   * One resolution-cycle tick: NS/PUSH/PULL timeouts, retry requeue, then distribute.
-   * Timer wiring lands in `startEngineTimers`; tests may invoke this directly.
-   */
-  runMessageResolutionCycle(): Promise<void>;
 };
 
 /** Dependencies for {@link createOutgoingService}. */
@@ -193,6 +183,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         message.id,
         QUEUE_NS_KEY,
         plugin.outgoing.parseError(err),
+        plugin,
       );
       return;
     }
@@ -216,6 +207,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
           reason: 'Plugin returned an empty deliveryQueueId after sendOne',
           skipRetry: true,
         },
+        plugin,
       );
       return;
     }
@@ -226,67 +218,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       from: 'ns',
       deliveryQueueId,
       retryCount: message.retryCount ?? 0,
-    });
-  }
-
-  /**
-   * One lifecycle tick:
-   * 1. NS queue timeouts → retryOrFail
-   * 2. PUSH GW/Device timeouts (GW may extend via remote status) → retryOrFail
-   * 3. PULL age timeouts → emitDeliveryEvent then cleanup
-   * 4. Retry queue → requeue ready messages
-   * 5. Distribute (fire-and-forget)
-   */
-  async function runMessageResolutionCycle(): Promise<void> {
-    const now = Date.now();
-
-    // 1. Shared: NS queue timeout (both PUSH and PULL before branching)
-    const nsZombieIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_NS_KEY, now);
-    for (const messageId of nsZombieIds) {
-      await baseService.retryOrFail(messageId, QUEUE_NS_KEY, {
-        reason: 'Timed out waiting for Network Server to accept message',
-      });
-    }
-
-    // 2. PUSH: relay-node + device timeouts
-    const pushTimeouts = await getPushTimeouts(now);
-    for (const { messageId, queueKey, reason } of pushTimeouts) {
-      if (queueKey === STAGES.relayNode.key()) {
-        const message = await redisRepo.getMessageById(messageId);
-        if (message) {
-          const plugin = registry.get(message.pluginId);
-          if (plugin?.deliveryPattern === 'PUSH') {
-            const extended = await maybeExtendMessageInRelayNodeQueue(
-              messageId,
-              message,
-              plugin,
-              moves,
-            );
-            if (extended) continue;
-          }
-        }
-      }
-      await baseService.retryOrFail(messageId, queueKey, { reason });
-    }
-
-    // 3. PULL: age-based permanent failure — durable webhook first, then cleanup
-    const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
-    const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
-    for (const { message } of pullTimeouts) {
-      await baseService.emitDeliveryEvent(message);
-      metrics.recordMessageTerminal('DELIVERY_FAILED', message.retryCount ?? 0);
-      await redisRepo.messageFullCleanup(message);
-    }
-
-    // 4. Requeue messages whose backoff has elapsed
-    const readyToRetryIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_RETRY_KEY, now);
-    for (const messageId of readyToRetryIds) {
-      await baseService.requeueMessage(messageId);
-    }
-
-    // 5. Kick distribution (not awaited — tick completes at handoff)
-    void distributeToNetworkServers().catch(err => {
-      logger.error({ module: 'outgoing', err }, 'distributeToNetworkServers failed');
     });
   }
 
@@ -455,6 +386,5 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     distributeToNetworkServers,
-    runMessageResolutionCycle,
   };
 }

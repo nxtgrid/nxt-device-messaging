@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createBaseService } from '#src/engine/base.js';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../../helpers/noop-metrics.js';
 
@@ -12,7 +11,6 @@ describe('createBaseService emitDeliveryEvent', () => {
   it('awaits webhook.storeAndEmit when wired', async () => {
     const storeAndEmit = vi.fn(async () => undefined);
     const baseService = createBaseService({
-      registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
       webhook: { storeAndEmit },
       metrics: noopMetrics,
@@ -31,7 +29,6 @@ describe('createBaseService emitDeliveryEvent', () => {
 
   it('is a no-op when no webhook is configured', async () => {
     const baseService = createBaseService({
-      registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
       delivery,
       metrics: noopMetrics,
     });

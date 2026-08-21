@@ -35,10 +35,9 @@ export const QUEUE_RETRY_KEY = 'queue_awaiting_retry';
 /**
  * Default poll ladder: the older a message is, the less often it is polled.
  *
- * Core-owned for now. The end state is a plugin `tuning` override (the interim note that
- * used to sit on this ladder in `lifecycle.pull.ts`), which lands with C4's core-owned
- * tuning defaults — `rescheduleWaitMs` already receives `tuning`, so that is a one-line
- * change here and no change at all to the table.
+ * Core-owned for now. The end state is a plugin `tuning` override, which lands with C4's
+ * core-owned tuning defaults — `rescheduleWaitMs` already receives `tuning`, so that is a
+ * one-line change here and no change at all to the table.
  *
  * @param messageAgeMs - Age of the message, from its ULID timestamp
  */
@@ -48,6 +47,15 @@ function defaultPollLadderMs(messageAgeMs: number): number {
   if (messageAgeMs < 90_000) return 20_000;
   return 30_000;
 }
+
+/**
+ * How long a message may sit in `awaitingTask` before it fails permanently (48 hours).
+ *
+ * A property of that stage rather than a row field: it is the only stage that expires
+ * outright instead of retrying, and enforcing it needs a terminal webhook and cleanup —
+ * action work, not something the runner could do generically from a number (ADR-008 §9).
+ */
+export const PULL_MAX_MESSAGE_AGE_MS = 48 * 60 * 60 * 1000;
 
 /**
  * The stage table. Rows, not files: PUSH and PULL differ only in which rows they visit

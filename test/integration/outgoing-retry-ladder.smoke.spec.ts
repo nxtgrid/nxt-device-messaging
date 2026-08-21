@@ -10,13 +10,13 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
 import {
   findMessageReferences,
@@ -47,6 +47,7 @@ const QUEUE_KEY = createProgrammablePlugin({
 
 type Harness = {
   readonly outgoing: OutgoingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
 };
 
@@ -65,23 +66,15 @@ function createHarness(options: {
     sendOne: options.sendOne,
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
-
-  const outgoing = createOutgoingService({
+  const { outgoing, runner } = createEngineHarness({
     registry,
     delivery,
-    baseService: createBaseService({
-      registry,
-      delivery,
-      webhook: recorder.webhook,
-      metrics,
-    }),
-    metrics,
-    kickDistributeOnEnqueue: false,
+    webhook: recorder.webhook,
   });
 
   return {
     outgoing,
+    runner,
     recorder,
   };
 }
@@ -148,7 +141,7 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
   });
 
   it('fails permanently once the ladder is exhausted, leaving no Redis trace', async () => {
-    const { outgoing, recorder } = createHarness({
+    const { outgoing, runner, recorder } = createHarness({
       maxRetries: 1,
       sendOne: async () => {
         throw new Error('vendor still exploded');
@@ -162,7 +155,7 @@ describe.skipIf(!shouldRun)('outgoing failure ladder', () => {
 
     // Let the backoff elapse, then run the cycle that requeues and re-sends.
     await sleep(RETRY_BASE_DELAY_MS * 4);
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
     await waitForMessageGone(outgoing, correlationId);
 
     const failures = recorder.withStatus('DELIVERY_FAILED');

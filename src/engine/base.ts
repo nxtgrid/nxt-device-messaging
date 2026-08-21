@@ -13,25 +13,34 @@ import type { DeliveryConfig } from '../config/schema.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import type {
   DeviceMessage,
-  DeviceMessageDevice,
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
-import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
-import type { PluginRegistry } from '../plugins/registry.js';
+import type { DeliveryPlugin } from '../plugins/plugin.interface.js';
 import { createStageMoves } from './lifecycle/moves.js';
-import { QUEUE_RETRY_KEY } from './lifecycle/stages.js';
+import type { StageOutcome } from './lifecycle/types.js';
 import type { WebhookService } from './webhook/service.js';
 
-/** Shared retry / requeue / adopter-notify operations used by peers. */
+/** Shared retry / adopter-notify operations used by peers. */
 export type BaseService = {
+  /**
+   * Retry a failed attempt, or fail it permanently when retries are exhausted or the
+   * failure is unrecoverable.
+   *
+   * @param messageId - ULID of the message
+   * @param currentQueueKey - Queue the message currently sits in
+   * @param failureContext - Why the attempt failed
+   * @param plugin - Owning delivery plugin; every caller has already resolved one
+   * @returns `removed` when it failed permanently, `movedOn` when it entered retry,
+   * `orphaned` when the hash was already gone
+   */
   retryOrFail(
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-  ): Promise<void>;
-  requeueMessage(messageId: string): Promise<void>;
+    plugin: DeliveryPlugin,
+  ): Promise<StageOutcome>;
   /**
    * Notify the adopter of a delivery event (first SENT_TO_NS, terminal, unsolicited, …).
    * Awaits Redis persistence of the webhook event when a webhook is wired; otherwise no-op.
@@ -42,7 +51,6 @@ export type BaseService = {
 
 /** Dependencies for {@link createBaseService}. */
 export type CreateBaseServiceOptions = {
-  readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
   /**
    * Outbound event webhook. When omitted (no `eventWebhook` in config), emits are no-ops.
@@ -54,10 +62,10 @@ export type CreateBaseServiceOptions = {
 /**
  * Factory for shared delivery-outcome helpers (no runtime import).
  *
- * @param options - Registry, delivery knobs, optional webhook messenger
+ * @param options - Delivery knobs, optional webhook messenger, metrics
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { registry, delivery, webhook, metrics } = options;
+  const { delivery, webhook, metrics } = options;
   const moves = createStageMoves({ delivery });
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
@@ -81,12 +89,13 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     messageId: string,
     currentQueueKey: string,
     failureContext: FailureContext,
-  ): Promise<void> {
+    plugin: DeliveryPlugin,
+  ): Promise<StageOutcome> {
     const message = await redisRepo.getMessageById(messageId);
 
     if (!message) {
       await redisRepo.removeMessageFromQueue(currentQueueKey, messageId);
-      return;
+      return 'orphaned';
     }
 
     const currentRetryCount = message.retryCount ?? 0;
@@ -113,14 +122,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       });
       metrics.recordMessageTerminal('DELIVERY_FAILED', currentRetryCount);
       await redisRepo.messageFullCleanup(message);
-      return;
-    }
-
-    const plugin = registry.get(message.pluginId);
-    if (!plugin || plugin.deliveryPattern === 'NONE') {
-      logger.warn({ module: 'base', messageId }, 'unknown plugin for retry, removing');
-      await redisRepo.removeMessageFromQueue(currentQueueKey, messageId);
-      return;
+      return 'removed';
     }
 
     await moves.enterRetry({
@@ -130,64 +132,12 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       failureHistory: newFailureHistory,
       plugin,
     });
-  }
 
-  /**
-   * Move a message from the retry queue back to its plugin bottleneck queue.
-   * Called when the backoff period has elapsed and the message is ready for another attempt.
-   *
-   * Uses a partial HMGET (not full hash deserialize) — only topology fields for
-   * `initialQueueKey`, plus priority for the Redis score.
-   *
-   * @param messageId - ULID of the message to requeue
-   */
-  async function requeueMessage(messageId: string): Promise<void> {
-    const [ priorityStr, deviceStr, networkIdStr, pluginId ] =
-      await redisRepo.getMessageRawPropsById(messageId, [
-        'priority',
-        'device',
-        'networkId',
-        'pluginId',
-      ]);
-
-    if (!priorityStr || !deviceStr || !pluginId) {
-      logger.warn({ module: 'base', messageId }, 'orphaned retry id, removing');
-      await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
-      return;
-    }
-
-    const plugin = registry.get(pluginId);
-    if (!plugin || plugin.deliveryPattern === 'NONE') {
-      await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
-      return;
-    }
-
-    const priority = parseInt(priorityStr, 10);
-    let device: DeviceMessageDevice;
-    try {
-      device = JSON.parse(deviceStr) as DeviceMessageDevice;
-    }
-    catch {
-      logger.warn({ module: 'base', messageId }, 'malformed device JSON for retry, removing');
-      await redisRepo.removeMessageFromQueue(QUEUE_RETRY_KEY, messageId);
-      return;
-    }
-
-    // `networkId` is omitted from the hash when null (see serializeCreateDeviceMessage).
-    const networkId = networkIdStr !== null ? parseInt(networkIdStr, 10) : null;
-
-    const destinationQueue = plugin.initialQueueKey({ networkId, device });
-    await redisRepo.requeueMessage(
-      messageId,
-      QUEUE_RETRY_KEY,
-      destinationQueue,
-      priority,
-    );
+    return 'movedOn';
   }
 
   return {
     retryOrFail,
-    requeueMessage,
     emitDeliveryEvent,
   };
 }

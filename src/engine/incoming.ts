@@ -1,14 +1,13 @@
 /**
- * @fileoverview Incoming delivery surface: PUSH ingress + PULL poll + shared processing.
+ * @fileoverview Incoming delivery surface: PUSH ingress + shared event processing.
  *
- * Unit 5.5 — `handle` / thin HTTP (Step A) + `pollPullPlugins` (Step B).
- * Unit 5.6 — poll interval via `startEngineTimers`.
+ * Both delivery patterns end up here — a webhook the network server pushed at us, and a
+ * status the `awaitingTask` action pulled from a vendor, are the same event once parsed.
  */
 
 import { isNotNil } from 'ramda';
 
 import type { DeliveryConfig } from '../config/schema.js';
-import { pollAwaitingTasksFor } from '../lib/lifecycle.pull.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import type {
   DeviceMessage,
@@ -22,10 +21,10 @@ import type {
   IncomingHandleMeta,
   PushPlugin,
 } from '../plugins/plugin.interface.js';
-import type { PluginRegistry } from '../plugins/registry.js';
 import type { BaseService } from './base.js';
 import { createStageMoves } from './lifecycle/moves.js';
 import { STAGES } from './lifecycle/stages.js';
+import type { StageOutcome } from './lifecycle/types.js';
 
 /**
  * Incoming operations used by HTTP (and later by the poll loop).
@@ -43,15 +42,25 @@ export type IncomingService = {
     meta?: IncomingHandleMeta,
   ): Promise<void>;
   /**
-   * One PULL poll tick: `fetchStatus` for due awaiting-task messages, then process.
-   * Also driven by `startEngineTimers`; tests may invoke this directly.
+   * Apply one parsed event to the message it refers to: advance, retry, or resolve.
+   *
+   * Shared by PUSH ingress and the `awaitingTask` poll, which is why it reports a
+   * {@link StageOutcome} — the poll runs inside the stage runner and the runner owes the
+   * member either a new score or a removal.
+   *
+   * @param parsedEvent - Normalized event from the plugin
+   * @param currentQueueKey - Queue the message sits in (the caller's stage)
+   * @param plugin - Owning delivery plugin
    */
-  pollPullPlugins(): Promise<void>;
+  processEvent(
+    parsedEvent: ParsedIncomingEvent,
+    currentQueueKey: string,
+    plugin: DeliveryPlugin,
+  ): Promise<StageOutcome>;
 };
 
 /** Dependencies for {@link createIncomingService}. */
 export type CreateIncomingServiceOptions = {
-  readonly registry: PluginRegistry;
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
@@ -59,26 +68,34 @@ export type CreateIncomingServiceOptions = {
 };
 
 /**
- * Factory for PUSH ingress, PULL poll, and shared incoming-event processing.
+ * Factory for PUSH ingress and shared incoming-event processing.
  *
- * @param options - Registry, delivery knobs, and peer {@link BaseService}
+ * Polling is not here: the `awaitingTask` stage action drives it (ADR-008 §3), and calls
+ * back into {@link IncomingService.processEvent} with whatever the vendor returned.
+ *
+ * @param options - Delivery knobs, peer {@link BaseService}, metrics
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
-  const { registry, delivery, baseService, metrics } = options;
+  const { delivery, baseService, metrics } = options;
   const moves = createStageMoves({ delivery });
 
   /**
-   * Process a parsed incoming event from PUSH (or later PULL poll).
+   * Process a parsed incoming event from PUSH ingress or the `awaitingTask` poll.
+   *
+   * Every branch that changes nothing about the member reports `rescheduled`: from the
+   * runner's side "this event told us nothing new" and "keep waiting" are the same
+   * statement, and returning it is what stops an unresolvable event from spinning the
+   * stage on every tick (A2).
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Queue for retry/fail (PUSH handle uses device queue)
+   * @param currentQueueKey - Queue for retry/fail (PUSH handle uses the device queue)
    * @param plugin - Owning delivery plugin (tuning for stage moves)
    */
-  async function _processIncomingEvent(
+  async function processEvent(
     parsedEvent: ParsedIncomingEvent,
     currentQueueKey: string,
     plugin: DeliveryPlugin,
-  ): Promise<void> {
+  ): Promise<StageOutcome> {
     const { deliveryQueueId, deliveryStatus, device, commandType, response, unsolicited, failureContext } = parsedEvent;
 
     // Device-initiated uplink with no matching outbound command.
@@ -91,41 +108,40 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
         response,
         unsolicited: true,
       });
-      return;
+      return 'rescheduled';
     }
 
     if (!deliveryQueueId) {
       logger.warn({ module: 'incoming', parsedEvent }, 'no deliveryQueueId');
-      return;
+      return 'rescheduled';
     }
 
     const messageId = await redisRepo.getMessageIdFromDeliveryQueueId(deliveryQueueId);
     if (!messageId) {
       logger.warn({ module: 'incoming', deliveryQueueId, parsedEvent }, 'message not found for deliveryQueueId');
-      return;
+      return 'orphaned';
     }
 
     // Relay-node ACK (PUSH): move relay-node → device queue; no adopter event.
     if (deliveryStatus === 'SENT_TO_DEVICE') {
       await moves.advance({ messageId, plugin, from: 'relayNode' });
-      return;
+      return 'movedOn';
     }
 
     if (deliveryStatus === 'DELIVERY_FAILED') {
       const context = failureContext ?? { reason: 'Unable to deliver message after negative remote response' };
-      await baseService.retryOrFail(messageId, currentQueueKey, context);
-      return;
+      return baseService.retryOrFail(messageId, currentQueueKey, context, plugin);
     }
 
     if (deliveryStatus !== 'DELIVERY_SUCCESSFUL') {
       logger.warn({ module: 'incoming', deliveryStatus, parsedEvent }, 'unexpected delivery status');
-      return;
+      return 'rescheduled';
     }
 
     const storedMessage = await redisRepo.getMessageById(messageId);
     if (!storedMessage) {
       logger.warn({ module: 'incoming', messageId }, 'message not found (already cleaned up?)');
-      return;
+      return 'orphaned';
     }
 
     const updatedMessage: DeviceMessage = { ...storedMessage, deliveryStatus, response, device };
@@ -153,6 +169,8 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       storedMessage.retryCount ?? 0,
     );
     await redisRepo.messageFullCleanup(storedMessage);
+
+    return 'removed';
   }
 
   /**
@@ -173,20 +191,8 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await _processIncomingEvent(parsedEvent, STAGES.device.key(), plugin);
+    await processEvent(parsedEvent, STAGES.device.key(), plugin);
   }
 
-  /**
-   * PULL pattern entry: poll each PULL plugin's awaiting-task queue for due messages.
-   */
-  async function pollPullPlugins(): Promise<void> {
-    for (const plugin of registry.getByDeliveryPattern('PULL')) {
-      const results = await pollAwaitingTasksFor(plugin);
-      for (const { parsedEvent, queueKey } of results) {
-        await _processIncomingEvent(parsedEvent, queueKey, plugin);
-      }
-    }
-  }
-
-  return { handle, pollPullPlugins };
+  return { handle, processEvent };
 }
