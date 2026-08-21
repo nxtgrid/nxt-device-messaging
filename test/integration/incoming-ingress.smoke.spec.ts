@@ -16,6 +16,7 @@ import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { createIncomingService } from '#src/engine/incoming.js';
 import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
+import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -50,6 +51,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       inFlightSends,
       metrics,
       engineEnabled: false,
+      admissionStore: createAdmissionStore({ client: redisRepo.client }),
     });
     const incomingService = createIncomingService({
       delivery,

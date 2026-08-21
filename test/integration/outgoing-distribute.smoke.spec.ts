@@ -14,6 +14,7 @@ import { createBaseService } from '#src/engine/base.js';
 import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { QUEUE_NS_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
+import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   STUB_PULL_ID,
@@ -53,6 +54,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       inFlightSends,
       metrics,
       engineEnabled: false,
+      admissionStore: createAdmissionStore({ client: redisRepo.client }),
     });
 
     const correlationId = `distribute-push-${ Date.now() }`;
@@ -110,6 +112,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       inFlightSends,
       metrics,
       engineEnabled: false,
+      admissionStore: createAdmissionStore({ client: redisRepo.client }),
     });
 
     const correlationId = `distribute-pull-${ Date.now() }`;

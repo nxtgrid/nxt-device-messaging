@@ -3,7 +3,7 @@
  *
  * {@link createRedisRepo} is the adapter: methods close over an injected client.
  * {@link redisRepo} is the process-wide instance so engine files can keep importing
- * it until C1.3–C1.5 inject the three stores. The composition root should hold
+ * it until C1.4–C1.5 inject the remaining stores. The composition root should hold
  * `redisRepo.client` as a local (metrics, webhook store, quit) rather than reaching
  * through this object for the raw connection.
  *
@@ -19,7 +19,6 @@ import { Redis } from 'iovalkey';
 import { isEmpty } from 'ramda';
 import { ulid } from 'ulid';
 
-import { logger } from '../../log.js';
 import type {
   CreateDeviceMessage,
   DeviceMessage,
@@ -151,18 +150,6 @@ export function createRedisRepo(client: Redis) {
      */
     fetchQueuesWithMessages(): Promise<string[]> {
       return client.smembers(redisKeys.listOfInitialQueuesToDistributeFrom());
-    },
-
-    /**
-     * Acquire a time-limited distributed lock on a queue.
-     * Uses SET NX PX for atomic lock with automatic expiry.
-     *
-     * @param queueKey - Lock key for the queue
-     * @param durationMs - Lock duration in milliseconds
-     * @returns 'OK' if lock acquired, null if already locked
-     */
-    lockQueueForTimeMs(queueKey: string, durationMs: number) {
-      return client.set(queueKey, 'locked', 'PX', durationMs, 'NX');
     },
 
     /**
@@ -299,77 +286,6 @@ export function createRedisRepo(client: Redis) {
 
       assertExecSucceeded(await multi.exec(), 'messageFullCleanup');
     },
-
-    // ------------------------------------
-    // Concurrency admission strategy — Redis primitives (ADR-006)
-    // Key from `buildConcurrencyRateLimitKey(initialQueueKey)`; opaque string here.
-    // ------------------------------------
-
-    /**
-     * Claim a concurrency admission slot: SADD the track set and persist the key
-     * on the message hash so cleanup/retry can SREM without re-deriving it.
-     *
-     * @param concurrencyRateLimitKey - Opaque rate-limit set key
-     * @param messageId - The message ULID
-     */
-    async claimConcurrencyRateLimit(
-      concurrencyRateLimitKey: string,
-      messageId: string,
-    ): Promise<void> {
-      const multi = client.multi();
-      multi.sadd(concurrencyRateLimitKey, messageId);
-      multi.hset(redisKeys.message(messageId), { concurrencyRateLimitKey });
-      assertExecSucceeded(await multi.exec(), 'claimConcurrencyRateLimit');
-    },
-
-    /**
-     * Get the count of messages currently tracked in a concurrency rate-limit set.
-     * Used to check if we can admit more messages.
-     *
-     * @param concurrencyRateLimitKey - Opaque rate-limit set key
-     * @returns Number of messages tracked
-     */
-    getConcurrencyRateLimitCount(concurrencyRateLimitKey: string) {
-      return client.scard(concurrencyRateLimitKey);
-    },
-
-    /**
-     * Validate and clean a concurrency rate-limit set by removing members
-     * whose message hash no longer exists. Only call when the set is at
-     * capacity to avoid unnecessary work.
-     *
-     * @param concurrencyRateLimitKey - Opaque rate-limit set key
-     * @returns Number of live members remaining after cleanup
-     */
-    async validateAndCleanConcurrencyRateLimit(
-      concurrencyRateLimitKey: string,
-    ): Promise<number> {
-      const members = await client.smembers(concurrencyRateLimitKey);
-      if (members.length === 0) return 0;
-
-      const existsPipeline = client.pipeline();
-      for (const messageId of members) {
-        existsPipeline.exists(redisKeys.message(messageId));
-      }
-
-      const results = await existsPipeline.exec();
-      if (!results) return members.length;
-      const deadMembers = members.filter((_member, idx) => {
-        const [ err, exists ] = results[idx] as unknown as [unknown, number];
-        return !err && exists === 0;
-      });
-
-      if (deadMembers.length > 0) {
-        await client.srem(concurrencyRateLimitKey, ...deadMembers);
-        logger.warn({
-          module: 'redis',
-          deadCount: deadMembers.length,
-          concurrencyRateLimitKey,
-        }, 'cleaned dead concurrency rate-limit entries');
-      }
-
-      return members.length - deadMembers.length;
-    },
   };
 }
 
@@ -377,7 +293,7 @@ export function createRedisRepo(client: Redis) {
 export type RedisRepo = ReturnType<typeof createRedisRepo>;
 
 /**
- * Process-wide adapter. Engine files import this until C1.3–C1.5 inject the stores.
+ * Process-wide adapter. Engine files import this until C1.4–C1.5 inject the remaining stores.
  * One client: created here, held as a local in `main.ts`.
  */
 export const redisRepo = createRedisRepo(createRedisClient());

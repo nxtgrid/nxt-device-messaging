@@ -18,6 +18,8 @@ import {
 } from '#src/engine/lifecycle/runner.js';
 import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
 import type { WebhookService } from '#src/engine/webhook/service.js';
+import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
+import { redisRepo } from '#src/lib/redis-repository/index.js';
 import type { MetricsRecorder } from '#src/metrics/index.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { noopMetrics } from './noop-metrics.js';
@@ -71,6 +73,7 @@ export function createEngineHarness(
     inFlightSends,
     metrics,
     engineEnabled: options.engineEnabled ?? false,
+    admissionStore: createAdmissionStore({ client: redisRepo.client }),
   });
   const incoming = createIncomingService({
     delivery: options.delivery,

@@ -791,3 +791,5 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-21** — **C1.1 landed.** Deleted the four dead `redisRepo` methods. Next: **C1.2**.
 - **2026-08-21** — **C1.2 landed.** `createRedisClient` + `createRedisRepo(client)`. The
   process-wide `redisRepo` remains until the stores are injected. Next: **C1.3**.
+- **2026-08-21** — **C1.3 landed.** `createAdmissionStore({ client })` — four methods,
+  injected into `createOutgoingService`. Methods removed from `redisRepo`. Next: **C1.4**.

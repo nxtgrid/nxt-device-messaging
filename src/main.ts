@@ -12,6 +12,7 @@ import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
+import { createAdmissionStore } from './lib/redis-repository/admission-store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
 import { createMetrics } from './metrics/index.js';
 
@@ -65,6 +66,7 @@ const baseService = createBaseService({
 });
 /** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
 const inFlightSends = createInFlightSends();
+const admissionStore = createAdmissionStore({ client: redis });
 
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
@@ -72,6 +74,7 @@ const outgoingService = createOutgoingService({
   baseService,
   inFlightSends,
   engineEnabled: config.engine.enabled,
+  admissionStore,
   metrics,
 });
 const incomingService = createIncomingService({

@@ -1988,6 +1988,16 @@ redisRepo.client` as a local (metrics, webhook store, quit).
 
 **Next:** C1.3 (`AdmissionStore`).
 
+### 2026-08-21 — plan 002 item 8: C1.3 (`AdmissionStore`)
+
+Four admission methods left `redisRepo` for `createAdmissionStore({ client })` in
+`src/lib/redis-repository/admission-store.ts` (same factory shape as `createWebhookStore`).
+`createOutgoingService` takes required `admissionStore`; `_canAdmit` / `_onClaimAfterPick`
+are the only callers. Wired from `main.ts` with the process-wide client. `redisRepo` still
+exists for message CRUD and stage moves (C1.4 / C1.5).
+
+**Next:** C1.4 (`MessageStore`).
+
 
 
 

@@ -8,13 +8,14 @@
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
-import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
   CancelMessageResult,
   CreateDeviceMessage,
   DeviceMessage,
 } from '../lib/device-message/types.js';
+import type { AdmissionStore } from '../lib/redis-repository/admission-store.js';
+import { redisRepo } from '../lib/redis-repository/index.js';
+import { redisKeys } from '../lib/redis-repository/keys.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
@@ -97,13 +98,14 @@ export type CreateOutgoingServiceOptions = {
    * no tick would follow up (ADR-008 §13 / B3).
    */
   readonly engineEnabled: boolean;
+  readonly admissionStore: AdmissionStore;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, baseService, in-flight set, engine gate, metrics
+ * @param options - Registry, delivery, baseService, in-flight set, engine gate, admission, metrics
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
   const {
@@ -112,6 +114,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     baseService,
     inFlightSends,
     engineEnabled,
+    admissionStore,
     metrics,
   } = options;
   const moves = createStageMoves({ delivery, metrics });
@@ -129,7 +132,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     switch (admission.strategy) {
       case 'spacing': {
         const lockKey = redisKeys.lockForQueue(queueKey);
-        const lockAcquired = await redisRepo.lockQueueForTimeMs(
+        const lockAcquired = await admissionStore.lockQueueForTimeMs(
           lockKey,
           admission.minIntervalMs,
         );
@@ -138,9 +141,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return false;
-        const tracked = await redisRepo.getConcurrencyRateLimitCount(rateLimitKey);
+        const tracked = await admissionStore.getConcurrencyRateLimitCount(rateLimitKey);
         if (tracked >= admission.maxInFlight) {
-          const liveCount = await redisRepo.validateAndCleanConcurrencyRateLimit(rateLimitKey);
+          const liveCount = await admissionStore.validateAndCleanConcurrencyRateLimit(rateLimitKey);
           if (liveCount >= admission.maxInFlight) return false;
         }
         return true;
@@ -166,7 +169,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return;
-        await redisRepo.claimConcurrencyRateLimit(rateLimitKey, messageId);
+        await admissionStore.claimConcurrencyRateLimit(rateLimitKey, messageId);
         return;
       }
       case 'custom':
