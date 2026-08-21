@@ -3,7 +3,7 @@
  *
  * {@link createRedisRepo} is the adapter: methods close over an injected client.
  * {@link redisRepo} is the process-wide instance so engine files can keep importing
- * it until C1.4–C1.5 inject the remaining stores. The composition root should hold
+ * it until C1.5 injects StageStore. The composition root should hold
  * `redisRepo.client` as a local (metrics, webhook store, quit) rather than reaching
  * through this object for the raw connection.
  *
@@ -16,16 +16,9 @@
  */
 
 import { Redis } from 'iovalkey';
-import { isEmpty } from 'ramda';
-import { ulid } from 'ulid';
 
-import type {
-  CreateDeviceMessage,
-  DeviceMessage,
-  PhaseEnum,
-} from '../device-message/types.js';
+import type { DeviceMessage } from '../device-message/types.js';
 import { createRedisClient } from './client.js';
-import { deserializeMessage, serializeCreateDeviceMessage } from './helpers.js';
 import { redisKeys } from './keys.js';
 
 export { createRedisClient } from './client.js';
@@ -70,54 +63,6 @@ export function createRedisRepo(client: Redis) {
     client,
 
     /**
-     * Create a new message and add it to the appropriate initial queue.
-     * Uses Redis MULTI/EXEC so hash, queue membership, distributor set, and
-     * optional correlation index commit as one transaction.
-     *
-     * @param dto - Message creation parameters
-     * @param queueKey - Initial queue to add message to
-     * @param ttlSeconds - Hash and correlation-index TTL (`delivery.messageTtlSeconds`)
-     * @returns The newly created DeviceMessage
-     */
-    async enqueueDeviceMessage(
-      dto: CreateDeviceMessage,
-      queueKey: string,
-      ttlSeconds: number,
-    ): Promise<DeviceMessage> {
-      const messageId = ulid();
-      const messageKey = redisKeys.message(messageId);
-      const serializedHash = serializeCreateDeviceMessage(dto);
-
-      const multi = client.multi();
-
-      // 1. Store the message hash
-      multi.hset(messageKey, serializedHash);
-      multi.expire(messageKey, ttlSeconds);
-
-      // 2. Add to the appropriate initial queue.
-      // Higher `priority` is more urgent → more negative score → popped first.
-      const score = -1 * dto.priority;
-      multi.zadd(queueKey, score, messageId);
-
-      // 3. Tell the distributor there is work in this queue
-      multi.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), queueKey);
-
-      // 4. Create correlation indexes (optionally per phase)
-      if (dto.correlationId) {
-        const indexKey = redisKeys.indexCorrelationId(dto.correlationId, dto.phase);
-        multi.set(indexKey, messageKey, 'EX', ttlSeconds);
-      }
-
-      assertExecSucceeded(await multi.exec(), 'enqueueDeviceMessage');
-
-      return deserializeMessage(messageId, {
-        ...Object.fromEntries(
-          Object.entries(serializedHash).map(([ key, value ]) => [ key, String(value) ]),
-        ),
-      });
-    },
-
-    /**
      * Move a message from retry queue back to an initial queue.
      * Restores priority-based ordering and marks as QUEUED.
      * Uses Redis MULTI/EXEC for the queue move + status update.
@@ -150,71 +95,6 @@ export function createRedisRepo(client: Redis) {
      */
     fetchQueuesWithMessages(): Promise<string[]> {
       return client.smembers(redisKeys.listOfInitialQueuesToDistributeFrom());
-    },
-
-    /**
-     * Look up a message ID by its external delivery queue ID (from the network server).
-     *
-     * @param deliveryQueueId - External queue ID
-     * @returns Message ULID or undefined if not found
-     */
-    async getMessageIdFromDeliveryQueueId(deliveryQueueId: string): Promise<string | undefined> {
-      const messageKey = await client.get(redisKeys.indexExternalDeliveryId(deliveryQueueId));
-      return messageKey?.split(':')[1];
-    },
-
-    /**
-     * Retrieve a full message by its ULID.
-     *
-     * @param messageId - Message ULID
-     * @returns Deserialized DeviceMessage or null if not found
-     */
-    async getMessageById(messageId: string): Promise<DeviceMessage | null> {
-      const raw = await client.hgetall(redisKeys.message(messageId));
-      if (isEmpty(raw)) return null;
-      return deserializeMessage(messageId, raw as Record<string, string>);
-    },
-
-    /**
-     * Look up a message by its associated correlation id.
-     *
-     * @param correlationId - Caller-supplied correlation id
-     * @returns DeviceMessage or null if not found
-     */
-    async getMessageFromCorrelationId(correlationId: string): Promise<DeviceMessage | null> {
-      const messageKey = await client.get(redisKeys.indexCorrelationId(correlationId));
-      const messageId = messageKey?.split(':')[1];
-      if (!messageId) return null;
-      return this.getMessageById(messageId);
-    },
-
-    /**
-     * Look up all messages by correlation id (for three-phase aggregation).
-     * Checks base index and all phase-specific indexes.
-     *
-     * @param correlationId - Caller-supplied correlation id
-     * @returns Array of DeviceMessages (1 for single-phase, up to 3 for three-phase)
-     */
-    async getAllMessagesForCorrelationId(correlationId: string): Promise<DeviceMessage[]> {
-      const phases: Array<PhaseEnum | undefined> = [ undefined, 'A', 'B', 'C' ];
-      const indexKeys = phases.map(phase => redisKeys.indexCorrelationId(correlationId, phase));
-      const messageKeys = (await client.mget(...indexKeys)).filter(Boolean) as string[];
-      if (isEmpty(messageKeys)) return [];
-
-      const pipeline = client.pipeline();
-      messageKeys.forEach(key => pipeline.hgetall(key));
-      const results = await pipeline.exec();
-
-      if (!results) return [];
-
-      const messages: DeviceMessage[] = [];
-      results.forEach(([ err, raw ], i) => {
-        if (err || isEmpty(raw)) return;
-        const messageId = messageKeys[i].split(':')[1];
-        messages.push(deserializeMessage(messageId, raw as Record<string, string>));
-      });
-
-      return messages;
     },
 
     /**
@@ -293,7 +173,7 @@ export function createRedisRepo(client: Redis) {
 export type RedisRepo = ReturnType<typeof createRedisRepo>;
 
 /**
- * Process-wide adapter. Engine files import this until C1.4–C1.5 inject the remaining stores.
+ * Process-wide adapter. Engine files import this until C1.5 injects StageStore.
  * One client: created here, held as a local in `main.ts`.
  */
 export const redisRepo = createRedisRepo(createRedisClient());

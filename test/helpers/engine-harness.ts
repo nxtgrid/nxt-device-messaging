@@ -20,6 +20,7 @@ import { createOutgoingService, type OutgoingService } from '#src/engine/outgoin
 import type { WebhookService } from '#src/engine/webhook/service.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import type { MetricsRecorder } from '#src/metrics/index.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { noopMetrics } from './noop-metrics.js';
@@ -60,10 +61,12 @@ export function createEngineHarness(
 ): EngineHarness {
   const metrics = options.metrics ?? noopMetrics;
   const inFlightSends = options.inFlightSends ?? createInFlightSends();
+  const messageStore = createMessageStore({ client: redisRepo.client });
 
   const baseService = createBaseService({
     delivery: options.delivery,
     webhook: options.webhook,
+    messageStore,
     metrics,
   });
   const outgoing = createOutgoingService({
@@ -74,10 +77,12 @@ export function createEngineHarness(
     metrics,
     engineEnabled: options.engineEnabled ?? false,
     admissionStore: createAdmissionStore({ client: redisRepo.client }),
+    messageStore,
   });
   const incoming = createIncomingService({
     delivery: options.delivery,
     baseService,
+    messageStore,
     metrics,
   });
   const moves = createStageMoves({ delivery: options.delivery, metrics });
@@ -93,6 +98,7 @@ export function createEngineHarness(
     registry: options.registry,
     actions,
     moves,
+    messageStore,
     distribute: outgoing.distributeToNetworkServers,
   });
 

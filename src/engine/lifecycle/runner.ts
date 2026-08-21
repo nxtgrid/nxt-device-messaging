@@ -14,8 +14,9 @@
 
 import { decodeTime } from 'ulid';
 
-import { redisRepo } from '../../lib/redis-repository/index.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
+import { redisRepo } from '../../lib/redis-repository/index.js';
+import type { MessageStore } from '../../lib/redis-repository/message-store.js';
 import { logger } from '../../log.js';
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../../plugins/registry.js';
@@ -37,6 +38,7 @@ export type CreateLifecycleRunnerOptions = {
   readonly registry: PluginRegistry;
   readonly actions: StageActions;
   readonly moves: StageMoves;
+  readonly messageStore: MessageStore;
   /**
    * Ready-queue distribution. Not a stage (ADR-008 §2) but the same cadence, so the tick
    * kicks it once at the end — fire-and-forget, same as before the stage table.
@@ -47,12 +49,12 @@ export type CreateLifecycleRunnerOptions = {
 /**
  * Factory for the stage runner.
  *
- * @param options - Registry, the stage actions, stage moves, optional distribute kick
+ * @param options - Registry, the stage actions, stage moves, message store, optional distribute kick
  */
 export function createLifecycleRunner(
   options: CreateLifecycleRunnerOptions,
 ): LifecycleRunner {
-  const { registry, actions, moves, distribute } = options;
+  const { registry, actions, moves, messageStore, distribute } = options;
 
   /** Queue keys with a drain still in progress — one guard per row, not one per tick. */
   const draining = new Set<string>();
@@ -105,7 +107,7 @@ export function createLifecycleRunner(
     const dueIds = await redisRepo.getExpiredMessagesInQueue(queue.key, now);
 
     for (const messageId of dueIds) {
-      const message = await redisRepo.getMessageById(messageId);
+      const message = await messageStore.getMessageById(messageId);
       if (!message) {
         await redisRepo.removeMessageFromQueue(queue.key, messageId);
         continue;

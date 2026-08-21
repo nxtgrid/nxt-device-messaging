@@ -25,6 +25,8 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
   it('connects, registers Lua commands, and round-trips a message', async () => {
     ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
+    const { createMessageStore } = await import('../../src/lib/redis-repository/message-store.js');
+    const messageStore = createMessageStore({ client: redisRepo.client });
 
     expect(await redisRepo.client.ping()).toBe('PONG');
     expect(typeof redisRepo.client.fetchNextMessageInQueueAndMove).toBe('function');
@@ -34,7 +36,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
     const queueKey = `queue:smoke:${ correlationId }`;
 
     try {
-      const enqueued = await redisRepo.enqueueDeviceMessage(
+      const enqueued = await messageStore.enqueueDeviceMessage(
         {
           commandType: 'READ_CREDIT',
           priority: 1,
@@ -53,7 +55,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       expect(enqueued.commandType).toBe('READ_CREDIT');
       expect(enqueued.deliveryStatus).toBe('QUEUED');
 
-      const message = await redisRepo.getMessageFromCorrelationId(correlationId);
+      const message = await messageStore.getMessageFromCorrelationId(correlationId);
       expect(message).not.toBeNull();
       expect(message?.commandType).toBe('READ_CREDIT');
       expect(message?.pluginId).toBe('smoke-test');
@@ -72,7 +74,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
         queueKey,
       );
 
-      expect(await redisRepo.getMessageFromCorrelationId(correlationId)).toBeNull();
+      expect(await messageStore.getMessageFromCorrelationId(correlationId)).toBeNull();
       expect(await redisRepo.client.zcard(queueKey)).toBe(0);
       expect(await redisRepo.client.sismember(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
@@ -80,7 +82,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       )).toBe(0);
     }
     finally {
-      const leftover = await redisRepo.getMessageFromCorrelationId(correlationId);
+      const leftover = await messageStore.getMessageFromCorrelationId(correlationId);
       if (leftover) {
         await redisRepo.messageFullCleanup(leftover, [ queueKey ]);
       }

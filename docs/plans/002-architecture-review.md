@@ -793,3 +793,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   process-wide `redisRepo` remains until the stores are injected. Next: **C1.3**.
 - **2026-08-21** — **C1.3 landed.** `createAdmissionStore({ client })` — four methods,
   injected into `createOutgoingService`. Methods removed from `redisRepo`. Next: **C1.4**.
+- **2026-08-21** — **C1.4 landed.** `createMessageStore({ client })` — five CRUD methods,
+  injected into outgoing, incoming, base, and the runner. Incoming no longer imports
+  `redisRepo`. Next: **C1.5**.

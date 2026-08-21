@@ -14,6 +14,7 @@ import {
   parseWebhookStoredRecord,
 } from '#src/engine/webhook/store.js';
 import { webhookRedisKeys } from '#src/engine/webhook/keys.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 
@@ -59,6 +60,7 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
     const baseService = createBaseService({
       delivery,
       webhook: webhookService,
+      messageStore: createMessageStore({ client: redisRepo.client }),
       metrics,
     });
 

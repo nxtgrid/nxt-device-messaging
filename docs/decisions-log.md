@@ -1998,6 +1998,17 @@ exists for message CRUD and stage moves (C1.4 / C1.5).
 
 **Next:** C1.4 (`MessageStore`).
 
+### 2026-08-21 — plan 002 item 8: C1.4 (`MessageStore`)
+
+Five CRUD methods left `redisRepo` for `createMessageStore({ client })` in
+`src/lib/redis-repository/message-store.ts`. Injected into `createOutgoingService`,
+`createIncomingService`, `createBaseService`, and `createLifecycleRunner`. Incoming
+no longer imports `redisRepo`. `base` and the runner still use `redisRepo` for
+`removeMessageFromQueue` / `getExpiredMessagesInQueue` (C1.5 StageStore). Emit-only
+unit tests pass a stub so they do not open a Redis connection.
+
+**Next:** C1.5 (`StageStore`).
+
 
 
 

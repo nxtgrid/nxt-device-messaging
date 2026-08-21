@@ -17,6 +17,7 @@ import { createIncomingService } from '#src/engine/incoming.js';
 import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
@@ -42,7 +43,8 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
-    const baseService = createBaseService({ delivery, metrics });
+    const messageStore = createMessageStore({ client: redisRepo.client });
+    const baseService = createBaseService({ delivery, metrics, messageStore });
     const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
@@ -52,10 +54,12 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redisRepo.client }),
+      messageStore,
     });
     const incomingService = createIncomingService({
       delivery,
       baseService,
+      messageStore,
       metrics,
     });
     const app = await buildApp({ metrics, incomingService, registry });

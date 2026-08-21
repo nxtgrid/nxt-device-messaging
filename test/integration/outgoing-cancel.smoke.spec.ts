@@ -18,6 +18,7 @@ import { createBaseService } from '#src/engine/base.js';
 import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
@@ -46,15 +47,17 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
     const metrics = noopMetrics;
     const inFlightSends = createInFlightSends();
+    const messageStore = createMessageStore({ client: redisRepo.client });
     // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics, messageStore }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redisRepo.client }),
+      messageStore,
     });
 
     const correlationId = `cancel-smoke-${ Date.now() }`;

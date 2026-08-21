@@ -14,6 +14,7 @@ import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
 import { createAdmissionStore } from './lib/redis-repository/admission-store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
+import { createMessageStore } from './lib/redis-repository/message-store.js';
 import { createMetrics } from './metrics/index.js';
 
 /** One connection for the process; webhook store and metrics share it. */
@@ -59,14 +60,17 @@ const webhookService = config.eventWebhook
   })
   : undefined;
 
+const admissionStore = createAdmissionStore({ client: redis });
+const messageStore = createMessageStore({ client: redis });
+
 const baseService = createBaseService({
   delivery: config.delivery,
   webhook: webhookService,
+  messageStore,
   metrics,
 });
 /** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
 const inFlightSends = createInFlightSends();
-const admissionStore = createAdmissionStore({ client: redis });
 
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
@@ -75,11 +79,13 @@ const outgoingService = createOutgoingService({
   inFlightSends,
   engineEnabled: config.engine.enabled,
   admissionStore,
+  messageStore,
   metrics,
 });
 const incomingService = createIncomingService({
   delivery: config.delivery,
   baseService,
+  messageStore,
   metrics,
 });
 
@@ -97,6 +103,7 @@ const lifecycleRunner = createLifecycleRunner({
   registry: pluginRegistry,
   actions: stageActions,
   moves: stageMoves,
+  messageStore,
   distribute: outgoingService.distributeToNetworkServers,
 });
 const tokenService = createTokenService({

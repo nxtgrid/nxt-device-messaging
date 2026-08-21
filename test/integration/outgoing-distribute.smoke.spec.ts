@@ -15,6 +15,7 @@ import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { QUEUE_NS_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import {
   STUB_PULL_ID,
@@ -47,14 +48,16 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
     const inFlightSends = createInFlightSends();
+    const messageStore = createMessageStore({ client: redisRepo.client });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics, messageStore }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redisRepo.client }),
+      messageStore,
     });
 
     const correlationId = `distribute-push-${ Date.now() }`;
@@ -105,14 +108,16 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const registry = createPluginRegistry([ { id: STUB_PULL_ID } ]);
     const metrics = noopMetrics;
     const inFlightSends = createInFlightSends();
+    const messageStore = createMessageStore({ client: redisRepo.client });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics, messageStore }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redisRepo.client }),
+      messageStore,
     });
 
     const correlationId = `distribute-pull-${ Date.now() }`;

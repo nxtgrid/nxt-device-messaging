@@ -8,12 +8,12 @@
 import { isNotNil } from 'ramda';
 
 import type { DeliveryConfig } from '../config/schema.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
 import type {
   DeviceMessage,
   FailureReason,
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
+import type { MessageStore } from '../lib/redis-repository/message-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type {
@@ -64,6 +64,7 @@ export type CreateIncomingServiceOptions = {
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
+  readonly messageStore: MessageStore;
   readonly metrics: MetricsRecorder;
 };
 
@@ -73,10 +74,10 @@ export type CreateIncomingServiceOptions = {
  * Polling is not here: the `awaitingTask` stage action drives it (ADR-008 §3), and calls
  * back into {@link IncomingService.processEvent} with whatever the vendor returned.
  *
- * @param options - Delivery knobs, peer {@link BaseService}, metrics
+ * @param options - Delivery knobs, peer {@link BaseService}, message store, metrics
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
-  const { delivery, baseService, metrics } = options;
+  const { delivery, baseService, messageStore, metrics } = options;
   const moves = createStageMoves({ delivery, metrics });
 
   /**
@@ -116,7 +117,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return 'rescheduled';
     }
 
-    const messageId = await redisRepo.getMessageIdFromDeliveryQueueId(deliveryQueueId);
+    const messageId = await messageStore.getMessageIdFromDeliveryQueueId(deliveryQueueId);
     if (!messageId) {
       logger.warn({ module: 'incoming', deliveryQueueId, parsedEvent }, 'message not found for deliveryQueueId');
       return 'orphaned';
@@ -138,7 +139,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return 'rescheduled';
     }
 
-    const storedMessage = await redisRepo.getMessageById(messageId);
+    const storedMessage = await messageStore.getMessageById(messageId);
     if (!storedMessage) {
       logger.warn({ module: 'incoming', messageId }, 'message not found (already cleaned up?)');
       return 'orphaned';

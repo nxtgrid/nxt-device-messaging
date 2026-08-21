@@ -16,6 +16,7 @@ import type {
 import type { AdmissionStore } from '../lib/redis-repository/admission-store.js';
 import { redisRepo } from '../lib/redis-repository/index.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
+import type { MessageStore } from '../lib/redis-repository/message-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
@@ -99,13 +100,14 @@ export type CreateOutgoingServiceOptions = {
    */
   readonly engineEnabled: boolean;
   readonly admissionStore: AdmissionStore;
+  readonly messageStore: MessageStore;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, baseService, in-flight set, engine gate, admission, metrics
+ * @param options - Registry, delivery, baseService, in-flight set, engine gate, stores, metrics
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
   const {
@@ -115,6 +117,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     inFlightSends,
     engineEnabled,
     admissionStore,
+    messageStore,
     metrics,
   } = options;
   const moves = createStageMoves({ delivery, metrics });
@@ -341,7 +344,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   async function _cancelOneByCorrelationId(
     correlationId: string,
   ): Promise<CancelMessageResult> {
-    const messages = await redisRepo.getAllMessagesForCorrelationId(correlationId);
+    const messages = await messageStore.getAllMessagesForCorrelationId(correlationId);
 
     if (messages.length === 0) {
       return { correlationId, result: 'NOT_FOUND' };
@@ -374,7 +377,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         device: create.device,
       });
 
-      const message = await redisRepo.enqueueDeviceMessage(
+      const message = await messageStore.enqueueDeviceMessage(
         create,
         queueKey,
         delivery.messageTtlSeconds,
@@ -391,7 +394,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     getByCorrelationId(correlationId: string): Promise<DeviceMessage | null> {
-      return redisRepo.getMessageFromCorrelationId(correlationId);
+      return messageStore.getMessageFromCorrelationId(correlationId);
     },
 
     cancelOne(correlationId: string): Promise<CancelMessageResult> {

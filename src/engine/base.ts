@@ -10,12 +10,13 @@
 
 import { isNotNil } from 'ramda';
 import type { DeliveryConfig } from '../config/schema.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
 import type {
   DeviceMessage,
   FailureContext,
   FailureReason,
 } from '../lib/device-message/types.js';
+import { redisRepo } from '../lib/redis-repository/index.js';
+import type { MessageStore } from '../lib/redis-repository/message-store.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { DeliveryPlugin } from '../plugins/plugin.interface.js';
 import { createStageMoves } from './lifecycle/moves.js';
@@ -56,16 +57,17 @@ export type CreateBaseServiceOptions = {
    * Outbound event webhook. When omitted (no `eventWebhook` in config), emits are no-ops.
    */
   readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
+  readonly messageStore: MessageStore;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Factory for shared delivery-outcome helpers (no runtime import).
  *
- * @param options - Delivery knobs, optional webhook messenger, metrics
+ * @param options - Delivery knobs, optional webhook messenger, message store, metrics
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { delivery, webhook, metrics } = options;
+  const { delivery, webhook, messageStore, metrics } = options;
   const moves = createStageMoves({ delivery, metrics });
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
@@ -91,7 +93,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
     failureContext: FailureContext,
     plugin: DeliveryPlugin,
   ): Promise<StageOutcome> {
-    const message = await redisRepo.getMessageById(messageId);
+    const message = await messageStore.getMessageById(messageId);
 
     if (!message) {
       await redisRepo.removeMessageFromQueue(currentQueueKey, messageId);
