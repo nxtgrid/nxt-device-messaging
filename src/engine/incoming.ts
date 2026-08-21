@@ -77,7 +77,7 @@ export type CreateIncomingServiceOptions = {
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
   const { delivery, baseService, metrics } = options;
-  const moves = createStageMoves({ delivery });
+  const moves = createStageMoves({ delivery, metrics });
 
   /**
    * Process a parsed incoming event from PUSH ingress or the `awaitingTask` poll.

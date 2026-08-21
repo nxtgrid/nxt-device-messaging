@@ -12,6 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '#src/app.js';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { createIncomingService } from '#src/engine/incoming.js';
 import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
@@ -41,10 +42,12 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
     const baseService = createBaseService({ delivery, metrics });
+    const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
       delivery,
       baseService,
+      inFlightSends,
       metrics,
       kickDistributeOnEnqueue: false,
     });

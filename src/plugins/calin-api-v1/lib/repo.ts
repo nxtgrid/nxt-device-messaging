@@ -7,6 +7,7 @@
  */
 
 import { logger } from '../../../log.js';
+import { CLIENT_SAFETY_DEADLINE_MS } from '../../_shared/client-safety-deadline.js';
 import { toSafeNumberOrNull } from '../../_shared/to-safe-number-or-null.js';
 
 /** Options for {@link CalinApiV1Error}. */
@@ -149,6 +150,7 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
           Accept: 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CLIENT_SAFETY_DEADLINE_MS),
       });
 
       const contentType = response.headers.get('content-type') ?? undefined;

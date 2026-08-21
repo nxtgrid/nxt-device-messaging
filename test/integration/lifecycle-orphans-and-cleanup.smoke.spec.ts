@@ -25,6 +25,7 @@ import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
+import { noopMetrics } from '../helpers/noop-metrics.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
 import {
   findMessageReferences,
@@ -280,7 +281,7 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
         id: PUSH_PLUGIN_ID,
         deliveryPattern: 'PUSH',
       });
-      const moves = createStageMoves({ delivery: baseDelivery });
+      const moves = createStageMoves({ delivery: baseDelivery, metrics: noopMetrics });
       const correlationId = `cleanup-partial-${ Date.now() }`;
       const enqueued = await enqueuePushTracked(outgoing, correlationId);
       await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);

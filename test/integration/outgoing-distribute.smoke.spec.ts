@@ -11,6 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { QUEUE_NS_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
@@ -44,10 +45,12 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const metrics = noopMetrics;
+    const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
       delivery,
       baseService: createBaseService({ delivery, metrics }),
+      inFlightSends,
       metrics,
       kickDistributeOnEnqueue: false,
     });
@@ -99,10 +102,12 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
 
     const registry = createPluginRegistry([ { id: STUB_PULL_ID } ]);
     const metrics = noopMetrics;
+    const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
       delivery,
       baseService: createBaseService({ delivery, metrics }),
+      inFlightSends,
       metrics,
       kickDistributeOnEnqueue: false,
     });

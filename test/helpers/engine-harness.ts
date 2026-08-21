@@ -9,6 +9,10 @@
 
 import type { DeliveryConfig } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import {
+  createInFlightSends,
+  type InFlightSends,
+} from '#src/engine/in-flight-sends.js';
 import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
 import { createStageActions } from '#src/engine/lifecycle/actions.js';
 import { createStageMoves } from '#src/engine/lifecycle/moves.js';
@@ -27,6 +31,8 @@ export type EngineHarness = {
   readonly outgoing: OutgoingService;
   readonly incoming: IncomingService;
   readonly runner: LifecycleRunner;
+  /** Shared with the runner's `ns` row. */
+  readonly inFlightSends: InFlightSends;
 };
 
 /** Dependencies for {@link createEngineHarness}. */
@@ -41,6 +47,8 @@ export type CreateEngineHarnessOptions = {
    * stay `QUEUED` until it drives distribution itself. Pass true to exercise the kick.
    */
   readonly kickDistributeOnEnqueue?: boolean;
+  /** Shared with outgoing and the runner's `ns` row; omit for a fresh instance. */
+  readonly inFlightSends?: InFlightSends;
 };
 
 /**
@@ -53,6 +61,7 @@ export function createEngineHarness(
   options: CreateEngineHarnessOptions,
 ): EngineHarness {
   const metrics = options.metrics ?? noopMetrics;
+  const inFlightSends = options.inFlightSends ?? createInFlightSends();
 
   const baseService = createBaseService({
     delivery: options.delivery,
@@ -63,6 +72,7 @@ export function createEngineHarness(
     registry: options.registry,
     delivery: options.delivery,
     baseService,
+    inFlightSends,
     metrics,
     kickDistributeOnEnqueue: options.kickDistributeOnEnqueue ?? false,
   });
@@ -71,11 +81,12 @@ export function createEngineHarness(
     baseService,
     metrics,
   });
-  const moves = createStageMoves({ delivery: options.delivery });
+  const moves = createStageMoves({ delivery: options.delivery, metrics });
   const actions = createStageActions({
     baseService,
     incomingService: incoming,
     moves,
+    inFlightSends,
     delivery: options.delivery,
     metrics,
   });
@@ -86,5 +97,5 @@ export function createEngineHarness(
     distribute: outgoing.distributeToNetworkServers,
   });
 
-  return { outgoing, incoming, runner };
+  return { outgoing, incoming, runner, inFlightSends };
 }

@@ -11,6 +11,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 
+import type { StageName } from '../engine/lifecycle/types.js';
 import { collectQueueDepths, type QueueDepthRedis } from './queue-depth.js';
 
 export type { QueueDepth, QueueDepthRedis } from './queue-depth.js';
@@ -29,6 +30,12 @@ export type MetricsRecorder = {
   recordMessageTerminal(status: MessageTerminalStatus, retryCount: number): void;
   recordWebhookResult(result: WebhookResult): void;
   recordIngressUnhandled(pluginId: string): void;
+  /**
+   * A stage advance whose ZREM gate found the message already gone.
+   *
+   * @param stage - Stage the move was leaving
+   */
+  recordStageClaimMiss(stage: StageName): void;
 };
 
 export type Metrics = MetricsRecorder & {
@@ -86,6 +93,13 @@ export function createMetrics(options: CreateMetricsOptions): Metrics {
     registers: [ registry ],
   });
 
+  const stageClaimMissesTotal = new Counter({
+    name: 'device_messaging_stage_claim_misses_total',
+    help: 'Stage advances that lost the claim because the message had already moved',
+    labelNames: [ 'stage' ],
+    registers: [ registry ],
+  });
+
   const queueDepth = new Gauge({
     name: 'device_messaging_queue_depth',
     help: 'Redis sorted-set cardinality by queue key',
@@ -107,6 +121,10 @@ export function createMetrics(options: CreateMetricsOptions): Metrics {
 
   function recordIngressUnhandled(pluginId: string): void {
     ingressUnhandledTotal.inc({ pluginId });
+  }
+
+  function recordStageClaimMiss(stage: StageName): void {
+    stageClaimMissesTotal.inc({ stage });
   }
 
   async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -134,6 +152,7 @@ export function createMetrics(options: CreateMetricsOptions): Metrics {
     recordMessageTerminal,
     recordWebhookResult,
     recordIngressUnhandled,
+    recordStageClaimMiss,
     registerRoutes,
   };
 }

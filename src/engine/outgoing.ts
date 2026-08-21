@@ -32,6 +32,7 @@ import {
   UnknownPluginError,
   UnsupportedCommandTypeError,
 } from './errors.js';
+import type { InFlightSends } from './in-flight-sends.js';
 import { createStageMoves } from './lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from './lifecycle/stages.js';
 
@@ -65,6 +66,17 @@ export type OutgoingService = {
    * Kicked at the end of every engine tick; tests may call it directly.
    */
   distributeToNetworkServers(): Promise<void>;
+  /**
+   * Wait for sends already handed to a plugin, up to a budget (ADR-008 §8).
+   *
+   * Shutdown's order is: stop the timers so nothing new is picked, drain here, *then* close
+   * Redis — a send landing mid-drain still has to write its external id and move stage.
+   * Wiring that into `SIGTERM` is Shutdown v2; this only exposes the seam.
+   *
+   * @param budgetMs - How long to wait before abandoning the rest
+   * @returns The number still outstanding when the budget ran out
+   */
+  drainInFlightSends(budgetMs: number): Promise<number>;
 };
 
 /** Dependencies for {@link createOutgoingService}. */
@@ -73,6 +85,11 @@ export type CreateOutgoingServiceOptions = {
   readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
+  /**
+   * Sends this process is still awaiting. Shared with the `ns` stage action, which must not
+   * time out a send we are still holding (ADR-008 §8).
+   */
+  readonly inFlightSends: InFlightSends;
   /**
    * When true (default), fire-and-forget {@link OutgoingService.distributeToNetworkServers}
    * after a successful enqueue. Set false in tests that need the message to remain
@@ -88,8 +105,15 @@ export type CreateOutgoingServiceOptions = {
  * @param options - Registry, delivery, baseService, and optional enqueue-kick flag
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
-  const { registry, delivery, baseService, kickDistributeOnEnqueue = true, metrics } = options;
-  const moves = createStageMoves({ delivery });
+  const {
+    registry,
+    delivery,
+    baseService,
+    inFlightSends,
+    kickDistributeOnEnqueue = true,
+    metrics,
+  } = options;
+  const moves = createStageMoves({ delivery, metrics });
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -165,7 +189,8 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const slowThresholdMs = plugin.tuning.nsInFlightTimeoutMs;
 
     try {
-      deliveryQueueId = await plugin.outgoing.sendOne(message);
+      // Registered before the first await: a tick landing mid-send must see it (ADR-008 §8).
+      deliveryQueueId = await inFlightSends.track(message.id, plugin.outgoing.sendOne(message));
     }
     catch (err) {
       const elapsedMs = Math.round(performance.now() - startedAt);
@@ -196,7 +221,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         externalReference: message.device.externalReference,
         correlationId: message.correlationId,
         messageId: message.id,
-      }, 'sendOne slow; resolution cycle may have already scheduled a retry');
+      }, 'sendOne slow; its ns deadline was held off while we waited');
     }
 
     if (!deliveryQueueId) {
@@ -383,5 +408,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     distributeToNetworkServers,
+
+    drainInFlightSends(budgetMs: number): Promise<number> {
+      return inFlightSends.drain(budgetMs);
+    },
   };
 }

@@ -2,6 +2,7 @@ import { config, logger, pluginRegistry } from './runtime.js';
 
 import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
+import { createInFlightSends } from './engine/in-flight-sends.js';
 import { createIncomingService } from './engine/incoming.js';
 import { createStageActions } from './engine/lifecycle/actions.js';
 import { createStageMoves } from './engine/lifecycle/moves.js';
@@ -59,10 +60,14 @@ const baseService = createBaseService({
   webhook: webhookService,
   metrics,
 });
+/** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
+const inFlightSends = createInFlightSends();
+
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  inFlightSends,
   metrics,
 });
 const incomingService = createIncomingService({
@@ -72,11 +77,12 @@ const incomingService = createIncomingService({
 });
 
 /** The stage table's runtime half: what to do per stage, and the loop that drives it. */
-const stageMoves = createStageMoves({ delivery: config.delivery });
+const stageMoves = createStageMoves({ delivery: config.delivery, metrics });
 const stageActions = createStageActions({
   baseService,
   incomingService,
   moves: stageMoves,
+  inFlightSends,
   delivery: config.delivery,
   metrics,
 });

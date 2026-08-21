@@ -16,6 +16,7 @@ import type { MetricsRecorder } from '../../metrics/index.js';
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import type { BaseService } from '../base.js';
 import type { IncomingService } from '../incoming.js';
+import type { InFlightSends } from '../in-flight-sends.js';
 import type { StageMoves } from './moves.js';
 import { PULL_MAX_MESSAGE_AGE_MS, QUEUE_NS_KEY, QUEUE_RETRY_KEY } from './stages.js';
 import type { StageActions } from './types.js';
@@ -33,6 +34,8 @@ export type CreateStageActionsOptions = {
   readonly baseService: BaseService;
   readonly incomingService: Pick<IncomingService, 'processEvent'>;
   readonly moves: StageMoves;
+  /** Sends still held by this process — the `ns` row's stay of execution (ADR-008 §8). */
+  readonly inFlightSends: InFlightSends;
   readonly delivery: DeliveryConfig;
   readonly metrics: MetricsRecorder;
 };
@@ -43,7 +46,7 @@ export type CreateStageActionsOptions = {
  * @param options - Engine peers the actions delegate to
  */
 export function createStageActions(options: CreateStageActionsOptions): StageActions {
-  const { baseService, incomingService, moves, metrics } = options;
+  const { baseService, incomingService, moves, inFlightSends, metrics } = options;
 
   /**
    * Give up on a PULL message that outlived the age cap.
@@ -79,12 +82,21 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
   }
 
   return {
-    ns: ({ message, plugin }) => baseService.retryOrFail(
-      message.id,
-      QUEUE_NS_KEY,
-      { reason: TIMEOUT_REASONS.ns },
-      plugin,
-    ),
+    /**
+     * The deadline is for a send that vanished, not for one we are still holding. While
+     * this process awaits the promise it knows the send is alive, so the wait is extended
+     * instead — which is what makes A3's duplicate command unreachable (ADR-008 §8).
+     */
+    ns({ message, plugin }) {
+      if (inFlightSends.has(message.id)) return Promise.resolve('rescheduled');
+
+      return baseService.retryOrFail(
+        message.id,
+        QUEUE_NS_KEY,
+        { reason: TIMEOUT_REASONS.ns },
+        plugin,
+      );
+    },
 
     /**
      * A relay node that still holds the command has not failed — it is slow. Plugins that

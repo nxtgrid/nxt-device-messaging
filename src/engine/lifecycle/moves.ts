@@ -20,6 +20,8 @@ import type {
   DeviceMessageDeliveryStatus,
   FailureReason,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
+import type { MetricsRecorder } from '../../metrics/index.js';
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import {
   STAGES,
@@ -93,15 +95,16 @@ export type RescheduleArgs = {
 /** Dependencies for {@link createStageMoves}. */
 export type CreateStageMovesOptions = {
   readonly delivery: DeliveryConfig;
+  readonly metrics: MetricsRecorder;
 };
 
 /**
  * Factory for stage transitions.
  *
- * @param options - Shared delivery knobs (retry ladder + index TTL)
+ * @param options - Shared delivery knobs (retry ladder + index TTL) and the recorder
  */
 export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
-  const { delivery } = options;
+  const { delivery, metrics } = options;
 
   /**
    * Move between two queues under the Lua ZREM gate.
@@ -157,7 +160,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       return deserializeMessage(id, rawHashToObject(rawHash));
     },
 
-    advance({
+    async advance({
       messageId,
       plugin,
       from,
@@ -178,7 +181,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         retryCount,
       });
 
-      return _move({
+      const claimed = await _move({
         messageId,
         fromKey: stageKeyFor(STAGES[from], plugin.id),
         toKey: stageKeyFor(target, plugin.id),
@@ -190,6 +193,19 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
           ? redisKeys.indexExternalDeliveryId(deliveryQueueId)
           : undefined,
       });
+
+      // A3 used to end here silently: the caller discarded this boolean, so a send whose
+      // move lost the race left no trace at all. Counted, not thrown — losing the claim is
+      // legitimate (cancel, or a deadline that fired first), it is the rate that matters.
+      if (!claimed) {
+        metrics.recordStageClaimMiss(from);
+        logger.warn(
+          { module: 'lifecycle', messageId, from, to: next, pluginId: plugin.id },
+          'stage advance lost the claim; another writer already moved this message',
+        );
+      }
+
+      return claimed;
     },
 
     /**

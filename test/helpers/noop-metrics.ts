@@ -9,5 +9,6 @@ export const noopMetrics: Metrics = {
   recordMessageTerminal() {},
   recordWebhookResult() {},
   recordIngressUnhandled() {},
+  recordStageClaimMiss() {},
   async registerRoutes() {},
 };

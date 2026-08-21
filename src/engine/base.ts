@@ -66,7 +66,7 @@ export type CreateBaseServiceOptions = {
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
   const { delivery, webhook, metrics } = options;
-  const moves = createStageMoves({ delivery });
+  const moves = createStageMoves({ delivery, metrics });
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;

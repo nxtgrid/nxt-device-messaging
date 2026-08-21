@@ -30,11 +30,11 @@ the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 
 | Item | Revisit when | Detail |
 | --- | --- | --- |
-| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`). **C2 supplies the missing seam** — a bounded drain over decision 8's in-flight sends; order is stop timers → drain → close Redis/Fastify | Before cutover, or when reopening shutdown | ADR-005 amendment; **ADR-008 §8**; log **2026-08-12** parked shutdown |
+| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`). **The seam now exists** (C2.4, 2026-08-21): `outgoingService.drainInFlightSends(budgetMs)` returns how many sends it abandoned. Shutdown v2 is wiring — stop timers → drain (~15–20 s of a 30 s grace) → close Redis/Fastify | Before cutover, or when reopening shutdown | ADR-005 amendment; **ADR-008 §8**; log **2026-08-12** parked shutdown |
 | **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | 3.1 closeout; log **2026-08-12** cold-start / 3.1E notes |
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
 | **Thorough cleanup suite** — every exit path (success, final failure, PULL age cap, cancel) must leave zero references, asserted end-to-end for PUSH and PULL. Includes PULL poll↔retry orphan on `queue_awaiting_retry`. ~~D2's other half — what cleanup sweeps~~ **resolved 2026-08-21** (C2.3): `StageMoves.purge` derives the list from the stage table plus the plugin's ready queue; `messageFullCleanup` now takes the keys rather than choosing them | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; ADR-008 §7; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
-| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; ~~generous fetch safety deadline~~; trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass. **Fetch deadline unparked into C2 at 120 s** — ADR-008 §8 depends on `sendOne` settling; rest of the row stays parked |
+| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; ~~generous fetch safety deadline~~; trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass. ~~Fetch deadline~~ **landed 2026-08-21** (C2.4) as `CLIENT_SAFETY_DEADLINE_MS` in both CALIN clients and `nxt-sts`; redaction and status mapping stay parked |
 | ~~**Token-only SPI discriminant**~~ — `deliveryPattern: 'NONE'`; no admission / tuning / initialQueueKey | — | **Resolved 2026-08-20** C3 (plan 002). Was session 26 “SPI amend for real omission deferred” |
 
 ### Product / ops trigger
@@ -1912,6 +1912,38 @@ B3 (gate the kick on `engine.enabled`) may make this moot; check it in C2.5.
 
 **Next:** C2.4 (**A3** — in-flight send set, claim-miss counter, 120 s client deadline, drain
 seam).
+
+### 2026-08-21 — plan 002 item 4: C2.4 (A3 — the in-flight send set)
+
+`src/engine/in-flight-sends.ts` is a `Map<messageId, Promise>` with `track` / `has` / `size` /
+`drain`, created once in `main.ts` and shared by the sender and the `ns` stage row. The sender
+registers the promise **synchronously** (`track(id, plugin.outgoing.sendOne(message))`, not a
+wrapper around an async function) because a tick landing between starting the send and awaiting
+it must already see the id. The `ns` action returns `rescheduled` while the id is present, so a
+slow send can no longer be retried underneath itself. **A3 is fixed.**
+
+Three consequences worth knowing:
+
+- **`advance`'s boolean is now read.** It was always returned and never used, which is where A3
+  hid. `moves.advance` records `recordStageClaimMiss(stage)` and warns when the ZREM gate finds
+  the message gone. Counted, not thrown — losing a claim is legitimate (cancel, or a deadline
+  that already fired); the rate is the signal. New series:
+  `device_messaging_stage_claim_misses_total{stage}`. This gave `createStageMoves` a `metrics`
+  dependency, so every caller passes it now.
+- **The deadline test had to be re-staged, not re-asserted.** "Retries a message whose NS
+  deadline passed" faked a lost send with a promise that never settles — exactly the case the
+  set now suspends. It now stages the real case: a message parked in the ns stage with no send
+  behind it, which is what a process death leaves. The A3 pin flipped to assert one `sendOne`
+  call, the late external id indexed, and the message advanced to `relayNode`.
+- **`CLIENT_SAFETY_DEADLINE_MS` = 120 s** in `plugins/_shared/`, applied to the CALIN V1 and V2
+  authenticated POSTs and to `nxt-sts`'s token POST. ChirpStack was left alone: its unary RPCs
+  already carry a 60 s deadline, which satisfies the requirement (the promise settles). Whether
+  to unify the two numbers is open — raised with the maintainer, not decided here.
+
+`outgoingService.drainInFlightSends(budgetMs)` is the shutdown seam ADR-008 §8 asked for,
+returning the number abandoned. Nothing calls it yet; wiring `SIGTERM` is **Shutdown v2**.
+
+**Next:** C2.5 (**A5** single TTL knob + **B3** enqueue kick on `engine.enabled`).
 
 
 
