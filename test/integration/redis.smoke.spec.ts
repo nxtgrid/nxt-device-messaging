@@ -47,6 +47,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
           },
         },
         queueKey,
+        604800,
       );
 
       expect(enqueued.commandType).toBe('READ_CREDIT');

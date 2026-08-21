@@ -23,13 +23,6 @@ import type {
 } from './lua/move-message-between-queues.types.js';
 
 /**
- * TTL for message hashes and their indexes.
- * Covers max retry time (~4 hours) with generous buffer.
- * Acts as safety net if normal cleanup fails.
- */
-export const MESSAGE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-
-/**
  * Max members returned per timeout / poll scan (`ZRANGEBYSCORE … LIMIT`).
  * Caps work per engine tick; leftover due members wait for the next tick.
  * Inherited from legacy — pragmatic batch size, not a measured optimum.
@@ -181,11 +174,13 @@ export const redisRepo = {
    *
    * @param dto - Message creation parameters
    * @param queueKey - Initial queue to add message to
+   * @param ttlSeconds - Hash and correlation-index TTL (`delivery.messageTtlSeconds`)
    * @returns The newly created DeviceMessage
    */
   async enqueueDeviceMessage(
     dto: CreateDeviceMessage,
     queueKey: string,
+    ttlSeconds: number,
   ): Promise<DeviceMessage> {
     const messageId = ulid();
     const messageKey = redisKeys.message(messageId);
@@ -195,7 +190,7 @@ export const redisRepo = {
 
     // 1. Store the message hash
     multi.hset(messageKey, serializedHash);
-    multi.expire(messageKey, MESSAGE_TTL_SECONDS);
+    multi.expire(messageKey, ttlSeconds);
 
     // 2. Add to the appropriate initial queue.
     // Higher `priority` is more urgent → more negative score → popped first.
@@ -208,7 +203,7 @@ export const redisRepo = {
     // 4. Create correlation indexes (optionally per phase)
     if (dto.correlationId) {
       const indexKey = redisKeys.indexCorrelationId(dto.correlationId, dto.phase);
-      multi.set(indexKey, messageKey, 'EX', MESSAGE_TTL_SECONDS);
+      multi.set(indexKey, messageKey, 'EX', ttlSeconds);
     }
 
     assertExecSucceeded(await multi.exec(), 'enqueueDeviceMessage');

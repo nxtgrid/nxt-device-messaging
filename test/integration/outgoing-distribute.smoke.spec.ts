@@ -52,7 +52,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       baseService: createBaseService({ delivery, metrics }),
       inFlightSends,
       metrics,
-      kickDistributeOnEnqueue: false,
+      engineEnabled: false,
     });
 
     const correlationId = `distribute-push-${ Date.now() }`;
@@ -109,7 +109,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       baseService: createBaseService({ delivery, metrics }),
       inFlightSends,
       metrics,
-      kickDistributeOnEnqueue: false,
+      engineEnabled: false,
     });
 
     const correlationId = `distribute-pull-${ Date.now() }`;

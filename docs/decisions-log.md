@@ -1945,6 +1945,19 @@ returning the number abandoned. Nothing calls it yet; wiring `SIGTERM` is **Shut
 
 **Next:** C2.5 (**A5** single TTL knob + **B3** enqueue kick on `engine.enabled`).
 
+### 2026-08-21 — plan 002 item 4: C2.5 (A5 + B3)
+
+**A5 closed.** `MESSAGE_TTL_SECONDS` is gone. `enqueueDeviceMessage(dto, queueKey, ttlSeconds)`
+takes the TTL from `delivery.messageTtlSeconds` — the same knob `moves.ts` already passes to
+Lua as `index_ttl_seconds`. No `indexTtlSeconds` rename: that parameter died with
+`lib/queue-moving.ts`.
+
+**B3 closed.** `kickDistributeOnEnqueue` is `engineEnabled: boolean` on
+`CreateOutgoingServiceOptions`, required, fed from `config.engine.enabled` in `main.ts`. The
+harness still defaults to `false` so specs drive distribute themselves.
+
+**Next:** C2.6 (verify no pins remain, sweep stale comments, full green bar).
+
 
 
 

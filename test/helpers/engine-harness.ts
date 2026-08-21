@@ -46,7 +46,7 @@ export type CreateEngineHarnessOptions = {
    * Defaults to **false**, unlike production: a spec almost always wants the message to
    * stay `QUEUED` until it drives distribution itself. Pass true to exercise the kick.
    */
-  readonly kickDistributeOnEnqueue?: boolean;
+  readonly engineEnabled?: boolean;
   /** Shared with outgoing and the runner's `ns` row; omit for a fresh instance. */
   readonly inFlightSends?: InFlightSends;
 };
@@ -55,7 +55,7 @@ export type CreateEngineHarnessOptions = {
  * Wire base, outgoing, incoming, stage moves/actions, and the lifecycle runner
  * exactly as `src/main.ts` does.
  *
- * @param options - Registry, delivery knobs, optional webhook / metrics / enqueue-kick
+   * @param options - Registry, delivery knobs, optional webhook / metrics / engine gate
  */
 export function createEngineHarness(
   options: CreateEngineHarnessOptions,
@@ -74,7 +74,7 @@ export function createEngineHarness(
     baseService,
     inFlightSends,
     metrics,
-    kickDistributeOnEnqueue: options.kickDistributeOnEnqueue ?? false,
+    engineEnabled: options.engineEnabled ?? false,
   });
   const incoming = createIncomingService({
     delivery: options.delivery,

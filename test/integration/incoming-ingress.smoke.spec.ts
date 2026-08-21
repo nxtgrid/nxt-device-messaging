@@ -49,7 +49,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       baseService,
       inFlightSends,
       metrics,
-      kickDistributeOnEnqueue: false,
+      engineEnabled: false,
     });
     const incomingService = createIncomingService({
       delivery,

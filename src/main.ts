@@ -68,6 +68,7 @@ const outgoingService = createOutgoingService({
   delivery: config.delivery,
   baseService,
   inFlightSends,
+  engineEnabled: config.engine.enabled,
   metrics,
 });
 const incomingService = createIncomingService({

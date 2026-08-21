@@ -91,18 +91,19 @@ export type CreateOutgoingServiceOptions = {
    */
   readonly inFlightSends: InFlightSends;
   /**
-   * When true (default), fire-and-forget {@link OutgoingService.distributeToNetworkServers}
-   * after a successful enqueue. Set false in tests that need the message to remain
-   * `QUEUED` (e.g. cancel smoke).
+   * When true, fire-and-forget {@link OutgoingService.distributeToNetworkServers}
+   * after a successful enqueue. Production passes `config.engine.enabled` so a
+   * service with the engine off stores commands but does not distribute them —
+   * no tick would follow up (ADR-008 §13 / B3).
    */
-  readonly kickDistributeOnEnqueue?: boolean;
+  readonly engineEnabled: boolean;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, baseService, and optional enqueue-kick flag
+ * @param options - Registry, delivery, baseService, in-flight set, engine gate, metrics
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
   const {
@@ -110,7 +111,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     delivery,
     baseService,
     inFlightSends,
-    kickDistributeOnEnqueue = true,
+    engineEnabled,
     metrics,
   } = options;
   const moves = createStageMoves({ delivery, metrics });
@@ -370,10 +371,14 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         device: create.device,
       });
 
-      const message = await redisRepo.enqueueDeviceMessage(create, queueKey);
+      const message = await redisRepo.enqueueDeviceMessage(
+        create,
+        queueKey,
+        delivery.messageTtlSeconds,
+      );
 
       // Fire-and-forget: try a distribute tick after enqueue.
-      if (kickDistributeOnEnqueue) {
+      if (engineEnabled) {
         void distributeToNetworkServers().catch(err => {
           logger.error({ module: 'outgoing', err }, 'distribute after enqueue failed');
         });

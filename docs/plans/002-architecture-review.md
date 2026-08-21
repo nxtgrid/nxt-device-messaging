@@ -783,3 +783,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   now describe code that no longer exists. Finish on a green
   `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, then `pnpm test:integration` with
   Valkey up. Then C2 is closed and **C1** starts from the section above.
+- **2026-08-21** — **C2.5 landed** (**A5** and **B3**). `MESSAGE_TTL_SECONDS` deleted;
+  enqueue takes `ttlSeconds` from `delivery.messageTtlSeconds`. `kickDistributeOnEnqueue`
+  is now required `engineEnabled`, passed from `config.engine.enabled`. Next: **C2.6**.

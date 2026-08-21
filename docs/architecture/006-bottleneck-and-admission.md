@@ -207,8 +207,8 @@ SPI `rateLimitKey`. On concurrency claim: SADD the track set and HSET
 `concurrencyRateLimitKey` on the message (`claimConcurrencyRateLimit`). After pick:
 fire-and-forget `sendOne` + PUSH|PULL post-send moves. Send-fail / success / timeout
 cleanup does **not** pass a key — `messageFullCleanup` and `fromAnyToRetry` read and
-SREM the stored field. Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue`
-for tests). Cron / `engine.enabled` still Unit 5.6.
+SREM the stored field. Enqueue fire-and-forget kick when `engineEnabled` is true
+(ADR-008 §13). Cron / `engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics — **landed** (session 29 / Unit 10)
 

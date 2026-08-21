@@ -52,7 +52,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
       baseService: createBaseService({ delivery, metrics }),
       inFlightSends,
       metrics,
-      kickDistributeOnEnqueue: false,
+      engineEnabled: false,
     });
 
     const correlationId = `cancel-smoke-${ Date.now() }`;
