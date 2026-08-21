@@ -15,6 +15,9 @@ import { createWebhookStore } from './engine/webhook/store.js';
 import { redisRepo } from './lib/redis-repository/index.js';
 import { createMetrics } from './metrics/index.js';
 
+/** One connection for the process; webhook store and metrics share it. */
+const redis = redisRepo.client;
+
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;
 
@@ -42,14 +45,14 @@ if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigning
 }
 
 const metrics = createMetrics({
-  redis: redisRepo.client,
+  redis,
   pullPluginIds: pluginRegistry.getByDeliveryPattern('PULL').map(plugin => plugin.id),
 });
 
 const webhookService = config.eventWebhook
   ? createWebhookService({
     config: config.eventWebhook,
-    store: createWebhookStore({ client: redisRepo.client }),
+    store: createWebhookStore({ client: redis }),
     signingSecret: webhookSigningSecret,
     metrics,
   })
@@ -145,7 +148,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
-    await redisRepo.client.quit();
+    await redis.quit();
   }
   catch (err) {
     logger.error({ err }, 'Redis quit failed');

@@ -74,7 +74,7 @@ needing a prior fix; **A1–A5** are folded into C2 by design. **C4 was not pull
 
 **Branch 2 — `refactor/message-lifecycle-stage-table`**, cut from `main` after branch 1 merged.
 The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first commit, then 4,
-with 5–8 folded in. **In progress — ADR-008 written; C2 implementation next.**
+with 5–8 folded in. **C2 landed; C1 in progress.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
 directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
@@ -788,3 +788,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   is now required `engineEnabled`, passed from `config.engine.enabled`. Next: **C2.6**.
 - **2026-08-21** — **C2.6 landed.** Pins already flipped (A1–A4). Stale names swept from
   live comments/JSDoc/ADR current-behaviour rows. **C2 closed.** Next: **C1**.
+- **2026-08-21** — **C1.1 landed.** Deleted the four dead `redisRepo` methods. Next: **C1.2**.
+- **2026-08-21** — **C1.2 landed.** `createRedisClient` + `createRedisRepo(client)`. The
+  process-wide `redisRepo` remains until the stores are injected. Next: **C1.3**.

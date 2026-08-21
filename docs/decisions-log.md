@@ -1967,6 +1967,28 @@ lists). Historical diagnosis in plan 002 / ADR Context sections left alone.
 
 **C2 is closed.** Next is **C1**, from plan 002's C1 concrete-shape section.
 
+### 2026-08-21 — plan 002 item 8: C1.1 (delete dead methods)
+
+Removed `getMessageRawPropsById`, `getAllMessageIdsInQueue`, `getMessagesDueForPolling`,
+and `updateNextPollTime` from `redisRepo`. Nothing in `src/` or `test/` called them: the
+first was leftover from when `requeueMessage` still HMGETed priority itself; the other
+three were the PULL full-queue scan the stage table replaced (`getExpiredMessagesInQueue`
+and `moves.reschedule` cover that work). 20 methods → 16.
+
+**Next:** C1.2 (`createRedisClient`).
+
+### 2026-08-21 — plan 002 item 8: C1.2 (`createRedisClient` + adapter)
+
+`src/lib/redis-repository/client.ts` exports `createRedisClient()` (env options, Lua
+`defineCommand`, connect log). `createRedisRepo(client)` is the adapter; methods close over
+the injected client. The process-wide `redisRepo` is still `createRedisRepo(createRedisClient())`
+so engine files can keep importing it until C1.3–C1.5. Calling the factory a second time from
+`main.ts` would be a second connection, so the composition root takes `const redis =
+redisRepo.client` as a local (metrics, webhook store, quit).
+
+**Next:** C1.3 (`AdmissionStore`).
+
+
 
 
 
