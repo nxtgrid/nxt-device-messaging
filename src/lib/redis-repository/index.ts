@@ -400,17 +400,23 @@ export const redisRepo = {
   },
 
   /**
-   * Complete cleanup of a message from stage queues / indexes / admission.
-   * Called on successful delivery or permanent failure.
+   * Delete a message and every reference to it, in one MULTI.
    *
-   * ZREMs known stage keys + `queue_awaiting_task:{pluginId}`. Does **not** touch
-   * dynamic initial bottleneck queues or the retry queue — callers that still hold
-   * membership there must ZREM first (cancel does). Concurrency slot: SREM
-   * `message.concurrencyRateLimitKey` when present (set at claim).
+   * Which queues those are is not decided here: the caller passes them, because the set
+   * of places a message can be is the stage table's business and a second hand-written
+   * list is precisely how this function came to miss two of them (A4). `StageMoves.purge`
+   * is the one place that derives it.
    *
-   * @param message - The message to clean up
+   * `queues_to_distribute_from` is deliberately untouched — it holds queue keys rather
+   * than message ids, and the distributor's Lua drops a key when its queue empties.
+   *
+   * @param message - The message to clean up (indexes and admission slot come from it)
+   * @param queueKeys - Every queue that could hold this message as a member
    */
-  async messageFullCleanup(message: DeviceMessage): Promise<void> {
+  async messageFullCleanup(
+    message: DeviceMessage,
+    queueKeys: readonly string[],
+  ): Promise<void> {
     const messageKey = redisKeys.message(message.id);
 
     const indexesToDelete = [
@@ -418,20 +424,13 @@ export const redisRepo = {
       message.deliveryQueueId && redisKeys.indexExternalDeliveryId(message.deliveryQueueId),
     ].filter(Boolean) as string[];
 
-    const inFlightQueueKeys = [
-      'queue_in_flight_to_ns',
-      'queue_in_flight_to_relay_node',
-      'queue_in_flight_to_device',
-      redisKeys.queueAwaitingTask(message.pluginId),
-    ];
-
     const multi = _client.multi();
 
     // 1. Delete the message
     multi.del(messageKey);
 
-    // 2. Remove from stage / awaiting-task queues
-    for (const queueKey of inFlightQueueKeys) {
+    // 2. Remove from every queue the caller named
+    for (const queueKey of queueKeys) {
       multi.zrem(queueKey, message.id);
     }
 

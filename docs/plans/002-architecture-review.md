@@ -676,3 +676,18 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   heartbeats the NS score rather than a scanner consulting process-local state, which is a
   known move rather than a rewrite. C2 therefore also touches the two CALIN clients (fetch
   deadline). Item 4 starts next.
+- **2026-08-21** — **C2.1–C2.3 landed** (item 4). `src/engine/lifecycle/` now holds the table
+  (`stages.ts`), the transitions (`moves.ts`), the per-stage actions (`actions.ts`) and the one
+  runner (`runner.ts`); `lib/lifecycle.{push,pull}.ts` and `lib/queue-moving{,.push,.pull}.ts`
+  are deleted, as are `runMessageResolutionCycle` and `pollPullPlugins` — three intervals
+  collapsed into one 1000 ms `runner.tick()`. **A1 and A2 are fixed** (the runner scrubs
+  orphans in every stage and always writes the next score, because the score is the runner's
+  job and not the action's). **A4 is fixed** by C2.3: `StageMoves.purge` derives the sweep list
+  from `enumerateStageKeys` plus the plugin's ready queue, and `messageFullCleanup(message,
+  queueKeys)` no longer chooses; metrics' `KNOWN_STAGE_KEYS` is gone the same way, so a new
+  stage row shows up in `/metrics` with no edit. Two deliberate behaviour changes to know
+  about: cancel resolves the plugin before branching on status, so cancelling a `TO_RETRY`
+  message whose plugin is unregistered is now `NOT_CANCELLABLE`; and the 48 h PULL cap fires on
+  a message's next poll rather than in a full-queue scan, which the ladder bounds at 30 s.
+  `messageFullCleanup`'s teardown callers in the smoke specs moved to the
+  `purgeMessageReferences` helper, which was always the right tool there. Next: **C2.4** (A3).

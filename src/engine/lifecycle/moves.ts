@@ -23,6 +23,7 @@ import type {
 import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import {
   STAGES,
+  enumerateStageKeys,
   nextStage,
   rescheduleWaitMsFor,
   stageKeyFor,
@@ -46,6 +47,8 @@ export type StageMoves = {
   enterRetry(args: EnterRetryArgs): Promise<void>;
   /** Extend the wait of a member still sitting in its stage. */
   reschedule(args: RescheduleArgs): Promise<void>;
+  /** The terminal move: out of every queue and index the message could be in. */
+  purge(args: PurgeArgs): Promise<void>;
 };
 
 /** Arguments for {@link StageMoves.advance}. */
@@ -68,6 +71,13 @@ export type EnterRetryArgs = {
   /** Attempts *before* this failure — both the backoff input and the stored count minus one. */
   readonly currentRetryCount: number;
   readonly failureHistory: readonly FailureReason[];
+  readonly plugin: DeliveryPlugin;
+};
+
+/** Arguments for {@link StageMoves.purge}. */
+export type PurgeArgs = {
+  readonly message: DeviceMessage;
+  /** Owning plugin — the ready queue's key can only be built from it. */
   readonly plugin: DeliveryPlugin;
 };
 
@@ -256,6 +266,24 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         Date.now() + waitMs,
         message.id,
       );
+    },
+
+    /**
+     * Every queue a message could be a member of: its plugin's five stages plus the ready
+     * queue it entered from. Derived, never listed — a message reaches a terminal state
+     * from any of them, and the two that a hand-written list forgot (retry and the ready
+     * queue) are exactly the ones cancel had to sweep by hand beforehand.
+     */
+    async purge({ message, plugin }: PurgeArgs): Promise<void> {
+      const readyQueueKey = plugin.initialQueueKey({
+        networkId: message.networkId,
+        device: message.device,
+      });
+
+      await redisRepo.messageFullCleanup(message, [
+        ...enumerateStageKeys([ message.pluginId ]),
+        readyQueueKey,
+      ]);
     },
   };
 }

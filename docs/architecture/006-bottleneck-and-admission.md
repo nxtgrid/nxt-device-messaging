@@ -181,13 +181,19 @@ option.
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2 → refined):** At concurrency **claim**, Redis stores
+**Concurrency release — settled.** At concurrency **claim**, Redis stores
 `concurrencyRateLimitKey` on the message hash (`claimConcurrencyRateLimit` = SADD + HSET).
-`messageFullCleanup` / `fromAnyToRetry` SREM that field (legacy-shaped) — no key threading.
-The field is **stripped** before adopter-facing emit / command GET (`omitInternalFields`).
-`messageFullCleanup` takes **no options** — fixed ZREM of stage keys +
-`queue_awaiting_task:{pluginId}` (not dynamic initial/retry queues; cancel ZREMs those first).
-Full exit-path audit is still D2 work.
+Cleanup and `enterRetry` SREM that field (legacy-shaped) — no key threading. The field is
+**stripped** before adopter-facing emit / command GET (`omitInternalFields`).
+
+**Queue list — resolved 2026-08-21 (C2.3, ADR-008 §7).** Criterion 1's flat array won, but it
+is *derived*, not written: `StageMoves.purge` builds it from `enumerateStageKeys` plus the
+plugin's ready queue and hands it to `messageFullCleanup`, which no longer decides anything.
+That closes plan 002's **A4** — the old fixed list omitted `queue_awaiting_retry` and the ready
+queue, so cancel had to ZREM those by hand. `queues_to_distribute_from` stays untouched: it
+holds queue keys, not message ids, and the distributor's Lua GCs it. Criterion 4 holds — the
+same call now serves success, final failure, the PULL age cap and cancel. Still open: the
+end-to-end exit-path suite (parked as *Thorough cleanup suite*).
 
 ### D3 — Wire `distribute` + admission execution
 

@@ -20,6 +20,7 @@ import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const goSlow = false;
@@ -82,11 +83,11 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
       expect(await redisRepo.client.exists(redisKeys.message(enqueued.id))).toBe(0);
     }
     finally {
-      // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
+      // purgeMessageReferences does not SREM queues_to_distribute_from (distributor Lua does).
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
         await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

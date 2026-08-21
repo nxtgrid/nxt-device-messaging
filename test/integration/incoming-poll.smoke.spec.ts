@@ -17,6 +17,7 @@ import type { PluginRegistry } from '#src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '#src/plugins/stub/index.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createSinglePluginRegistry } from '../helpers/programmable-plugin.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
@@ -109,7 +110,7 @@ describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () =>
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
         await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       else if (enqueuedId) {
         await redisRepo.client.srem(rateLimitKey, enqueuedId);

@@ -4,7 +4,7 @@ import { collectQueueDepths } from '#src/metrics/queue-depth.js';
 import { createFakeQueueDepthRedis } from '../helpers/fake-queue-depth-redis.js';
 
 describe('collectQueueDepths', () => {
-  it('ZCARDs known stages, PULL awaiting-task keys, and distributor members', async () => {
+  it('ZCARDs every stage queue, the webhook set, and distributor members', async () => {
     const redis = createFakeQueueDepthRedis({
       members: [ 'queue:stub-push:network:42' ],
       cards: {
@@ -23,13 +23,14 @@ describe('collectQueueDepths', () => {
       pullPluginIds: [ 'calin-api-v1' ],
     });
 
+    // Stage rows come first, in stage-table order, because they are derived from it.
     expect(depths).toEqual([
       { queue: 'queue_in_flight_to_ns', depth: 3 },
       { queue: 'queue_in_flight_to_relay_node', depth: 0 },
       { queue: 'queue_in_flight_to_device', depth: 1 },
+      { queue: 'queue_awaiting_task:calin-api-v1', depth: 5 },
       { queue: 'queue_awaiting_retry', depth: 4 },
       { queue: 'webhook:pending', depth: 2 },
-      { queue: 'queue_awaiting_task:calin-api-v1', depth: 5 },
       { queue: 'queue:stub-push:network:42', depth: 7 },
     ]);
   });

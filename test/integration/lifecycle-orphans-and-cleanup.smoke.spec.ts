@@ -4,8 +4,9 @@
  * 1. **Orphan scrubbing** — a queue member whose hash is gone must not stay forever.
  * 2. **Cleanup completeness** — a message that ends leaves no Redis reference behind.
  *
- * Both are asserted against *today's* behaviour, gaps included, so the refactor's diff
- * shows exactly which assertions it fixes.
+ * Both were first written against the pre-refactor behaviour, gaps included, so that the
+ * stage table's diff would show exactly which assertions it fixed. They now assert the
+ * fixed behaviour (A1, A2, A4).
  *
  * Opt-in (needs Valkey):
  *
@@ -17,6 +18,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
@@ -268,23 +270,24 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
       ).toEqual([]);
     });
 
-    it('cannot clear the initial or retry queue (A4)', async () => {
-      // A4: `messageFullCleanup` only sweeps the fixed stage queues plus awaiting-task,
-      // so membership of an initial queue or the retry queue survives it as a permanent
-      // orphan. No production path reaches this today, which is why it is asserted at the
-      // repository contract rather than through the engine. The stage table must derive
-      // the sweep list from the table; this should then be [].
+    it('clears the ready and retry queues too (A4)', async () => {
+      // A4 was a hand-written sweep list that omitted the retry queue and the ready queue,
+      // leaving permanent orphans there. `purge` derives the list from the stage table plus
+      // the plugin's ready queue, so both go — even with the message in two queues at once,
+      // which no production path produces but which pins the derivation.
       const { outgoing } = createPushHarness();
+      const { plugin } = createProgrammablePlugin({
+        id: PUSH_PLUGIN_ID,
+        deliveryPattern: 'PUSH',
+      });
+      const moves = createStageMoves({ delivery: baseDelivery });
       const correlationId = `cleanup-partial-${ Date.now() }`;
       const enqueued = await enqueuePushTracked(outgoing, correlationId);
       await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);
 
-      await redisRepo.messageFullCleanup(enqueued);
+      await moves.purge({ message: enqueued, plugin });
 
-      expect(await findMessageReferences(enqueued.id, { correlationId })).toEqual([
-        PUSH_QUEUE_KEY,
-        QUEUE_RETRY_KEY,
-      ]);
+      expect(await findMessageReferences(enqueued.id, { correlationId })).toEqual([]);
     });
   });
 });

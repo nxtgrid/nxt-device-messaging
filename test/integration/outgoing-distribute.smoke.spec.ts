@@ -19,6 +19,7 @@ import {
   STUB_PUSH_ID,
 } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 import {
   POST_SEND_STATUS,
   waitForPostSend,
@@ -82,7 +83,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
@@ -139,7 +140,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
         await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

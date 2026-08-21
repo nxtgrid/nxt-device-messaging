@@ -121,7 +121,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
         deliveryStatus: 'DELIVERY_FAILED',
       });
       metrics.recordMessageTerminal('DELIVERY_FAILED', currentRetryCount);
-      await redisRepo.messageFullCleanup(message);
+      await moves.purge({ message, plugin });
       return 'removed';
     }
 

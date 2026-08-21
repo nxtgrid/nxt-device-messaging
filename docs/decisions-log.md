@@ -33,7 +33,7 @@ the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 | **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`). **C2 supplies the missing seam** — a bounded drain over decision 8's in-flight sends; order is stop timers → drain → close Redis/Fastify | Before cutover, or when reopening shutdown | ADR-005 amendment; **ADR-008 §8**; log **2026-08-12** parked shutdown |
 | **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | 3.1 closeout; log **2026-08-12** cold-start / 3.1E notes |
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
-| **D2 + thorough cleanup suite** — `messageFullCleanup` options; every exit must drop the hash and all references. Includes PULL poll↔retry orphan on `queue_awaiting_retry` | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
+| **Thorough cleanup suite** — every exit path (success, final failure, PULL age cap, cancel) must leave zero references, asserted end-to-end for PUSH and PULL. Includes PULL poll↔retry orphan on `queue_awaiting_retry`. ~~D2's other half — what cleanup sweeps~~ **resolved 2026-08-21** (C2.3): `StageMoves.purge` derives the list from the stage table plus the plugin's ready queue; `messageFullCleanup` now takes the keys rather than choosing them | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; ADR-008 §7; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
 | **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; ~~generous fetch safety deadline~~; trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass. **Fetch deadline unparked into C2 at 120 s** — ADR-008 §8 depends on `sendOne` settling; rest of the row stays parked |
 | ~~**Token-only SPI discriminant**~~ — `deliveryPattern: 'NONE'`; no admission / tuning / initialQueueKey | — | **Resolved 2026-08-20** C3 (plan 002). Was session 26 “SPI amend for real omission deferred” |
 
@@ -1876,6 +1876,42 @@ whether A3 keeps its real layer (the in-flight set) or drops back to log-and-cou
 
 **Next:** plan 002 item 4 (**C2** — implement the table). That session also writes **C1**'s
 concrete shape into the plan while the context is cheap.
+
+### 2026-08-21 — plan 002 item 4: C2.1–C2.3 (table, moves, runner, derived keys)
+
+Implementation went as ADR-008 described; no decision was reopened. `src/engine/lifecycle/`
+holds `stages.ts` (data), `moves.ts` (transitions), `actions.ts` (per-stage work) and
+`runner.ts` (the loop). Deleted: `lib/lifecycle.{push,pull}.ts`,
+`lib/queue-moving{,.push,.pull}.ts`, `runMessageResolutionCycle`, `pollPullPlugins`, and
+`base.ts`'s `requeueMessage` (now the `retry` row's action). Three intervals became one
+1000 ms `runner.tick()`. **A1, A2 and A4 are fixed**; A3 and A5 are C2.4 and C2.5.
+
+Three things worth carrying forward:
+
+- **`StageDefinition` is a discriminated union on `isPerPlugin`.** `as const` on the table
+  narrowed the core rows' `key` to `() => string`, so a single signature forced either a cast
+  or a dummy plugin argument. The union lets `enumerateStageQueues` call `stage.key()` or
+  `stage.key(pluginId)` with neither.
+- **Cleanup's key list is derived but not by the repository.** `StageMoves.purge({ message,
+  plugin })` builds it and `messageFullCleanup(message, queueKeys)` executes it. Putting the
+  derivation in the repository would have had storage import the stage table; putting the MULTI
+  in `moves.ts` would have had the lifecycle layer reimplement it. So: repo does Redis, the
+  lifecycle layer decides. Cancel now resolves the plugin before branching on status, which
+  makes `TO_RETRY` + unregistered plugin `NOT_CANCELLABLE` — accepted, consistent with every
+  other path refusing a message whose plugin is gone.
+- **The pinned assertions flip cleanly, but two needed their *setup* rewritten, not their
+  expectation.** The PULL age-cap spec put its aged message 60 s in the future, which the old
+  full-queue scan still saw and the stage table (correctly) does not; the A2 spec asserted
+  `tick()` rejects, where the runner now swallows a vendor error as `rescheduled`. Both are the
+  ADR's intent, but they read as regressions until you look at the setup.
+
+`test/helpers/engine-harness.ts` composes the engine for specs. Its `kickDistributeOnEnqueue`
+defaults to **`false`**, unlike `createOutgoingService` — most specs want to drive distribute
+themselves, and the two cancel/cleanup specs fail loudly if enqueue distributes behind them.
+B3 (gate the kick on `engine.enabled`) may make this moot; check it in C2.5.
+
+**Next:** C2.4 (**A3** — in-flight send set, claim-miss counter, 120 s client deadline, drain
+seam).
 
 
 

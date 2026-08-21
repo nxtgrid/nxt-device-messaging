@@ -18,6 +18,7 @@ import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
@@ -112,7 +113,7 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.messageFullCleanup(leftover);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       await redisRepo.client.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),

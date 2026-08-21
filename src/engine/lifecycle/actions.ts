@@ -13,6 +13,7 @@ import { redisRepo } from '../../lib/redis-repository/index.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
 import type { MetricsRecorder } from '../../metrics/index.js';
+import type { DeliveryPlugin } from '../../plugins/plugin.interface.js';
 import type { BaseService } from '../base.js';
 import type { IncomingService } from '../incoming.js';
 import type { StageMoves } from './moves.js';
@@ -42,7 +43,7 @@ export type CreateStageActionsOptions = {
  * @param options - Engine peers the actions delegate to
  */
 export function createStageActions(options: CreateStageActionsOptions): StageActions {
-  const { baseService, incomingService, metrics } = options;
+  const { baseService, incomingService, moves, metrics } = options;
 
   /**
    * Give up on a PULL message that outlived the age cap.
@@ -51,8 +52,12 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
    * and re-sending it would be a duplicate physical action two days late.
    *
    * @param message - The expired message, still present in Redis
+   * @param plugin - Its owning plugin
    */
-  async function _failPermanently(message: DeviceMessage): Promise<void> {
+  async function _failPermanently(
+    message: DeviceMessage,
+    plugin: DeliveryPlugin,
+  ): Promise<void> {
     const failed: DeviceMessage = {
       ...message,
       deliveryStatus: 'DELIVERY_FAILED',
@@ -70,7 +75,7 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
     // Persist the webhook before dropping the hash (durable notify).
     await baseService.emitDeliveryEvent(failed);
     metrics.recordMessageTerminal('DELIVERY_FAILED', message.retryCount ?? 0);
-    await redisRepo.messageFullCleanup(failed);
+    await moves.purge({ message: failed, plugin });
   }
 
   return {
@@ -125,7 +130,7 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
      */
     async awaitingTask({ message, plugin, queueKey, messageAgeMs }) {
       if (messageAgeMs >= PULL_MAX_MESSAGE_AGE_MS) {
-        await _failPermanently(message);
+        await _failPermanently(message, plugin);
         return 'removed';
       }
 

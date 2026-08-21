@@ -168,7 +168,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       'DELIVERY_SUCCESSFUL',
       storedMessage.retryCount ?? 0,
     );
-    await redisRepo.messageFullCleanup(storedMessage);
+    await moves.purge({ message: storedMessage, plugin });
 
     return 'removed';
   }

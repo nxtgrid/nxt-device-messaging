@@ -280,23 +280,20 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       return false;
     }
 
-    let queueKey: string | undefined;
-    if (deliveryStatus === 'TO_RETRY') {
-      queueKey = QUEUE_RETRY_KEY;
-    }
-    else {
-      const plugin = registry.get(message.pluginId);
-      if (!plugin || plugin.deliveryPattern === 'NONE') return false;
-      queueKey = plugin.initialQueueKey({
+    const plugin = registry.get(message.pluginId);
+    if (!plugin || plugin.deliveryPattern === 'NONE') return false;
+
+    const queueKey = deliveryStatus === 'TO_RETRY'
+      ? QUEUE_RETRY_KEY
+      : plugin.initialQueueKey({
         networkId: message.networkId,
         device: message.device,
       });
-    }
 
     const removed = await redisRepo.removeMessageFromQueue(queueKey, message.id);
     if (removed === 0) return false;
 
-    await redisRepo.messageFullCleanup(message);
+    await moves.purge({ message, plugin });
     metrics.recordMessageTerminal('CANCELLED', message.retryCount ?? 0);
     return true;
   }
