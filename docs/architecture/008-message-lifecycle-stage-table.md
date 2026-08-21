@@ -105,14 +105,14 @@ This is **Option A**: two fixed pipelines owned by core. Per-plugin pipelines ar
 § *Upgrade path* and deliberately not built. The choice of a lookup rather than
 `if (pattern === 'PULL')` is what keeps that upgrade a one-line `??`.
 
-### 5. `onDue` returns a discriminated outcome; the runner owns scrubbing and rescheduling
+### 5. `onDue` returns an outcome; the runner owns scrubbing and rescheduling
 
 ```ts
 type StageOutcome =
-  | { readonly kind: 'rescheduled'; readonly dueAt: number }  // still waiting here
-  | { readonly kind: 'movedOn' }                              // action moved it elsewhere
-  | { readonly kind: 'removed' }                              // terminal; member already gone
-  | { readonly kind: 'orphaned' };                            // hash vanished under us
+  | 'rescheduled'  // still waiting here; the runner writes a new score from the row
+  | 'movedOn'      // the action moved it to another stage or queue
+  | 'removed'      // terminal; the action cleaned up and the member is gone
+  | 'orphaned';    // the message hash vanished under us
 ```
 
 The runner, not the action, performs the ZADD and the ZREM:
@@ -122,15 +122,24 @@ const due = await zrangebyscore(key, '-inf', now, 'LIMIT', 0, QUEUE_SCAN_BATCH_S
 for (const id of due) {
   const message = await load(id);
   if (!message) { await zrem(key, id); continue; }        // A1 — stated once
-  const outcome = await stage.onDue({ message, plugin, stage });
-  if (outcome.kind === 'rescheduled') await zaddXX(key, outcome.dueAt, id);  // A2 — stated once
-  if (outcome.kind === 'orphaned') await zrem(key, id);
+  const outcome = await onDue({ message, plugin, stage });
+  if (outcome === 'rescheduled') {                        // A2 — stated once
+    await zaddXX(key, now + rescheduleWaitMsFor(stage, { message, now, tuning, delivery }), id);
+  }
+  if (outcome === 'orphaned') await zrem(key, id);
 }
 ```
 
 **This is the mechanism, not a convention.** An action that returns nothing is a type error, and
 every variant maps to a definite runner obligation, so a stage added later cannot forget either
 rule. A1 and A2 stop being bugs that were fixed and become states that are unrepresentable.
+
+Note what the outcome does *not* carry: a time. An action reports *that* a message is still
+waiting; the stage row decides *how long*, through `entryWaitMs` and — only where the wait is
+dynamic — `rescheduleWaitMs`. So "poll this vendor again too soon" is not something an action can
+express, which is A2's failure mode one layer up. Every reschedule in the system resolves through
+one helper: the NS extension while a send is in flight (§8), the relay-node extension when the
+vendor says the command is still queued, the PULL poll ladder, and the runner's own catch below.
 
 Two supporting requirements follow:
 
@@ -299,7 +308,11 @@ are the load-bearing part of this ADR for anyone implementing or reviewing it.
 
 Indicative, not binding on names: a `stages` module (the table, the pipelines, `advance`, key
 enumeration), a `runner` module (scan due members, apply outcomes), and an `actions` module (the
-five `onDue` implementations). Candidate deletions once those exist: `lib/lifecycle.push.ts`,
+five `onDue` implementations).
+
+The table itself holds **no behaviour and no Redis import** — actions are injected at the
+composition root. That is what lets the rows be unit-tested as data, and it keeps the one module
+every other part of the engine reads from being another global connection (B2, C1). Candidate deletions once those exist: `lib/lifecycle.push.ts`,
 `lib/lifecycle.pull.ts`, `lib/queue-moving.push.ts`, `lib/queue-moving.pull.ts`, `PUSH_QUEUE_KEYS`,
 `PUSH_TIMEOUT_REASONS`, and most of `lib/queue-moving.ts`.
 
