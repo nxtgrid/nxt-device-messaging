@@ -329,6 +329,59 @@ current 20-method surface removes the global and fixes B2, but leaves a dependen
 module — barely an improvement in reasoning terms. The depth win only appears once **C2** has
 collapsed what the engine needs to ask Redis for. C1 is an *outcome* of C2.
 
+#### Concrete shape (written 2026-08-21 at the end of C2.4, while the context was warm)
+
+**Step 1 is deletion, not injection.** Four methods are dead now that the stage table replaced the
+poll scan: `getMessageRawPropsById`, `getAllMessageIdsInQueue`, `getMessagesDueForPolling`,
+`updateNextPollTime`. Nothing in `src/` or `test/` calls them. That is 20 methods → 16 before any
+design work, and it is the cheapest review of the session.
+
+**Step 2 is one client, created not imported.** `src/lib/redis-repository/index.ts` builds its
+client at module load and registers the Lua scripts there; that module singleton *is* the global.
+Extract `createRedisClient(options)` (client + `defineCommand` registration), call it once in
+`main.ts`, and keep `redisRepo` as a thin adapter over the injected client so nothing else moves
+yet. `main.ts` already wants the raw client three times (metrics, `createWebhookStore`, `quit`), so
+it becomes a local rather than a property of a global.
+
+**Step 3 is three ports, not one.** A single injected `Store` would be the same shallow surface
+with a parameter — the failure the caution above warns about. The engine's remaining Redis calls
+cluster cleanly, so split along the clusters:
+
+| Port | Methods | Who imports it |
+|---|---|---|
+| `MessageStore` | `enqueueDeviceMessage`, `getMessageById`, `getMessageFromCorrelationId`, `getAllMessagesForCorrelationId`, `getMessageIdFromDeliveryQueueId` | `outgoing` (enqueue / get / cancel), `incoming` (ingress lookup), `base`, `runner` |
+| `StageStore` | `moveMessageBetweenQueues` + `fetchNextMessageInQueueAndMove` (Lua), `getExpiredMessagesInQueue`, `removeMessageFromQueue`, `requeueMessage`, `messageFullCleanup`, `fetchQueuesWithMessages`, and the raw `zadd` / `zscore` / `hmget` / `multi` that `enterRetry` needs | `lifecycle/moves.ts` and `lifecycle/runner.ts` — **nothing else** |
+| `AdmissionStore` | `lockQueueForTimeMs`, `claimConcurrencyRateLimit`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit` / `_onClaimAfterPick`) |
+
+The payoff is in the third column. `StageStore` is the one that carries real Redis vocabulary, and
+after C2 only two files touch it — `moves.ts` already hides it behind `StageMoves`. So once this
+lands, the engine's Redis knowledge is: `outgoing` knows admission and message CRUD, `incoming` and
+`base` know how to load a message, and nothing else speaks Redis at all. That is the depth win the
+caution was holding out for, and it is only available because C2 removed the callers first.
+
+Factories mirror `createWebhookStore`, which already takes an injected client:
+
+```ts
+export function createMessageStore(deps: { readonly client: Redis }): MessageStore;
+export function createStageStore(deps: { readonly client: Redis }): StageStore;
+export function createAdmissionStore(deps: { readonly client: Redis }): AdmissionStore;
+```
+
+**Suggested order**, cheapest proof first: delete the four dead methods → extract
+`createRedisClient` → `AdmissionStore` (4 methods, one consumer, proves the shape) → `MessageStore`
+→ `StageStore` last, because it is the largest but has only two consumers and a spec suite that
+already drives it end to end.
+
+**Two questions to settle when C1 starts.** Does `messageFullCleanup` belong to `StageStore` or
+`MessageStore`? It deletes the hash and indexes but ZREMs queues. Recommendation: `StageStore`,
+because its only caller is `moves.purge` and grouping by *caller* is what makes the third column
+above narrow. And `base.retryOrFail` currently ZREMs an orphan itself (`base.ts:97`) although the
+runner scrubs orphans too — check whether that call can simply go, which would drop `base`'s
+`StageStore` need entirely.
+
+**Out of scope.** C1 is about narrowing what the engine may ask, not about portability. Do not add
+an abstraction layer for swapping Redis out; the ports are typed against the real client.
+
 ### C2 — the message lifecycle exists nowhere as a single readable thing
 
 **Symptom.** To answer *"what happens when delivery fails at the relay-node stage?"* you must read
@@ -691,3 +744,42 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   a message's next poll rather than in a full-queue scan, which the ladder bounds at 30 s.
   `messageFullCleanup`'s teardown callers in the smoke specs moved to the
   `purgeMessageReferences` helper, which was always the right tool there. Next: **C2.4** (A3).
+- **2026-08-21** — **C2.4 landed** (**A3** fixed). `src/engine/in-flight-sends.ts`, one instance
+  from `main.ts`, shared by the sender and the `ns` stage row; the row returns `rescheduled`
+  while this process still holds the send. `moves.advance` now reads its own boolean and counts
+  losses (`device_messaging_stage_claim_misses_total{stage}`), which is what A3 was hiding.
+  `CLIENT_SAFETY_DEADLINE_MS` (120 s) on the CALIN V1/V2 and `nxt-sts` clients; ChirpStack kept
+  its existing 60 s gRPC deadline. `outgoingService.drainInFlightSends(budgetMs)` is the
+  shutdown seam, unwired until Shutdown v2. Full detail in `docs/decisions-log.md`
+  **2026-08-21** C2.4.
+- **2026-08-21** — **C2.7 written early, and the rest of C2 specified for handover.** The C1
+  section above now carries its concrete shape (three ports, suggested order, two open
+  questions), written while C2's context was still loaded rather than after it. The remaining
+  two slices are execution against the spec below and need no further design input:
+
+  **C2.5 — A5 and B3.**
+  1. *A5.* `MESSAGE_TTL_SECONDS` (`src/lib/redis-repository/index.ts:30`) is the second source
+     of truth. Delete it; give `enqueueDeviceMessage(dto, queueKey, ttlSeconds)` a third
+     parameter and use it at both `expire` (line 198) and the correlation index `EX` (line 211).
+     Its only caller is `outgoing.enqueue`, which already holds `delivery`, so it passes
+     `delivery.messageTtlSeconds`. Nothing else imports the constant. The `indexTtlSeconds`
+     rename the A5 section asks for is already done — it died with `lib/queue-moving.ts`;
+     `moves.ts` passes `delivery.messageTtlSeconds` straight to the Lua's `index_ttl_seconds`.
+     Confirm that and mark A5 closed rather than renaming anything.
+  2. *B3.* Replace `kickDistributeOnEnqueue?: boolean` (default `true`) on
+     `CreateOutgoingServiceOptions` with a required `engineEnabled: boolean`, passed from
+     `config.engine.enabled` in `main.ts`. This is the decision B3 was waiting for: the flag
+     stops being test support because it now names a real production condition — a service with
+     the engine off accepts and stores commands but must not distribute, since no tick would
+     follow up. In `test/helpers/engine-harness.ts` rename the option to `engineEnabled?:
+     boolean`, keep the default `false`, and update the four specs that pass
+     `kickDistributeOnEnqueue: false` (`outgoing-distribute` ×2, `outgoing-cancel`,
+     `incoming-ingress`).
+
+  **C2.6 — close out.** A1/A2 flipped in C2.2b, A4 in C2.3, A3 in C2.4, so no pinned assertion
+  should remain; verify that rather than assume it. Then sweep comments and JSDoc for names the
+  refactor deleted — `resolution cycle`, `runMessageResolutionCycle`, `pollPullPlugins`,
+  `queue-moving`, `lifecycle.push` / `lifecycle.pull`, `fromAnyToRetry` — and fix the ones that
+  now describe code that no longer exists. Finish on a green
+  `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, then `pnpm test:integration` with
+  Valkey up. Then C2 is closed and **C1** starts from the section above.
