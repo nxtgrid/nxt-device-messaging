@@ -18,7 +18,6 @@ import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
   InitialQueueKeyInput,
-  PluginTuning,
   PullPlugin,
 } from '../plugin.interface.js';
 import { createCalinApiV2Incoming } from './incoming.js';
@@ -59,17 +58,6 @@ const CALIN_API_V2_SUPPORTED_COMMAND_TYPES = [
   'DELIVER_PREEXISTING_TOKEN',
 ] as const satisfies readonly EnqueueableCommandType[];
 
-/**
- * Default stage timeouts / poll delay (legacy delivery defaults).
- * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
- */
-const CALIN_API_V2_DEFAULT_TUNING: PluginTuning = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-};
-
 const CALIN_API_V2_ADMISSION: Admission = {
   strategy: 'concurrency',
   maxInFlight: 5,
@@ -95,7 +83,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): PullPlugin {
   const incoming = createCalinApiV2Incoming({ secrets, client });
   const token = createCalinApiV2Token({ secrets, client });
 
-  const tuning = mergePluginTuning(CALIN_API_V2_DEFAULT_TUNING, entry);
+  const tuning = mergePluginTuning(entry);
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
     const relayNodeId = input.device.relayNode?.id;

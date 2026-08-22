@@ -20,6 +20,7 @@ import type {
   PluginId,
 } from '#src/lib/device-message/types.js';
 import { buildInitialQueueKey } from '#src/plugins/_shared/initial-queue-key.js';
+import { DEFAULT_PLUGIN_TUNING } from '#src/plugins/_shared/merge-plugin-tuning.js';
 import type {
   Admission,
   DeliveryPattern,
@@ -33,14 +34,6 @@ import type {
 } from '#src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 
-/** Stage timeouts a test does not care about. Override what the test drives. */
-export const PROGRAMMABLE_DEFAULT_TUNING: PluginTuning = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-};
-
 /** Queue-key `kind` segment per delivery pattern, mirroring the bundled stubs. */
 const NODE_KIND: Readonly<Record<'PUSH' | 'PULL', string>> = {
   PUSH: 'network',
@@ -51,7 +44,7 @@ type ProgrammableSharedOptions = {
   readonly id: PluginId;
   /** Defaults to near-instant `spacing` (PUSH) or `concurrency` of 5 (PULL). */
   readonly admission?: Admission;
-  /** Merged over {@link PROGRAMMABLE_DEFAULT_TUNING}. */
+  /** Merged over {@link DEFAULT_PLUGIN_TUNING}. */
   readonly tuning?: Partial<PluginTuning>;
   /** Defaults to resolving a unique external id. */
   readonly sendOne?: (message: DeviceMessage) => Promise<string>;
@@ -176,7 +169,7 @@ function buildProgrammablePush(
     deliveryPattern: 'PUSH',
     supportedCommandTypes: ENQUEUEABLE_COMMAND_TYPES,
     admission: options.admission ?? defaultAdmission('PUSH'),
-    tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, ...options.tuning },
+    tuning: { ...DEFAULT_PLUGIN_TUNING, ...options.tuning },
     initialQueueKey,
     outgoing: {
       ...makeOutgoing(options, calls),
@@ -207,7 +200,7 @@ function buildProgrammablePull(
     deliveryPattern: 'PULL',
     supportedCommandTypes: ENQUEUEABLE_COMMAND_TYPES,
     admission: options.admission ?? defaultAdmission('PULL'),
-    tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, ...options.tuning },
+    tuning: { ...DEFAULT_PLUGIN_TUNING, ...options.tuning },
     initialQueueKey,
     outgoing: makeOutgoing(options, calls),
     incoming: {

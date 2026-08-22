@@ -35,9 +35,9 @@ export const QUEUE_RETRY_KEY = 'queue_awaiting_retry';
 /**
  * Default poll ladder: the older a message is, the less often it is polled.
  *
- * Core-owned for now. The end state is a plugin `tuning` override, which lands with C4's
- * core-owned tuning defaults — `rescheduleWaitMs` already receives `tuning`, so that is a
- * one-line change here and no change at all to the table.
+ * Core-owned. A plugin `tuning` override for the ladder is not in C4 — the ladder is a
+ * function of age, not a single number. `rescheduleWaitMs` already receives `tuning` if
+ * a later item adds a knob.
  *
  * @param messageAgeMs - Age of the message, from its ULID timestamp
  */

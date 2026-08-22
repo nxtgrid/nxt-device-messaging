@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { ENQUEUEABLE_COMMAND_TYPES } from '#src/lib/device-message/command-types.js';
 import type { DeviceMessage } from '#src/lib/device-message/types.js';
-import { mergePluginTuning } from '#src/plugins/_shared/merge-plugin-tuning.js';
+import {
+  DEFAULT_PLUGIN_TUNING,
+  mergePluginTuning,
+} from '#src/plugins/_shared/merge-plugin-tuning.js';
 import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import {
   createStubPlugin,
   createStubPullPlugin,
   createStubPushPlugin,
-  STUB_DEFAULT_TUNING,
   STUB_PULL_ID,
   STUB_PUSH_ID,
 } from '#src/plugins/stub/index.js';
@@ -37,7 +39,7 @@ describe('stub plugins', () => {
     expect(plugin.id).toBe(STUB_PUSH_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
     expect(plugin.supportedCommandTypes).toEqual(ENQUEUEABLE_COMMAND_TYPES);
-    expect(plugin.tuning).toEqual(STUB_DEFAULT_TUNING);
+    expect(plugin.tuning).toEqual(DEFAULT_PLUGIN_TUNING);
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2000 });
     expect(plugin.initialQueueKey(deviceOnly)).toBe('queue:stub-push:network:42');
     expect(plugin.initialQueueKey({ ...deviceOnly, networkId: null })).toBe(
@@ -63,13 +65,13 @@ describe('stub plugins', () => {
       tuning: { nsInFlightTimeoutMs: 15_000 },
     });
     expect(plugin.tuning).toEqual({
-      ...STUB_DEFAULT_TUNING,
+      ...DEFAULT_PLUGIN_TUNING,
       nsInFlightTimeoutMs: 15_000,
     });
   });
 
   it('rejects unknown or invalid stub tuning keys', () => {
-    expect(() => mergePluginTuning(STUB_DEFAULT_TUNING, {
+    expect(() => mergePluginTuning({
       id: STUB_PUSH_ID,
       tuning: { notAKnob: 1 },
     })).toThrow(/Invalid tuning/);

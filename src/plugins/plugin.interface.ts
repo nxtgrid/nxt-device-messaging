@@ -72,8 +72,9 @@ export type Admission =
   };
 
 /**
- * Per-plugin stage timeouts / poll delay (D5 / ADR-002 §5).
- * Defaults live in plugin code; config `plugins[].tuning` overrides (Unit 6.2 Step F).
+ * Per-plugin stage timeouts / poll delay (D5 / ADR-002 §5 / C4).
+ * Core owns `DEFAULT_PLUGIN_TUNING`; plugins call `mergePluginTuning(entry)`
+ * and pass only deltas. Config `plugins[].tuning` overrides.
  * Shared `delivery` keeps only retry knobs + message TTL.
  * Delivery plugins only — token-only plugins have no stage timers.
  */

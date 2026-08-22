@@ -1,9 +1,9 @@
 # Plan 002 — Architecture review and deepening
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008, C2, and C1 landed.** Next is branch 3 (C4, docs compact, optionals).
-**Branch:** `refactor/message-lifecycle-stage-table` (branch 2), cut from `main` after branch 1
-merged as PR #12. See § *Branch discipline*.
+Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 landed.** Next is D (docs compact),
+then optionals.
+**Branch:** branch 3, cut after branch 2. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -54,7 +54,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
 | 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
 | 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
-| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
+| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☑ 2026-08-22 |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
 | 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
 | 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
@@ -77,8 +77,7 @@ The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first 
 with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
-directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
-call to pull C4 into branch 1 was not taken; C4 stays on branch 3.
+directions. **9 (C4) landed** on this branch. 10–12 remain.
 
 ### Why this order
 
@@ -567,9 +566,17 @@ initialPollDelayMs:         10_000
 ```
 
 **Direction.** Core-owned defaults; plugins call `mergePluginTuning(entry)` and override only what
-differs. Folding the split into C3's union makes the per-pattern dead fields unrepresentable.
+differs. The four-field `PluginTuning` type stays one type — after C2 the stage table is the
+shared consumer, and splitting it into PUSH/PULL would make every `entryWaitMs` a type error
+unless the engine kept a wide type anyway. Dead fields become something no plugin *writes down*,
+not something the type system forbids. The poll ladder stays a core function of age.
 
 **Done when.** No plugin restates a default it does not change.
+
+**✅ Landed 2026-08-22.** `DEFAULT_PLUGIN_TUNING` + `mergePluginTuning(entry, overrides?)` in
+`src/plugins/_shared/merge-plugin-tuning.ts`. All four delivery factories and both stubs call
+`mergePluginTuning(entry)` with no delta. Per-plugin `*_DEFAULT_TUNING` constants and
+`STUB_DEFAULT_TUNING` / `PROGRAMMABLE_DEFAULT_TUNING` are gone. ADR-002 amended.
 
 ### C5 — CALIN v1/v2 duplication: mostly leave it
 
@@ -651,7 +658,7 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |
-| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, merged as PR #12 (B1, C2 design, B1b, C3). Branch 2 = `refactor/message-lifecycle-stage-table`, the stage-table slice only — in progress. Branch 3 = everything else (C4, D, Optional, capability bundles). |
+| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, merged as PR #12 (B1, C2 design, B1b, C3). Branch 2 = `refactor/message-lifecycle-stage-table` (C2 + C1). Branch 3 = C4 (landed), D, Optional, capability bundles. |
 | **Stage pipelines** | **Option A now** (two pipelines, keyed on `PUSH` / `PULL` as data — not on `DeliveryPattern`, which also has `'NONE'`). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed in **ADR-008 § *Upgrade path*** and built only when its trigger fires. Option A must hold the four invariants listed there so B stays a patch. |
 
 ---
@@ -802,3 +809,7 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-22** — **C1 closeout.** Deleted `redis-repository/index.ts`. Process-wide
   client is `redis` from `client.ts`. Shared `assertExecSucceeded`. Checklist items
   4–8 ticked.
+- **2026-08-22** — **C4 landed.** `DEFAULT_PLUGIN_TUNING` is the one four-field blob;
+  `mergePluginTuning(entry, overrides?)` layers core → plugin delta → config. No plugin
+  restates a default. `PluginTuning` was **not** split by pattern — the stage table is
+  one consumer. Poll ladder stays core-owned. Next: **D**.

@@ -21,7 +21,6 @@ import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
   InitialQueueKeyInput,
-  PluginTuning,
   PushPlugin,
 } from '../plugin.interface.js';
 import { createCalinChirpstackIncoming } from './incoming.js';
@@ -59,17 +58,6 @@ const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
   'DELIVER_PREEXISTING_TOKEN',
 ] as const satisfies readonly EnqueueableCommandType[];
 
-/**
- * Default stage timeouts / poll delay (legacy delivery defaults).
- * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
- */
-const CALIN_CHIRPSTACK_DEFAULT_TUNING: PluginTuning = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-};
-
 /** Flood lock — one claim per network (or unassigned) every 2s (ADR-006). */
 const CALIN_CHIRPSTACK_ADMISSION: Admission = {
   strategy: 'spacing',
@@ -86,7 +74,7 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
  */
 export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugin {
   const client = createChirpstackClient();
-  const tuning = mergePluginTuning(CALIN_CHIRPSTACK_DEFAULT_TUNING, entry);
+  const tuning = mergePluginTuning(entry);
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
     const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);

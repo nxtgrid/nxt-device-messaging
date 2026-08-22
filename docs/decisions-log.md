@@ -2036,6 +2036,30 @@ ticked (C2 and C1).
 
 **Next:** branch 3 (C4 / docs compact / optionals).
 
+### 2026-08-22 — plan 002 item 9: C4 (core-owned `PluginTuning` defaults)
+
+`DEFAULT_PLUGIN_TUNING` lives next to `mergePluginTuning` in
+`src/plugins/_shared/merge-plugin-tuning.ts`. Signature is now
+`mergePluginTuning(entry, overrides?)` — core defaults, then optional plugin deltas, then
+config `plugins[].tuning`. Every first-party delivery factory (v1, v2, chirpstack, both
+stubs) calls `mergePluginTuning(entry)` with no delta. The four copied
+`*_DEFAULT_TUNING` constants, `STUB_DEFAULT_TUNING`, and `PROGRAMMABLE_DEFAULT_TUNING`
+are gone.
+
+**Settled against the plan's "fold the split into C3's union":** `PluginTuning` stays one
+four-field type. After C2 the stage table is the shared `entryWaitMs` consumer; a
+PUSH/PULL split would fail typecheck there unless the engine kept a wide type anyway.
+Dead fields are something no plugin writes down, not something the type forbids. A PULL
+config that sets `deviceInFlightTimeoutMs` stays legal and inert.
+
+**Out of scope, recorded:** the poll ladder stays `defaultPollLadderMs` in `stages.ts` —
+it is a function of age, not a single number, so it is not a C4 knob.
+`rescheduleWaitMs` already receives `tuning` if a later item adds one.
+
+ADR-002 amended (2026-08-22). Plan checklist item 9 ticked.
+
+**Next:** D (docs compact).
+
 
 
 
