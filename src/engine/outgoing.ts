@@ -198,8 +198,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     const slowThresholdMs = plugin.tuning.nsInFlightTimeoutMs;
 
     try {
-      // Registered before the first await: a tick landing mid-send must see it (ADR-008 §8).
-      deliveryQueueId = await inFlightSends.track(message.id, plugin.outgoing.sendOne(message));
+      deliveryQueueId = await plugin.outgoing.sendOne(message);
     }
     catch (err) {
       const elapsedMs = Math.round(performance.now() - startedAt);
@@ -286,8 +285,12 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         await baseService.emitDeliveryEvent(messageToSend);
       }
 
-      // Fire-and-forget: distribute considers the handoff done once picked.
-      void _sendOneToNetworkServer(plugin, messageToSend).catch(err => {
+      // Track the whole send-and-transition so a due ns tick cannot retry while
+      // we still hold the member (ADR-008 §8). Register before the event loop turns.
+      void inFlightSends.track(
+        messageToSend.id,
+        _sendOneToNetworkServer(plugin, messageToSend),
+      ).catch(err => {
         logger.error({ module: 'outgoing', err }, 'sendOne failed');
       });
     }));

@@ -6,8 +6,8 @@
  * how the same command reached hardware twice (**A3**). Under ADR-007 there is exactly one
  * writer, and that process knows which sends it still holds, so the `ns` action can ask.
  *
- * The same list is the seam graceful shutdown never had: `sendOne` promises used to be
- * anonymous, so there was nothing to await before closing Redis.
+ * The same list is the seam graceful shutdown never had: send-and-transition
+ * promises used to be anonymous, so there was nothing to await before closing Redis.
  *
  * In-memory on purpose. A process death loses the set, the deadline fires after restart, and
  * that is correct — the connection died with it. What it cannot know is whether the vendor
@@ -17,15 +17,16 @@
 /** Registry of outstanding `sendOne` promises, keyed by message id. */
 export type InFlightSends = {
   /**
-   * Register a send for as long as it runs. The id is present from this call until the
-   * promise settles, either way.
+   * Hold `messageId` in the set until `send` settles — the vendor call *and* the
+   * stage move that follows it. The ns deadline asks {@link InFlightSends.has}
+   * and must not fire while this process still owns that member (ADR-008 §8).
    *
-   * Call it *with* the promise rather than around an async function, so registration is
-   * synchronous: a tick that runs between starting the send and awaiting it must already
-   * see the id.
+   * Call it *with* the promise rather than around an async function, so
+   * registration is synchronous: a tick that runs between starting the work and
+   * awaiting it must already see the id.
    *
    * @param messageId - Message being sent
-   * @param send - The plugin call, already started
+   * @param send - Already-started send-and-transition
    * @returns The same promise, so callers can `await` the tracked value
    */
   track<T>(messageId: string, send: Promise<T>): Promise<T>;
