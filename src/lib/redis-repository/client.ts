@@ -124,6 +124,9 @@ export function createRedisClient(): Redis {
   client.on('connect', () => {
     logger.info({ module: 'redis' }, 'connected');
   });
+  client.on('error', err => {
+    logger.error({ module: 'redis', err }, 'client error');
+  });
 
   return client;
 }

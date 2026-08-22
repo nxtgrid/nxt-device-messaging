@@ -17,6 +17,7 @@ import type {
   DeviceMessageDeliveryStatus,
   FailureReason,
 } from '../../lib/device-message/types.js';
+import { assertExecSucceeded } from '../../lib/redis-repository/assert-exec.js';
 import { deserializeMessage, rawHashToObject } from '../../lib/redis-repository/helpers.js';
 import { redisKeys } from '../../lib/redis-repository/keys.js';
 import type { StageStore } from '../../lib/redis-repository/stage-store.js';
@@ -45,8 +46,11 @@ export type StageMoves = {
    * so something else (usually the tick) already took ownership of it.
    */
   advance(args: AdvanceArgs): Promise<boolean>;
-  /** Move a failed message from wherever it is into the retry stage. */
-  enterRetry(args: EnterRetryArgs): Promise<void>;
+  /**
+   * Move a failed message from wherever it is into the retry stage.
+   * @returns `false` when the ZSCORE guard missed — the member was no longer in `fromKey`.
+   */
+  enterRetry(args: EnterRetryArgs): Promise<boolean>;
   /** Extend the wait of a member still sitting in its stage. */
   reschedule(args: RescheduleArgs): Promise<void>;
   /** The terminal move: out of every queue and index the message could be in. */
@@ -58,8 +62,11 @@ export type StageMoves = {
    * a 0 means the distributor or tick already took the member.
    */
   claimFromQueue(queueKey: string, messageId: string): Promise<boolean>;
-  /** Backoff elapsed: retry queue → the plugin's ready queue at original priority. */
-  requeue(args: RequeueArgs): Promise<void>;
+  /**
+   * Backoff elapsed: retry queue → the plugin's ready queue at original priority.
+   * @returns `false` when the claim missed — cancel or cleanup already took the member.
+   */
+  requeue(args: RequeueArgs): Promise<boolean>;
 };
 
 /** Arguments for {@link StageMoves.advance}. */
@@ -238,9 +245,16 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       currentRetryCount,
       failureHistory,
       plugin,
-    }: EnterRetryArgs): Promise<void> {
+    }: EnterRetryArgs): Promise<boolean> {
       const inQueue = await stageStore.zscore(fromKey, messageId);
-      if (inQueue === null) return;
+      if (inQueue === null) {
+        metrics.recordStageClaimMiss('retry');
+        logger.warn(
+          { module: 'lifecycle', messageId, fromKey, pluginId: plugin.id },
+          'enter retry lost the claim; another writer already moved this message',
+        );
+        return false;
+      }
 
       const messageKey = redisKeys.message(messageId);
       const dueAt = Date.now() + STAGES.retry.entryWaitMs({
@@ -278,7 +292,8 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         pipeline.hdel(messageKey, 'concurrencyRateLimitKey');
       }
 
-      await pipeline.exec();
+      assertExecSucceeded(await pipeline.exec(), 'enterRetry');
+      return true;
     },
 
     /**
@@ -328,8 +343,16 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       return removed !== 0;
     },
 
-    requeue({ messageId, fromKey, toKey, priority }) {
-      return stageStore.requeueMessage(messageId, fromKey, toKey, priority);
+    async requeue({ messageId, fromKey, toKey, priority }) {
+      const claimed = await stageStore.requeueMessage(messageId, fromKey, toKey, priority);
+      if (!claimed) {
+        metrics.recordStageClaimMiss('retry');
+        logger.warn(
+          { module: 'lifecycle', messageId, from: 'retry' },
+          'retry requeue lost the claim; another writer already moved this message',
+        );
+      }
+      return claimed;
     },
   };
 }

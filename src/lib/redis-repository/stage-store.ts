@@ -61,18 +61,21 @@ export type StageStore = {
   removeMessageFromQueue(queueKey: string, messageId: string): Promise<number>;
   /**
    * Move a message from retry back to an initial queue at its original priority.
+   * Lua-gated: ZADD / HSET only if the member is still in `fromQueueKey` and the
+   * hash still exists. `SADD` of the distribute set runs only after a committed move.
    *
    * @param messageId - ULID of the message
    * @param fromQueueKey - Source queue (typically retry)
    * @param toQueueKey - Destination initial queue
    * @param priority - Original priority (score `-priority`)
+   * @returns `true` when the move committed, `false` when the source claim missed
    */
   requeueMessage(
     messageId: string,
     fromQueueKey: string,
     toQueueKey: string,
     priority: number,
-  ): Promise<void>;
+  ): Promise<boolean>;
   /**
    * Delete a message and every reference to it, in one MULTI.
    *
@@ -172,15 +175,21 @@ export function createStageStore(options: CreateStageStoreOptions): StageStore {
     },
 
     async requeueMessage(messageId, fromQueueKey, toQueueKey, priority) {
-      const multi = client.multi();
-
-      multi.zrem(fromQueueKey, messageId);
-      const score = -1 * priority;
-      multi.zadd(toQueueKey, score, messageId);
-      multi.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), toQueueKey);
-      multi.hset(redisKeys.message(messageId), { deliveryStatus: 'QUEUED' });
-
-      assertExecSucceeded(await multi.exec(), 'requeueMessage');
+      const moved = await client.moveMessageBetweenQueues(
+        fromQueueKey,
+        toQueueKey,
+        redisKeys.message(messageId),
+        '',
+        messageId,
+        -1 * priority,
+        'QUEUED',
+        '',
+        0,
+      );
+      if (moved === 1) {
+        await client.sadd(redisKeys.listOfInitialQueuesToDistributeFrom(), toQueueKey);
+      }
+      return moved === 1;
     },
 
     async messageFullCleanup(message, queueKeys) {

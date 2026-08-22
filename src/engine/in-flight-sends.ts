@@ -49,14 +49,13 @@ export type InFlightSends = {
  * why it is injected rather than module state.
  */
 export function createInFlightSends(): InFlightSends {
-  /** Values are rejection-safe copies — `drain` awaits them all and must not throw. */
   const sends = new Map<string, Promise<unknown>>();
 
   function track<T>(messageId: string, send: Promise<T>): Promise<T> {
     const tracked = send.finally(() => {
-      sends.delete(messageId);
+      if (sends.get(messageId) === tracked) sends.delete(messageId);
     });
-    sends.set(messageId, tracked.catch(() => undefined));
+    sends.set(messageId, tracked);
     return tracked;
   }
 
@@ -75,7 +74,11 @@ export function createInFlightSends(): InFlightSends {
       // `unref` so a drain never holds the process open past its own budget.
       setTimeout(resolve, budgetMs).unref();
     });
-    await Promise.race([ Promise.all([ ...sends.values() ]), expired ]);
+    // Swallow rejections: drain only waits, it must not throw.
+    await Promise.race([
+      Promise.all([ ...sends.values() ].map(pending => pending.catch(() => undefined))),
+      expired,
+    ]);
 
     return sends.size;
   }

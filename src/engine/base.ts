@@ -34,7 +34,7 @@ export type BaseService = {
    * @param failureContext - Why the attempt failed
    * @param plugin - Owning delivery plugin; every caller has already resolved one
    * @returns `removed` when it failed permanently, `movedOn` when it entered retry,
-   * `orphaned` when the hash was already gone
+   * `orphaned` when the hash was already gone or the retry claim missed
    */
   retryOrFail(
     messageId: string,
@@ -130,7 +130,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       return 'removed';
     }
 
-    await moves.enterRetry({
+    const entered = await moves.enterRetry({
       messageId,
       fromKey: currentQueueKey,
       currentRetryCount,
@@ -138,7 +138,7 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       plugin,
     });
 
-    return 'movedOn';
+    return entered ? 'movedOn' : 'orphaned';
   }
 
   return {

@@ -119,14 +119,14 @@ export function createMessageStore(
 
     async getMessageIdFromDeliveryQueueId(deliveryQueueId) {
       const messageKey = await client.get(redisKeys.indexExternalDeliveryId(deliveryQueueId));
-      return messageKey?.split(':')[1];
+      return redisKeys.messageIdFromKey(messageKey);
     },
 
     getMessageById,
 
     async getMessageFromCorrelationId(correlationId) {
       const messageKey = await client.get(redisKeys.indexCorrelationId(correlationId));
-      const messageId = messageKey?.split(':')[1];
+      const messageId = redisKeys.messageIdFromKey(messageKey);
       if (!messageId) return null;
       return getMessageById(messageId);
     },
@@ -146,7 +146,8 @@ export function createMessageStore(
       const messages: DeviceMessage[] = [];
       results.forEach(([ err, raw ], i) => {
         if (err || isEmpty(raw)) return;
-        const messageId = messageKeys[i].split(':')[1];
+        const messageId = redisKeys.messageIdFromKey(messageKeys[i]);
+        if (!messageId) return;
         messages.push(deserializeMessage(messageId, raw as Record<string, string>));
       });
 

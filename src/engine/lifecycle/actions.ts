@@ -176,14 +176,14 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
         device: message.device,
       });
 
-      await moves.requeue({
+      const moved = await moves.requeue({
         messageId: message.id,
         fromKey: QUEUE_RETRY_KEY,
         toKey: destination,
         priority: message.priority,
       });
 
-      return 'movedOn';
+      return moved ? 'movedOn' : 'orphaned';
     },
   };
 }

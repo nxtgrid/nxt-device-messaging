@@ -17,12 +17,25 @@ import { PhaseEnum } from '../device-message/types.js';
  *   (`buildConcurrencyRateLimitKey`); Redis helpers take the opaque resolved string.
  */
 
+const MESSAGE_KEY_PREFIX = 'device_message:';
+
 export const redisKeys = {
   /**
    * Main entity hash.
    * Key: `device_message:{messageId}`
    */
-  message: (messageId: string): string => `device_message:${ messageId }`,
+  message: (messageId: string): string => `${ MESSAGE_KEY_PREFIX }${ messageId }`,
+
+  /**
+   * Inverse of {@link redisKeys.message}. `undefined` if the value is missing or not that shape.
+   *
+   * @param key - Redis key (or `GET` miss), usually an index value pointing at the message hash
+   */
+  messageIdFromKey: (key: string | null | undefined): string | undefined => {
+    if (!key?.startsWith(MESSAGE_KEY_PREFIX)) return undefined;
+    const id = key.slice(MESSAGE_KEY_PREFIX.length);
+    return id === '' ? undefined : id;
+  },
 
   /**
    * Set of active initial queues (sorted sets) that currently have work.

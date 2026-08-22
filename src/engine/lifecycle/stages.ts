@@ -171,6 +171,10 @@ export function stageForStatus(
     case 'DELIVERY_SUCCESSFUL':
     case 'DELIVERY_FAILED':
       return undefined;
+    default: {
+      const unhandled: never = status;
+      throw new Error(`unhandled delivery status: ${ unhandled }`);
+    }
   }
 }
 

@@ -126,7 +126,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
     }
 
     // Relay-node ACK (PUSH): move relay-node → device queue; no adopter event.
-    if (deliveryStatus === 'SENT_TO_DEVICE') {
+    if (deliveryStatus === 'SENT_TO_DEVICE' && plugin.deliveryPattern === 'PUSH') {
       await moves.advance({ messageId, plugin, from: 'relayNode' });
       return 'movedOn';
     }

@@ -3,11 +3,12 @@ import { join } from 'node:path';
 import { defineConfig } from 'tsup';
 
 const LUA_SRC_DIR = 'src/lib/redis-repository/lua';
-const LUA_DIST_DIR = 'dist/lib/redis-repository/lua';
+/** Beside `dist/main.js` — `client.ts` loads `./lua` from `import.meta.url`. */
+const LUA_DIST_DIR = 'dist/lua';
 
 /**
- * Production build (ADR-004). Lua scripts are copied beside `dist/` when
- * unit 2 lands; `config.default.json` ships with the bundle for ADR-002 fallback.
+ * Production build (ADR-004). Lua scripts are copied beside the bundle;
+ * `config.default.json` ships with the bundle for ADR-002 fallback.
  */
 export default defineConfig({
   entry: [ 'src/main.ts' ],
