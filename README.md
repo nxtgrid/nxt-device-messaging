@@ -24,11 +24,10 @@ to a physical device — read a meter's voltage, deliver a credit token, set a p
 ## Status
 
 The command API, ingress, outbound webhook, metrics, and first-party plugins are in place.
-Still an extraction: treat it as early, pin image tags, read
-[integrating](docs/guides/integrating.md) before wiring a consumer.
+Pin image tags. Read [integrating](docs/guides/integrating.md) before wiring a consumer.
 
-Plan and decisions: [`docs/plans/001-extraction.md`](docs/plans/001-extraction.md),
-[`docs/decisions-log.md`](docs/decisions-log.md), [`docs/architecture/`](docs/architecture/).
+Normative decisions: [`docs/architecture/`](docs/architecture/). Parked work:
+[`docs/decisions-log.md`](docs/decisions-log.md).
 
 ## Prerequisites
 

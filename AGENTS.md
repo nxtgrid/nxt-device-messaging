@@ -22,85 +22,26 @@ delivery path, admission, or initial queue.
 
 Redis (or Valkey) is the only infrastructure dependency. There is no relational database.
 
-## Origin and baseline
+**Run one replica** (ADR-007). HTTP on **3100**.
 
-This service is being **extracted** from the `device-messages` module of
-[`nxt-backend`](https://github.com/nxtgrid/nxt-backend). Facts a cold session needs:
+## Layout
 
-| Fact | Value |
+| Path | Role |
 |---|---|
-| Source path | `legacy/apps/tiamat/src/modules/device-messages/` in `nxt-backend` |
-| Baseline commit | **`db5c2ac`** — the copy source is pinned here |
-| Source status | **Frozen.** `legacy/` is at parity with the code NXT Grid runs in production, and neither will be updated again |
-| Lua scripts | `legacy/apps/tiamat/src/queries/lua/device-messages/` (4 files — they travel with the service) |
-| Governing decision | `nxt-backend` **ADR-010** (why the extraction happens) |
+| `src/engine/lifecycle/` | Stage table, moves, actions, one 1000 ms runner |
+| `src/engine/` | Outgoing, incoming, token, webhook, timers, composition peers |
+| `src/plugins/` | SPI (`PushPlugin \| PullPlugin \| TokenOnlyPlugin`) + first-party plugins |
+| `src/http/` | Command / ingress / token routes, OpenAPI |
+| `src/lib/redis-repository/` | Message, stage, and admission stores |
+| `src/config/` | JSON artifact + env |
+| `src/metrics/` | Prometheus `/metrics` |
+| `src/main.ts` | Composition root |
 
-Because the source is frozen, no drift-checking is needed. But **read the source, not a plan's
-description of it** — documents written before `db5c2ac` describe an older shape, and at least
-two known task descriptions are stale because of it (see `nxt-backend` ADR-010's amendment).
+## Commands
 
-## Current status
-
-**Phase 0–3 complete** (foundation through Unit 6, Intermezzo I0–I3, plugins Units 7–10,
-ADR-003 polish). **Phase 4 complete** (4.1–4.3). Parked follow-ups:
-`docs/decisions-log.md` § Parked / revisit.
-
-**Phase 4 — ADR-005 observability (sliced):**
-
-| Slice | Status |
-|---|---|
-| **4.1** `GET /metrics` (`prom-client`; `src/metrics/`) | **Done** (4.1A–C) |
-| **4.2** Pino (pretty default, JSON opt-in) | **Done** (4.2A–C) |
-| **4.3** CONTRIBUTING / README / integration guide | **Done** |
-
-**Phase 3 — ADR-003 polish (closed):**
-
-| Slice | Status |
-|---|---|
-| **3.1** event webhook (`eventWebhook`, Redis pending/payload/DLQ, drain, retry, opt-in HMAC, lean SIGTERM shutdown) | **Done** |
-| **3.2** OpenAPI from Zod (ADR-001 §3 / ADR-003 §7); `/v3/api-docs` + `/swagger`; outbound `webhooks` | **Done** |
-| **3.3** Auth / HTTP polish (timing-safe Bearer, validation `{ error, issues }`) | **Done** |
-
-Parked / revisit (not Phase 4): **`docs/decisions-log.md` § Parked / revisit** — that table
-is canonical. Do not keep a second list here.
-
-Working rule after Intermezzo (session 16): each engine slice that has an ADR-003
-command/ingress surface ships **thin HTTP + smoke in the same chunk**. Timer-only
-paths (distribute / send / poll / resolution) stay internal — exercise via stub
-plugins + enqueue/get (no public debug trigger for now).
-
-Already in place: tooling (ADR-004), config loader (ADR-002), `src/runtime.ts` boot exports
-(`config`, `pluginRegistry`), Fastify `/healthz` + `/metrics` + camelCase command routes on **3100**,
-deploy stubs (ADR-005), `src/lib/device-message/` (`schemas.ts` Zod-only + `types.ts` +
-`command-types.ts`; camelCase domain/hash fields; snake_case Redis key paths;
-`device.relayNode`; `generateTokenSchema` type-discriminated), Redis/Lua, queue primitives
-(`queue_in_flight_to_relay_node`), lifecycle (typed on `PushPlugin` / `PullPlugin`),
-`src/plugins/` (SPI is `PushPlugin | PullPlugin | TokenOnlyPlugin` + `PluginTuning` +
-`_shared/` helpers incl. ChirpStack gRPC client +
-catalog / registry / `stub/` + `calin-api-v1/` PULL — fetch, outgoing, incoming, token;
-enable via `plugins[]` + `CALIN_API_V1_*` — + `calin-api-v2/` PULL — fetch + login cache,
-outgoing, incoming, token; enable via `plugins[]` + `CALIN_API_V2_*` — + `nxt-sts/`
-token-only (`deliveryPattern: 'NONE'`) — mint; enable via `plugins[]` + `NXT_STS_URL` — + `calin-chirpstack/`
-PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `plugins[]` +
-`CHIRPSTACK_*`),
-`src/http/` (lean enqueue/get/cancel; thin ingress + token; Zod route schemas;
-`registerOpenApi` → `/v3/api-docs` + `/swagger`; `smoke/` httpYac),
-`src/engine/` peer factories — `createBaseService` (optional `webhook`) /
-`createOutgoingService` / `createIncomingService` / `createTokenService` +
-`src/engine/lifecycle/` (stage table, moves, actions, one 1000 ms runner) +
-`startEngineTimers` (`engine.enabled`). Outbound adopter notify →
-`src/engine/webhook/` (`storeAndEmit` / private drain / POST / retry / DLQ / opt-in
-HMAC; OpenAPI `webhooks.deliveryEvent` + `WebhookEvent`); wired from `main` when
-`eventWebhook` is set. Errors from `engine/errors.ts`.
-Composition root in `main.ts` (lean `SIGTERM`/`SIGINT` shutdown). **Units 5–10 complete.**
-Config: `eventWebhook`; env `DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
-
-- **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` →
-  `pnpm dev` (loads `.env`; port **3100**)
+- **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` → `pnpm dev`
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
-- **Compose:** same `.env`, then `docker compose up --build` (app + Valkey)
-- **Smoke:** `src/http/smoke/message.http` (httpYac); opt-in
-  `pnpm test:integration` (sets `RUN_REDIS_SMOKE=1`; serial files; shared Valkey)
+- **Smoke:** `src/http/smoke/` (httpYac); opt-in `pnpm test:integration` (Valkey; `RUN_REDIS_SMOKE=1`)
 
 ## Workflow
 
@@ -116,8 +57,8 @@ Config: `eventWebhook`; env `DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
 - **Design decisions belong to the maintainer.** When one surfaces, put it to them with a
   recommended answer and wait for confirmation before acting. Resolve dependencies between
   decisions one at a time.
-- **Look facts up; never ask what the environment can answer.** Filesystem, git history, and
-  the source module are all readable.
+- **Look facts up; never ask what the environment can answer.** Filesystem and git history
+  are readable.
 
 ## Communication
 
@@ -129,14 +70,10 @@ Config: `eventWebhook`; env `DEVICE_MESSAGING_WEBHOOK_SECRET` for signing.
 
 ## Decision records
 
-ADRs live in `docs/architecture/` as numbered files. This repo owns **how the service is
-built**; `nxt-backend` owns **why it was extracted** and what changes on its side.
+ADRs live in `docs/architecture/` as numbered files. A bare `ADR-00N` means this repo.
 
-**Citation convention:** a bare `ADR-00N` means *this repo's* ADR. Always write
-`nxt-backend ADR-00N` when citing the other repo, because the numbers collide — most
-confusingly, both repos have an ADR-001 and both are relevant here.
-
-### This repo's ADRs
+Read ADRs **only** when the task touches their domain. Read Context and Status first and
+stop if the ADR does not apply. Cap at 2–3 before proposing an approach.
 
 | # | Decision |
 |---|---|
@@ -149,31 +86,20 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
 | 008 | Message lifecycle is a stage table — one runner, one 1000 ms tick, pipelines as data |
 
-### `nxt-backend` ADRs that constrain this repo
-
-Read these **only** when the task touches their domain. Read Context and Status first and stop
-if the ADR does not apply. Cap at 2–3 before proposing an approach.
-
-| `nxt-backend` ADR | Read it when |
-|---|---|
-| **010** — device-messaging extraction | Any structural question about scope, endpoints, or the plugin contract. Start here. §6 single-writer ↔ this repo’s **ADR-007** |
-| **001** — PUSH/PULL pattern divergence | Touching timeouts, rate limiting, concurrency, or per-plugin tuning; this repo’s **ADR-006** is the actionable admission SPI |
-| **007** — configuration & wiring | Touching config. This repo's ADR-002 adapts it rather than replacing it |
-| **005** — inter-host communication | How consumers integrate; §11 classifies this service as an integrable extracted service |
-
 When you make a new architectural decision, add a numbered ADR here **and** add a row to the
 index table above.
 
-### Where to look for state
+### Where to look
 
-| File | What it holds |
-|---|---|
-| `docs/decisions-log.md` | **Read first.** Settled vs open; **Parked / revisit** (canonical follow-ups); carried findings. Append every session |
-| `docs/plans/001-extraction.md` | The executable plan: five phases, ten port units, and the import ledger |
+| File | What it holds | Load when |
+|---|---|---|
+| `docs/decisions-log.md` | Parked / open / deferred-with-criteria | The task is follow-ups or “is this parked?” |
+| `docs/plans/002-architecture-review.md` | Open follow-up plan | Working an item on that plan |
+| `docs/architecture/` | ADRs | The index above says so |
+| `docs/archive/` | Named-era journals | The task cites a file there. Not otherwise. |
 
-`nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md` is **stale and marked
-non-executable**. It remains useful only as a source of task detail (retry semantics, queue stages,
-the plugin interface sketch) — never as instructions.
+Do not append a diary to `docs/decisions-log.md`. New architecture → ADR. Plan work → that
+plan’s session notes. Parked item lands → strike the parked row.
 
 ## Code conventions
 
@@ -188,8 +114,7 @@ the plugin interface sketch) — never as instructions.
 - **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
   keep private helpers in that scope; return a plain object literal as the interface. Example:
   `createOutgoingService({ registry, delivery, baseService })`. Complements ADR-001 §2
-  (no DI container). Pure
-  helpers and module-level Redis stay fine outside this shape.
+  (no DI container). Pure helpers and module-level Redis stay fine outside this shape.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.
 

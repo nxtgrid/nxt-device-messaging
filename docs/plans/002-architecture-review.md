@@ -1,8 +1,8 @@
 # Plan 002 — Architecture review and deepening
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 landed.** Next is D (docs compact),
-then optionals.
+Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 and D landed.** Next is optionals
+(item 11). Capability bundles stay trigger-gated.
 **Branch:** branch 3, cut after branch 2. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
@@ -55,7 +55,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
 | 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☑ 2026-08-22 |
-| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
+| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☑ 2026-08-22 |
 | 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
 | 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
 
@@ -77,7 +77,7 @@ The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first 
 with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
-directions. **9 (C4) landed** on this branch. 10–12 remain.
+directions. **9 (C4) and 10 (D) landed** on this branch. 11–12 remain.
 
 ### Why this order
 
@@ -602,7 +602,7 @@ them where they are, but the `_shared/` name is misleading.
 
 ## D. Documentation
 
-**Status:** design locked 2026-08-22. Two commits: (1) `src/` markers, (2) working-set rewrite.
+**Status:** landed 2026-08-22 (two commits: `src/` markers, then working-set rewrite).
 
 **Symptom.** The documentation is still shaped for an extraction in progress, and the extraction is
 over. Humans will not read most of it. Agents *will* load whatever `AGENTS.md` tells them to, on
@@ -672,6 +672,11 @@ ADR citations (`ADR-002 §5`, `ADR-006`, `ADR-007`).
 
 **Done when.** A cold agent orients from `README.md` + `AGENTS.md` + the ADR index, without loading
 extraction history, and without being told to open another repository unless the task says so.
+
+**✅ Landed 2026-08-22.** `src/` markers stripped. `AGENTS.md` is the working set (no origin
+table, no phase inventory, no nxt-backend routing). Living `docs/decisions-log.md` is parked /
+open only. Extraction journal is `docs/archive/decisions-log-extraction.md`. Plan 001 has a
+history banner. README status describes a standalone service.
 
 ---
 
@@ -858,3 +863,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-22** — **D design locked.** Working set vs named-era archive; no nxt-backend
   on the cold-start path; no “don’t look in other repos” sentence. **Commit 1** (`src/`
   marker strip) done. Next: commit 2 (working-set rewrite + archive).
+- **2026-08-22** — **D landed.** `AGENTS.md` rewritten; living decisions-log is short;
+  extraction journal archived as `docs/archive/decisions-log-extraction.md`; plan 001
+  marked history; README is a standalone service. Next: **optional** (item 11).

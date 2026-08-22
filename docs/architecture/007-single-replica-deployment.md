@@ -9,8 +9,8 @@
 
 **Read this when:** scaling replicas, touching the LoRaWAN up/ack correlator, engine
 timers / reapers, or any review that proposes Redis-backed correlation “for HA.”
-**Related:** ADR-005 (deployment), ADR-003 (ingress), `nxt-backend` ADR-010 §6,
-`docs/plans/001-extraction.md` Deferred table.
+**Related:** ADR-005 (deployment), ADR-003 (ingress). HA / multi-replica is parked in
+`docs/decisions-log.md`.
 
 ---
 
@@ -71,7 +71,7 @@ Choosing among those (and sticky ingress as a stopgap) is **out of scope** for t
 
 ### 4. Document the constraint at the call site
 
-The correlator module and the extraction plan Deferred row point here so the
+The correlator module and the parked HA row in `docs/decisions-log.md` point here so the
 single-writer assumption is not tribal knowledge.
 
 ---
@@ -111,5 +111,5 @@ single-writer assumption is not tribal knowledge.
 - **ADR-005** — Docker, compose, CI/GHCR, health/metrics (packaging; not replica count).
 - **ADR-003** — `POST /ingress/:pluginId` (each request handled independently).
 - **`nxt-backend` ADR-010 §6** — single-writer v1; HA deferred at extraction time.
-- **`docs/plans/001-extraction.md`** — Deferred: HA / multi-instance.
 - **`src/plugins/calin-chirpstack/lib/correlate-request-response.ts`** — process-local Map.
+- **`docs/decisions-log.md`** — HA / multi-replica parked.
