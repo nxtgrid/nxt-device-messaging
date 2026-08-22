@@ -1,7 +1,6 @@
 /**
  * @fileoverview Encode enqueueable commands as CALIN downlink bytes.
  *
- * Port of legacy `adapters/calin-lorawan/lib/encode-request-data.ts`.
  * Wire token command is `TOP_UP_KWH` (via {@link isTokenCommand}).
  */
 

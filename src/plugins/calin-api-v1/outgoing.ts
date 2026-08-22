@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-api-v1` outgoing facet (Unit 7.3).
+ * @fileoverview `calin-api-v1` outgoing facet.
  *
- * Port of legacy `adapters/calin-api-v1/_outgoing.service.ts`. Creates COMM
- * tasks (read / control / write / token delivery) via {@link CalinApiV1Client}.
+ * Creates COMM tasks (read / control / write / token delivery) via {@link CalinApiV1Client}.
  */
 
 import {

@@ -1,9 +1,8 @@
 /**
- * @fileoverview CALIN API V1 HTTP client (Unit 7.2).
+ * @fileoverview CALIN API V1 HTTP client.
  *
- * Port of legacy `adapters/calin-api-v1/lib/repo.ts` with native `fetch` instead
- * of axios. Base URL comes from secrets (`CALIN_API_V1_URL`); credentials are
- * attached by outgoing / token / incoming (Units 7.3–7.5).
+ * Native `fetch`. Base URL comes from secrets (`CALIN_API_V1_URL`); credentials are
+ * attached by outgoing / token / incoming.
  */
 
 import { logger } from '../../../log.js';

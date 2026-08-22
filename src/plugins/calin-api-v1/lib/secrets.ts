@@ -1,9 +1,8 @@
 /**
  * @fileoverview Env secrets for `calin-api-v1` (ADR-002 §2 / §6).
  *
- * Names follow the plugin id (`calin-api-v1` → `CALIN_API_V1_*`), not the legacy
- * `CALIN_V1_*` prefix from frozen tiamat. Reads `process.env` only — tests stub
- * via Vitest `vi.stubEnv`.
+ * Names follow the plugin id (`calin-api-v1` → `CALIN_API_V1_*`).
+ * Reads `process.env` only — tests stub via Vitest `vi.stubEnv`.
  */
 
 import { requireEnvKeys } from '../../_shared/require-env-keys.js';

@@ -1,9 +1,7 @@
 /**
- * @fileoverview `calin-chirpstack` plugin factory (Unit 10 — Phase 2).
+ * @fileoverview `calin-chirpstack` plugin factory.
  *
- * PUSH adapter: CALIN meter framing over ChirpStack (legacy folder
- * `adapters/calin-lorawan/`). Units 10.1–10.5: SPI, shared gRPC client,
- * encode/decode/correlate, outgoing, incoming.
+ * PUSH adapter: CALIN meter framing over ChirpStack.
  *
  * ChirpStack gRPC secrets stay vendor-scoped (`CHIRPSTACK_*`) in
  * `_shared/chirpstack-repository/` — loaded when that client is created.
@@ -35,7 +33,7 @@ export const CALIN_CHIRPSTACK_ID = 'calin-chirpstack' as const;
 const CALIN_CHIRPSTACK_NODE_KIND = 'network' as const;
 
 /**
- * Outbound command types this plugin implements (legacy encode maps).
+ * Outbound command types this plugin implements.
  * Token mint is out of band (`nxt-sts`); this plugin only delivers tokens.
  */
 const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
@@ -44,7 +42,7 @@ const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
   'READ_POWER',
   'READ_CURRENT',
   'READ_POWER_LIMIT',
-  // 'READ_VERSION' — not in legacy LoRaWAN encode map
+  // 'READ_VERSION' — not implemented on this plugin
   'READ_DATE',
   'READ_TIME',
   'TURN_ON',
@@ -67,8 +65,7 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 /**
  * Build the `calin-chirpstack` {@link PushPlugin}.
  *
- * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing and
- * incoming are fully wired (Units 10.4–10.5).
+ * Creates the shared ChirpStack gRPC client (secrets from env).
  *
  * @param entry - Config `plugins[]` entry for this id
  */

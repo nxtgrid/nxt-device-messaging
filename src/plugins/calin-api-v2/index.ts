@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-api-v2` plugin factory (Unit 9 — Phase 2).
+ * @fileoverview `calin-api-v2` plugin factory.
  *
- * PULL adapter for the CALIN HTTP API V2. Unit 9.1 lands SPI wiring (secrets,
- * admission, initial queue, tuning, catalog). Vendor I/O ports in 9.2–9.5.
+ * PULL adapter for the CALIN HTTP API V2.
  *
  * Enable: add `{ "id": "calin-api-v2" }` to config `plugins[]` and set
  * `CALIN_API_V2_*` env (see `.env.example`). Missing secrets fail at construct.
@@ -36,7 +35,7 @@ const CALIN_API_V2_NODE_KIND = 'dcu' as const;
 
 /**
  * Outbound command types this plugin implements.
- * Commented rows match legacy “not implemented” maps (kept for the port).
+ * Commented rows are command types this vendor does not implement.
  */
 const CALIN_API_V2_SUPPORTED_COMMAND_TYPES = [
   'READ_CREDIT',
@@ -66,8 +65,7 @@ const CALIN_API_V2_ADMISSION: Admission = {
 /**
  * Build the `calin-api-v2` {@link PullPlugin}.
  *
- * Validates secrets at construct (ADR-002 §6). Vendor I/O is fully wired
- * (Units 9.2–9.5: client, outgoing, incoming, token).
+ * Validates secrets at construct (ADR-002 §6).
  *
  * @param entry - Config `plugins[]` entry for this id
  */

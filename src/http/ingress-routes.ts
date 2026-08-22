@@ -1,5 +1,5 @@
 /**
- * @fileoverview Thin vendor ingress: `POST /ingress/:pluginId` (Unit 5.5).
+ * @fileoverview Thin vendor ingress: `POST /ingress/:pluginId`.
  *
  * No Bearer API key (ADR-003 §5). Optional `plugin.incoming.verifySignature`.
  * Body is vendor-opaque: raw buffer kept for signatures; JSON parsed in-handler.

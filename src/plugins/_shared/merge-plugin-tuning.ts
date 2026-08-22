@@ -1,5 +1,5 @@
 /**
- * @fileoverview Shared config `plugins[].tuning` merge (ADR-002 §5 / D5 / C4).
+ * @fileoverview Shared config `plugins[].tuning` merge (ADR-002 §5).
  *
  * Core owns the default {@link PluginTuning}. Plugins call
  * {@link mergePluginTuning} and pass only deltas. The JSON artifact may

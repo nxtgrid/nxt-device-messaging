@@ -1,7 +1,6 @@
 /**
- * @fileoverview `nxt-sts` token facet (Unit 8.2).
+ * @fileoverview `nxt-sts` token facet.
  *
- * Port of legacy `adapters/nxt-sts/_token.service.ts`.
  * Wire generate-token types match the STS `POST /token` `type` field
  * (`TOP_UP_KWH`, etc.).
  */

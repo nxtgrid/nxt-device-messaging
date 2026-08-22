@@ -1,5 +1,5 @@
 /**
- * @fileoverview Thin command routes: enqueue, get-by-correlation, cancel (Unit 5.2).
+ * @fileoverview Thin command routes: enqueue, get-by-correlation, cancel.
  *
  * Lean HTTP: Zod route schemas + auth + map domain errors. Plugin enablement
  * lives in {@link OutgoingService}.

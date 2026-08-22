@@ -1,5 +1,5 @@
 /**
- * @fileoverview Thin command route: `POST /token/generate` (Unit 5.6).
+ * @fileoverview Thin command route: `POST /token/generate`.
  *
  * Bearer when configured (ADR-003 §5). Zod route schemas + map domain errors.
  */

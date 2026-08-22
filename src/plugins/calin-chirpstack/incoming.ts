@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-chirpstack` incoming facet (Unit 10.5).
+ * @fileoverview `calin-chirpstack` incoming facet.
  *
- * Port of legacy `adapters/calin-lorawan/_incoming.service.ts`. Normalizes
- * ChirpStack HTTP-integration events into {@link ParsedIncomingEvent}.
+ * Normalizes ChirpStack HTTP-integration events into {@link ParsedIncomingEvent}.
  *
  * Routes on ChirpStack's `?event=` query param (HTTP integration contract), not
  * body-field heuristics. Handled: `txack` / `ack` / `join` / `up`. Missing or

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Redis port for stage queues (plan 002 C1).
+ * @fileoverview Redis port for stage queues.
  *
  * Lua moves, expiry scans, requeue, cleanup, and the sorted-set primitives
  * `enterRetry` / `reschedule` need. Callers are `lifecycle/moves.ts` and
@@ -20,7 +20,7 @@ import type { MoveMessageResult } from './lua/move-message-between-queues.types.
 /**
  * Max members returned per timeout scan (`ZRANGEBYSCORE … LIMIT`).
  * Caps work per engine tick; leftover due members wait for the next tick.
- * Inherited from legacy — pragmatic batch size, not a measured optimum.
+ * Pragmatic batch size, not a measured optimum.
  */
 const QUEUE_SCAN_BATCH_SIZE = 50;
 

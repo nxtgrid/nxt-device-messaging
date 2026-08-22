@@ -1,11 +1,11 @@
 /**
- * @fileoverview Plugin SPI (Unit 6).
+ * @fileoverview Plugin SPI.
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution is
- * `OutgoingService.distributeToNetworkServers` (Unit 5.3 / D3).
+ * `OutgoingService.distributeToNetworkServers`.
  * Initial queues: {@link DeliveryPlugin.initialQueueKey} + `buildInitialQueueKey`
- * (ADR-006 D1). Stage timeouts / poll delay: {@link PluginTuning} (D5).
+ * (ADR-006). Stage timeouts / poll delay: {@link PluginTuning}.
  *
  * The SPI is a discriminated union on {@link DeliveryPattern}:
  * {@link PushPlugin} | {@link PullPlugin} | {@link TokenOnlyPlugin}.
@@ -45,10 +45,7 @@ export type InitialQueueKeyInput = {
   device: DeviceMessageDevice;
 };
 
-/**
- * Context passed to custom admission hooks.
- * Widened in Unit 5 if distribute needs more fields.
- */
+/** Context passed to custom admission hooks. */
 export type DistributeCtx = {
   readonly queueKey: string;
   readonly pluginId: PluginId;
@@ -72,7 +69,7 @@ export type Admission =
   };
 
 /**
- * Per-plugin stage timeouts / poll delay (D5 / ADR-002 §5 / C4).
+ * Per-plugin stage timeouts / poll delay (ADR-002 §5).
  * Core owns `DEFAULT_PLUGIN_TUNING`; plugins call `mergePluginTuning(entry)`
  * and pass only deltas. Config `plugins[].tuning` overrides.
  * Shared `delivery` keeps only retry knobs + message TTL.
@@ -147,7 +144,7 @@ type DeliveryPluginBase = PluginBase & {
   /** How hard the distributor may hit this plugin's initial queues. */
   readonly admission: Admission;
 
-  /** Stage timeouts / initial poll delay (D5). */
+  /** Stage timeouts / initial poll delay. */
   readonly tuning: PluginTuning;
 };
 

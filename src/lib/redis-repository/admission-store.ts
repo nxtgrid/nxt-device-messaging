@@ -1,5 +1,5 @@
 /**
- * @fileoverview Redis port for ready-queue admission (plan 002 C1).
+ * @fileoverview Redis port for ready-queue admission.
  *
  * Spacing locks and concurrency slots — the only Redis this port speaks.
  * `OutgoingService` is the only consumer (`_canAdmit` / `_onClaimAfterPick`).

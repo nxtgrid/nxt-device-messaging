@@ -1,8 +1,7 @@
 /**
- * @fileoverview Service-owned command / token-type vocabulary (Unit 6.1).
+ * @fileoverview Service-owned command / token-type vocabulary.
  *
- * Parity with legacy `meter_interaction_type_enum` + `meter-interaction-type-helpers.ts`.
- * Not imported from Supabase types — this repo owns the closed set (ADR-003 §4 amended).
+ * This repo owns the closed set (ADR-003 §4).
  *
  * - {@link COMMAND_TYPES} — everything the app knows (incl. unsolicited)
  * - {@link ENQUEUEABLE_COMMAND_TYPES} — valid on `POST /message/enqueue`

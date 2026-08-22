@@ -1,8 +1,8 @@
 /**
- * @fileoverview No-op stub plugins for the walking-skeleton Intermezzo (I1).
+ * @fileoverview No-op stub plugins.
  *
  * Two fixed ids so config can enable PUSH and/or PULL without vendor I/O.
- * Real CALIN / ChirpStack plugins land in Phase 2; do not reuse those ids here.
+ * Do not reuse these ids for vendor plugins.
  */
 
 import { ulid } from 'ulid';

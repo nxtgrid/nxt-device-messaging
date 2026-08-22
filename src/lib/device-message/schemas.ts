@@ -2,9 +2,9 @@
  * @fileoverview Zod schemas for the device-message aggregate (no TypeScript types).
  *
  * Inferred / lifecycle types live in `./types.ts`. Redis hash fields are camelCase;
- * key paths stay snake_case (ADR-003 / decisions-log 15b).
+ * key paths stay snake_case (ADR-003).
  *
- * `.meta({ examples })` / `.describe()` feed OpenAPI (Phase 3.2); keep examples
+ * `.meta({ examples })` / `.describe()` feed OpenAPI; keep examples
  * informative so Swagger UI does not fall back to JSON-Schema integer extremes.
  */
 
@@ -16,7 +16,7 @@ import {
   ENQUEUEABLE_COMMAND_TYPES,
 } from './command-types.js';
 
-/** I/O parent (LoRaWAN gateway / DCU / mesh hop) — D6. */
+/** I/O parent (LoRaWAN gateway / DCU / mesh hop). */
 const relayNodeSchema = z.object({
   id: z.uint32().optional().meta({
     description: 'Vendor / NS identifier for the relay node',

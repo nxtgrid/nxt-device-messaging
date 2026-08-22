@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-api-v1` token facet (Unit 7.5).
+ * @fileoverview `calin-api-v1` token facet.
  *
- * Port of legacy `adapters/calin-api-v1/_token.service.ts`.
- * Wire type is `TOP_UP_KWH` (not legacy `TOP_UP`).
+ * Wire type is `TOP_UP_KWH`.
  */
 
 import type { GenerateTokenInput } from '../../lib/device-message/types.js';

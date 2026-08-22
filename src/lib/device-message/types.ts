@@ -52,7 +52,7 @@ export type GenerateTokenInput = DistributiveOmit<GenerateTokenRequest, 'pluginI
 
 export type PhaseEnum = z.infer<typeof phaseSchema>;
 export type DeviceMessageDevice = CreateDeviceMessage['device'];
-/** I/O parent on the wire (`device.relayNode`) — D6. */
+/** I/O parent on the wire (`device.relayNode`). */
 export type RelayNodeInfo = NonNullable<DeviceMessageDevice['relayNode']>;
 export type DeviceType = DeviceMessageDevice['type'];
 export type SetDatePayload = z.infer<typeof setDatePayloadSchema>;

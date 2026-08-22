@@ -1,8 +1,7 @@
 /**
- * @fileoverview Sync token generation surface (Unit 5.6 Step A).
+ * @fileoverview Sync token generation surface.
  *
- * Thin router: `pluginId` → optional `plugin.token.generate`. Real vendor adapters
- * land in Phase 2; stubs exercise the HTTP path.
+ * Thin router: `pluginId` → optional `plugin.token.generate`.
  */
 
 import type { GenerateTokenRequest } from '../lib/device-message/types.js';

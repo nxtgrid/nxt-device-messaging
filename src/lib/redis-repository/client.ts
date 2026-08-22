@@ -1,5 +1,5 @@
 /**
- * @fileoverview Redis client (ADR-002 §8, plan 002 C1).
+ * @fileoverview Redis client (ADR-002 §8).
  *
  * Lua commands are registered here so every caller sees
  * `fetchNextMessageInQueueAndMove` / `moveMessageBetweenQueues` on the type.

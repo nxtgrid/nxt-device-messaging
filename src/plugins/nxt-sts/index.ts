@@ -1,5 +1,5 @@
 /**
- * @fileoverview `nxt-sts` plugin factory (Unit 8 — Phase 2).
+ * @fileoverview `nxt-sts` plugin factory.
  *
  * Token-only adapter for the NXT STS generator API (ADR-003 §3). No enqueue /
  * delivery path — `supportedCommandTypes` is empty; `outgoing.sendOne` rejects.

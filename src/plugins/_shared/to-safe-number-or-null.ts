@@ -1,8 +1,7 @@
 /**
  * @fileoverview Safe numeric coercion for vendor adapters.
  *
- * Port of `@helpers/number-helpers` `toSafeNumberOrNull` (frozen tiamat). Used by
- * CALIN plugin error/`ResultCode` paths; other plugins may share it.
+ * Used by CALIN plugin error/`ResultCode` paths; other plugins may share it.
  */
 
 /**

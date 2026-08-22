@@ -1,5 +1,5 @@
 /**
- * @fileoverview Redis port for message hash + lookup indexes (plan 002 C1).
+ * @fileoverview Redis port for message hash + lookup indexes.
  *
  * Enqueue, get-by-id, get-by-correlation, get-all-for-correlation, and the
  * delivery-queue-id index. Stage moves and admission are other ports.

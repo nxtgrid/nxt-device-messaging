@@ -602,34 +602,76 @@ them where they are, but the `_shared/` name is misleading.
 
 ## D. Documentation
 
+**Status:** design locked 2026-08-22. Two commits: (1) `src/` markers, (2) working-set rewrite.
+
 **Symptom.** The documentation is still shaped for an extraction in progress, and the extraction is
-over.
+over. Humans will not read most of it. Agents *will* load whatever `AGENTS.md` tells them to, on
+every cold start — today that path is the full `AGENTS.md` (phase tables, origin brief) plus
+“read `decisions-log.md` first” (~2k lines) plus “plan 001 is the executable plan” (it is not).
+That is context bloat, not context.
 
-**Evidence.**
+**Audiences.**
 
-- `docs/decisions-log.md` — 1778 lines. It is a session journal, and it is the first thing a cold
-  reader is told to read.
-- `docs/plans/001-extraction.md` — 330 lines describing finished work.
-- `README.md:26-28` — "Still an extraction".
-- Source comments carry markers that resolve to struck-through rows in another document: `Unit 5.4`,
-  `(D5)`, `(D6)`, `(I3)`, `session 23c`, `ADR-006 D1`, `Phase 2`, `Intermezzo`. Measured: **70
-  occurrences across 42 files** under `src/`.
+| Layer | Who | What belongs |
+|---|---|---|
+| **Working set** | Agents, every session | Current service, workflow, ADR *index*, where to look next. Short. |
+| **Archive** | Humans, and agents only when the task cites the file | Named era logs, extraction plan. Never on the cold-start path. |
 
-**Why the source markers matter most.** To a human they are noise. To an AI they are worse than
-noise — they look like navigable references and resolve to nothing local, so they invite exactly the
-wrong lookup.
+Code is truth. ADRs are the surviving decisions. Everything else is a pointer or history.
 
-**Direction.**
+**Nothing historical is on the agent cold-start path.** Archive may be large. `AGENTS.md` plus the
+living decisions-log must stay small enough that a session can load both and still have room for
+the task.
 
-1. Strip extraction/unit/session markers from `src/` comments. Mechanical, safe, highest daily value.
-2. Archive `docs/plans/001-extraction.md` (keep it; mark it history).
-3. Compress `decisions-log.md` into a short "state of the service + parked work" document; move the
-   chronological journal to an archive section or file.
-4. Update the README status paragraph to describe a standalone service.
-5. Keep the ADRs. They are good and still normative.
+**This is a standalone service.** Do not write the repo as an extraction, and do not add a
+“don’t look in other repositories” sentence. Repositories are standalone unless a task says they
+work together. The open repo is the baseline; other repos in the suite are relevant when the task
+says so. In-repo work starts at **this** repo’s ADRs 001–008. Leave `nxt-backend` links inside ADR
+bodies (provenance). Do not put them on the cold-start path. Move the decisions-log “Other repo”
+parked table into the extraction archive.
 
-**Done when.** A cold reader can orient from `README.md` + `AGENTS.md` + the ADR index without
-reading anything about the extraction.
+**Named, chunked logs — by era, not by topic.** ADRs already own topics.
+
+| File | What it is | Who loads it |
+|---|---|---|
+| `docs/decisions-log.md` | Living log for the standalone service. Open / parked / deferred-with-criteria, plus new notes from now on. Short (target ≲150 lines). | Agents, when the task is follow-ups or “is this parked?” — **not** every session. Stop saying “read this first.” |
+| `docs/archive/decisions-log-extraction.md` | Today’s journal, moved, covering extraction through Phase 4. | Nobody, unless a parked row or ADR cites it. |
+| `docs/archive/README.md` | Five lines: do not load these for implementation. | — |
+| `docs/plans/001-extraction.md` | Keep; history banner at top. | Nobody, unless the task is historical. |
+
+Do **not** archive plan 002 into a third log while 002 is open — its session notes are already a
+named chunk. When 002 closes: leave the notes in the plan, or move them to
+`docs/archive/decisions-log-plan-002.md`.
+
+**Going forward:** when a living log goes stale, archive it as
+`docs/archive/decisions-log-<era>.md` and start a fresh living file. Cite archives by filename.
+Do not read them unless the task names them. Agents do not append a diary to the living log:
+new architecture → ADR; plan work → that plan’s session notes; parked item lands → strike the
+row.
+
+**`AGENTS.md` is paid for on every turn.** Cut until it is only: what this service is; workflow /
+communication / conventions / plugin rules; ADR index + “read 2–3, Context+Status first”; a
+short directory map (`engine/lifecycle`, `plugins/`, `http/`, …); where to look for *living*
+state (parked table, open plan 002). Delete: origin-and-baseline table, Phase 3/4 status tables,
+Intermezzo working rule, “Units 5–10 complete”, “already in place” inventory, pointer to plan 001
+as executable, nxt-backend ADR routing table.
+
+**`README.md`.** Standalone service. Pin tags, read `integrating.md`, ADRs are normative. No
+“still an extraction”, no link to plan 001.
+
+**`src/` comments (commit 1).** Strip `Unit N`, `Phase N`, `Intermezzo`, `(D5)` / `(D6)` / `(D3)`,
+`session …`, `ADR-006 D1`, `plan 002 C1`, `Port of legacy …`, `frozen tiamat`, nxt-backend path
+citations. Keep the technical sentence. Fileoverviews describe the module as it is. Keep real
+ADR citations (`ADR-002 §5`, `ADR-006`, `ADR-007`).
+
+**ADRs.** Keep. Do not rewrite bodies. Drop “see plan 001 Phase N” as if it were executable.
+
+**Out of scope.** Item 11 optionals, capability bundles, CONTRIBUTING (already human-sized).
+
+**Two commits.** (1) `src/` marker strip. (2) Working-set rewrite + archive move.
+
+**Done when.** A cold agent orients from `README.md` + `AGENTS.md` + the ADR index, without loading
+extraction history, and without being told to open another repository unless the task says so.
 
 ---
 
@@ -813,3 +855,6 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   `mergePluginTuning(entry, overrides?)` layers core → plugin delta → config. No plugin
   restates a default. `PluginTuning` was **not** split by pattern — the stage table is
   one consumer. Poll ladder stays core-owned. Next: **D**.
+- **2026-08-22** — **D design locked.** Working set vs named-era archive; no nxt-backend
+  on the cold-start path; no “don’t look in other repos” sentence. **Commit 1** (`src/`
+  marker strip) done. Next: commit 2 (working-set rewrite + archive).

@@ -1,8 +1,7 @@
 /**
  * @fileoverview Pick the best gateway observation from ChirpStack `rxInfo`.
  *
- * Port of legacy `adapters/calin-lorawan/lib/connectivity-helpers.ts`.
- * Returns a {@link RelayNodeInfo} fragment for `device.relayNode` (D6).
+ * Returns a {@link RelayNodeInfo} fragment for `device.relayNode`.
  */
 
 import type { RelayNodeInfo } from '../../../lib/device-message/types.js';

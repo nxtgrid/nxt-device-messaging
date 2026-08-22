@@ -1,9 +1,8 @@
 /**
  * @fileoverview Env secrets for `nxt-sts` (ADR-002 §2 / §6).
  *
- * Names follow the plugin id (`nxt-sts` → `NXT_STS_*`), not the legacy
- * `STS_GENERATOR_API` from frozen tiamat. Reads `process.env` only — tests stub
- * via Vitest `vi.stubEnv`.
+ * Names follow the plugin id (`nxt-sts` → `NXT_STS_*`).
+ * Reads `process.env` only — tests stub via Vitest `vi.stubEnv`.
  */
 
 import { requireEnvKeys } from '../../_shared/require-env-keys.js';

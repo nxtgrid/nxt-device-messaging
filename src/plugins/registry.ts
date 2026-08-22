@@ -5,8 +5,8 @@
  * do not import `runtime` from this module.
  *
  * Distribute resolves `queueKey → plugin` by parsing `pluginId` from
- * `queue:{pluginId}:{kind}:{id}` (ADR-006 D1) — no kind index here. Admission
- * execution is Unit 5.3 (D3).
+ * `queue:{pluginId}:{kind}:{id}` (ADR-006) — no kind index here. Admission
+ * execution is `OutgoingService.distributeToNetworkServers`.
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';

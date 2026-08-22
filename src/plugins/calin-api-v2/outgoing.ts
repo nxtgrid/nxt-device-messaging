@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-api-v2` outgoing facet (Unit 9.3).
+ * @fileoverview `calin-api-v2` outgoing facet.
  *
- * Port of legacy `adapters/calin-api-v2/_outgoing.service.ts`. Creates remote
- * meter tasks (read / control / write / token delivery) via
+ * Creates remote meter tasks (read / control / write / token delivery) via
  * {@link CalinApiV2Client}.
  */
 

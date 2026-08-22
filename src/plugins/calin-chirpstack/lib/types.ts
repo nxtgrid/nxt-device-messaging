@@ -1,9 +1,8 @@
 /**
  * @fileoverview ChirpStack HTTP-integration event shapes + CALIN frame constants.
  *
- * Port of legacy `adapters/calin-lorawan/lib/types.ts`. Field names on our decoded
- * / correlator side are camelCase (ADR-003); ChirpStack webhook payloads keep
- * vendor casing (`deviceInfo`, `devEui`, …).
+ * Field names on our decoded / correlator side are camelCase (ADR-003); ChirpStack
+ * webhook payloads keep vendor casing (`deviceInfo`, `devEui`, …).
  *
  * `LorawanCalinJoinEvent` (and siblings) document the vendor shapes even when a
  * handler only needs a subset of fields — keep them for local development.
