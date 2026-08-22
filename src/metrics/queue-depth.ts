@@ -6,6 +6,7 @@
  */
 
 import { enumerateStageKeys } from '../engine/lifecycle/stages.js';
+import { webhookRedisKeys } from '../engine/webhook/keys.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 
 /** One sorted-set cardinality to export as `device_messaging_queue_depth{queue}`. */
@@ -26,7 +27,7 @@ type QueueDepthPipeline = {
 };
 
 /** The one key here that is not a stage: the outbound webhook's pending set. */
-const WEBHOOK_PENDING_KEY = 'webhook:pending';
+const WEBHOOK_PENDING_KEY = webhookRedisKeys.pending();
 
 /**
  * SMEMBERS the distributor set, then one pipelined ZCARD for every stage queue
