@@ -9,11 +9,8 @@ import type { Redis } from 'iovalkey';
 import { isEmpty } from 'ramda';
 import { ulid } from 'ulid';
 
-import type {
-  CreateDeviceMessage,
-  DeviceMessage,
-  PhaseEnum,
-} from '../device-message/types.js';
+import { PHASES } from '../device-message/schemas.js';
+import type { CreateDeviceMessage, DeviceMessage } from '../device-message/types.js';
 import { assertExecSucceeded } from './assert-exec.js';
 import { deserializeMessage, serializeCreateDeviceMessage } from './helpers.js';
 import { redisKeys } from './keys.js';
@@ -132,8 +129,8 @@ export function createMessageStore(
     },
 
     async getAllMessagesForCorrelationId(correlationId) {
-      const phases: Array<PhaseEnum | undefined> = [ undefined, 'A', 'B', 'C' ];
-      const indexKeys = phases.map(phase => redisKeys.indexCorrelationId(correlationId, phase));
+      const indexPhases = [ undefined, ...PHASES ] as const;
+      const indexKeys = indexPhases.map(phase => redisKeys.indexCorrelationId(correlationId, phase));
       const messageKeys = (await client.mget(...indexKeys)).filter(Boolean) as string[];
       if (isEmpty(messageKeys)) return [];
 

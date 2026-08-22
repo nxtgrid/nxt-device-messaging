@@ -13,9 +13,7 @@ export function assertExecSucceeded(
   }
   for (const [ err ] of results) {
     if (err) {
-      throw err instanceof Error
-        ? err
-        : new Error(`[REDIS] ${ operation } failed: ${ String(err) }`);
+      throw new Error(`[REDIS] ${ operation } failed`, { cause: err });
     }
   }
 }

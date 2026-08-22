@@ -70,8 +70,11 @@ const requestDataSchema = z.object({
   payload: z.union([ setDatePayloadSchema, setTimePayloadSchema ]).optional(),
 }).strict();
 
+/** Electrical phases. {@link phaseSchema} and correlation-index lookups share this list. */
+export const PHASES = [ 'A', 'B', 'C' ] as const;
+
 /** Electrical phase when the command is phase-specific. */
-export const phaseSchema = z.enum([ 'A', 'B', 'C' ]);
+export const phaseSchema = z.enum(PHASES);
 
 /**
  * Fields supplied when creating / enqueuing a command (ADR-003 §2–§3).

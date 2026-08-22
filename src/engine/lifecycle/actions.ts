@@ -8,7 +8,6 @@
  * and never removes a member — the runner does both, once, for every stage (ADR-008 §5).
  */
 
-import type { DeliveryConfig } from '../../config/schema.js';
 import type { DeviceMessage } from '../../lib/device-message/types.js';
 import { logger } from '../../log.js';
 import type { MetricsRecorder } from '../../metrics/index.js';
@@ -35,7 +34,6 @@ export type CreateStageActionsOptions = {
   readonly moves: StageMoves;
   /** Sends still held by this process — the `ns` row's stay of execution (ADR-008 §8). */
   readonly inFlightSends: InFlightSends;
-  readonly delivery: DeliveryConfig;
   readonly metrics: MetricsRecorder;
 };
 

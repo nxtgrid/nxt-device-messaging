@@ -102,7 +102,6 @@ const stageActions = createStageActions({
   incomingService,
   moves: stageMoves,
   inFlightSends,
-  delivery: config.delivery,
   metrics,
 });
 const lifecycleRunner = createLifecycleRunner({

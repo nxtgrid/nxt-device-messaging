@@ -11,7 +11,7 @@
  */
 
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
-import type { PhaseEnum } from '#src/lib/device-message/types.js';
+import { PHASES } from '#src/lib/device-message/schemas.js';
 import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
 
@@ -27,8 +27,8 @@ const AWAITING_TASK_PATTERN = 'queue_awaiting_task:*';
 const INITIAL_QUEUE_PATTERN = 'queue:*';
 const RATE_LIMIT_PATTERN = 'rate_limit:*';
 
-/** Correlation index phases to probe (base index plus the three-phase suffixes). */
-const INDEX_PHASES: ReadonlyArray<PhaseEnum | undefined> = [ undefined, 'A', 'B', 'C' ];
+/** Unphased correlation index plus one key per {@link PHASES} suffix. */
+const INDEX_PHASES = [ undefined, ...PHASES ] as const;
 
 /** Identity of a message beyond its ULID, for the keys indexed by other values. */
 export type MessageIdentity = {

@@ -100,7 +100,6 @@ export function createEngineHarness(
     incomingService: incoming,
     moves,
     inFlightSends,
-    delivery: options.delivery,
     metrics,
   });
   const runner = createLifecycleRunner({
