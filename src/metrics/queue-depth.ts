@@ -1,11 +1,12 @@
 /**
  * @fileoverview Scrape-time Redis queue depths (ADR-005 §5). Read-only; no new keys.
  *
- * Known stage keys match `src/lib/queue-moving.ts` / `queue-moving.push.ts` and
- * `webhookRedisKeys.pending()`. Initial queues come from
- * `queues_to_distribute_from`; PULL awaiting-task keys from enabled plugin ids.
+ * Stage keys are derived from `src/engine/lifecycle/stages.ts`, so a new stage shows
+ * up here without an edit. Initial queues come from `queues_to_distribute_from`.
  */
 
+import { enumerateStageKeys } from '../engine/lifecycle/stages.js';
+import { webhookRedisKeys } from '../engine/webhook/keys.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 
 /** One sorted-set cardinality to export as `device_messaging_queue_depth{queue}`. */
@@ -25,21 +26,13 @@ type QueueDepthPipeline = {
   exec(): Promise<[Error | null, unknown][] | null>;
 };
 
-/**
- * Fixed in-flight / retry / webhook keys. Must stay aligned with queue-moving
- * and `webhook:pending` — listed here so this module does not import Redis.
- */
-const KNOWN_STAGE_KEYS = [
-  'queue_in_flight_to_ns',
-  'queue_in_flight_to_relay_node',
-  'queue_in_flight_to_device',
-  'queue_awaiting_retry',
-  'webhook:pending',
-] as const;
+/** The one key here that is not a stage: the outbound webhook's pending set. */
+const WEBHOOK_PENDING_KEY = webhookRedisKeys.pending();
 
 /**
- * SMEMBERS the distributor set, then one pipelined ZCARD for known stages,
- * PULL awaiting-task keys, and each initial-queue member.
+ * SMEMBERS the distributor set, then one pipelined ZCARD for every stage queue
+ * (derived from the table, per plugin), the webhook pending set, and each
+ * initial-queue member.
  *
  * @param options - Redis client and enabled PULL plugin ids
  */
@@ -47,16 +40,14 @@ export async function collectQueueDepths(options: {
   readonly redis: QueueDepthRedis;
   readonly pullPluginIds: readonly string[];
 }): Promise<readonly QueueDepth[]> {
-  const awaitingTaskKeys = options.pullPluginIds.map(
-    pluginId => redisKeys.queueAwaitingTask(pluginId),
-  );
+  const stageKeys = enumerateStageKeys(options.pullPluginIds);
   const initialKeys = await options.redis.smembers(
     redisKeys.listOfInitialQueuesToDistributeFrom(),
   );
 
   const keys: string[] = [];
   const seen = new Set<string>();
-  for (const key of [ ...KNOWN_STAGE_KEYS, ...awaitingTaskKeys, ...initialKeys ]) {
+  for (const key of [ ...stageKeys, WEBHOOK_PENDING_KEY, ...initialKeys ]) {
     if (seen.has(key)) {
       continue;
     }

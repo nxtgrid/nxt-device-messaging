@@ -15,40 +15,52 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { createBaseService } from '#src/engine/base.js';
+import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
+import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
+import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { sleep } from '#src/lib/utilities.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const goSlow = false;
 
 describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('cancels a QUEUED message via real outgoing + Redis', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPluginRegistry([ { id: STUB_PUSH_ID } ]);
     const { deviceMessagingConfigSchema } = await import('../../src/config/schema.js');
     const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
     const metrics = noopMetrics;
+    const inFlightSends = createInFlightSends();
+    const messageStore = createMessageStore({ client: redis });
+    const stageStore = createStageStore({ client: redis });
     // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ registry, delivery, metrics }),
+      baseService: createBaseService({ delivery, metrics, messageStore, stageStore }),
+      inFlightSends,
       metrics,
-      kickDistributeOnEnqueue: false,
+      engineEnabled: false,
+      admissionStore: createAdmissionStore({ client: redis }),
+      messageStore,
+      stageStore,
     });
 
     const correlationId = `cancel-smoke-${ Date.now() }`;
@@ -70,7 +82,7 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
 
       expect(enqueued.deliveryStatus).toBe('QUEUED');
       expect(await outgoingService.getByCorrelationId(correlationId)).not.toBeNull();
-      expect(await redisRepo.client.zscore(queueKey, enqueued.id)).not.toBeNull();
+      expect(await redis.zscore(queueKey, enqueued.id)).not.toBeNull();
 
       if (goSlow) await sleep(4000);
 
@@ -78,17 +90,17 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
       expect(cancel).toEqual({ correlationId, result: 'CANCELLED' });
 
       expect(await outgoingService.getByCorrelationId(correlationId)).toBeNull();
-      expect(await redisRepo.client.zscore(queueKey, enqueued.id)).toBeNull();
-      expect(await redisRepo.client.exists(redisKeys.message(enqueued.id))).toBe(0);
+      expect(await redis.zscore(queueKey, enqueued.id)).toBeNull();
+      expect(await redis.exists(redisKeys.message(enqueued.id))).toBe(0);
     }
     finally {
-      // messageFullCleanup does not SREM queues_to_distribute_from (distributor Lua does).
+      // purgeMessageReferences does not SREM queues_to_distribute_from (distributor Lua does).
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await redis.zrem(queueKey, leftover.id);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );

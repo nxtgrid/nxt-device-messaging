@@ -64,7 +64,7 @@ The module as inherited is neither.
 | `PULL_PATTERN_MAX_MESSAGE_AGE_MS` | 48h | `lib/lifecycle.pull.ts` (ported as Unit 4 module default; D5 → plugin `tuning`) | pull |
 | `LORAWAN_FLOOD_PREVENTION_WINDOW_MS` | 2s | `outgoing.service.ts` | plugin-specific, in a shared file |
 | `MAX_RETRIES` / base / multiplier / cap | 11 / 2s / ×2 / 1h | `lib/retry-helpers.ts` | shared |
-| `MESSAGE_TTL_SECONDS` | 7 days | `lib/redis-repository/index.ts` | shared |
+| `delivery.messageTtlSeconds` | default 7 days (any positive integer) | `config/schema.ts` | shared (hash TTL at enqueue, index TTL at stage moves) |
 | `CORRELATION_TTL_MS`, `GC_INTERVAL_MS` | 10s, 30s | `calin-chirpstack` correlator | plugin-internal |
 | `CUSTOM_LOGIN_TIMEOUT_MS`, `FETCH_RETRIES` | 5s, 3 | calin-api-v2 repo | plugin-internal |
 

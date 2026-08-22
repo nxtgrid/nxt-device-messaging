@@ -30,11 +30,11 @@ the session in the log. Detail stays in the cited ADR, D-row, or log heading.
 
 | Item | Revisit when | Detail |
 | --- | --- | --- |
-| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`) | Before cutover, or when reopening shutdown | ADR-005 amendment; log **2026-08-12** parked shutdown |
+| **Shutdown v2** — await in-flight engine ticks + webhook `drainChain`; optionally gate `storeAndEmit` after shutdown starts. v1 only stops timers then closes Fastify/Redis. Thin option: webhook `stop()` awaits current `drainChain` (bounded by `requestTimeoutMs`). **The seam now exists** (C2.4, 2026-08-21): `outgoingService.drainInFlightSends(budgetMs)` returns how many sends it abandoned. Shutdown v2 is wiring — stop timers → drain (~15–20 s of a 30 s grace) → close Redis/Fastify | Before cutover, or when reopening shutdown | ADR-005 amendment; **ADR-008 §8**; log **2026-08-12** parked shutdown |
 | **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | 3.1 closeout; log **2026-08-12** cold-start / 3.1E notes |
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for *local* Redis durability only | Designing durable raw-event enqueue → 204 → async process | Log **2026-08-13** parked ingress |
-| **D2 + thorough cleanup suite** — `messageFullCleanup` options; every exit must drop the hash and all references. Includes PULL poll↔retry orphan on `queue_awaiting_retry` | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
-| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; generous fetch safety deadline (not abort-at-NS-timeout); trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass |
+| **Thorough cleanup suite** — every exit path (success, final failure, PULL age cap, cancel) must leave zero references, asserted end-to-end for PUSH and PULL. Includes PULL poll↔retry orphan on `queue_awaiting_retry`. ~~D2's other half — what cleanup sweeps~~ **resolved 2026-08-21** (C2.3): `StageMoves.purge` derives the list from the stage table plus the plugin's ready queue; `messageFullCleanup` now takes the keys rather than choosing them | Dedicated integration suite / remaining cleanup paths | ADR-006 **D2**; ADR-008 §7; carried finding “Thorough message-cleanup tests”; log **2026-08-04** review nits |
+| **Plugin HTTP hygiene** — redact `decoderKey` (and CALIN bodies) in error logs; map vendor token errors to useful HTTP statuses; ~~generous fetch safety deadline~~; trailing-slash base URLs | A sanitization / client-hardening pass | Log **2026-08-05** NS_SLOW / fetch; **2026-08-06** sanitization pass. ~~Fetch deadline~~ **landed 2026-08-21** (C2.4) as `CLIENT_SAFETY_DEADLINE_MS` in both CALIN clients and `nxt-sts`; redaction and status mapping stay parked |
 | ~~**Token-only SPI discriminant**~~ — `deliveryPattern: 'NONE'`; no admission / tuning / initialQueueKey | — | **Resolved 2026-08-20** C3 (plan 002). Was session 26 “SPI amend for real omission deferred” |
 
 ### Product / ops trigger
@@ -1815,6 +1815,227 @@ is ` ```text ` (MD040). Test helpers: one `PushPlugin` literal + `makeOutgoing`;
 `createSinglePluginRegistry` shared with `incoming-poll.smoke.spec.ts`.
 
 Maintainer commits. Still awaiting merge; branch 2 has not started.
+
+### 2026-08-20 — plan 002 branch 2: ADR-008 (message lifecycle stage table)
+
+Branch 1 merged as PR #12. Branch `refactor/message-lifecycle-stage-table` cut from `main`;
+first commit is the ADR, no code.
+
+**ADR-008** — `docs/architecture/008-message-lifecycle-stage-table.md`. Absorbs the seven
+decisions the plan already settled and adds six that the plan had deferred to the C2
+implementation session, so C2 is implementation rather than design:
+
+- **A4** — cleanup and `metrics/queue-depth.ts` `KNOWN_STAGE_KEYS` both derive their key lists
+  from the table. `messageFullCleanup` therefore takes the plugin, to resolve the ready-queue
+  key; that is the first pull toward **C1**. `queues_to_distribute_from` stays untouched per
+  message — the distributor Lua GCs it when a queue empties.
+- **A3, real layer** — the `ns` deadline does not fire while this process still holds the
+  `sendOne` promise (in-memory id set, legitimate under ADR-007), same shape as the existing
+  relay-node `getRemoteStatus` extension. Residue named and accepted: a process death mid-send
+  is an at-least-once boundary. Rejected alternative recorded: a fetch deadline that aborts at
+  the NS timeout reproduces the duplicate command (agrees with the parked *Plugin HTTP hygiene*
+  row, which already asked for a generous safety deadline, not abort-at-NS-timeout).
+- **PULL 48 h cap** becomes a property of the `awaitingTask` action, deleting a per-tick full
+  ZRANGE of every awaiting-task queue. Detection window widens from one cycle to ≤30 s (the
+  ladder cap) against a two-day threshold.
+- **Tick** — stage rows run concurrently within the 1000 ms tick, members sequentially, each row
+  with its own re-entry guard. Without the concurrency, collapsing three intervals into one would
+  serialise a slow `fetchStatus` ahead of NS timeouts; today they cannot block each other because
+  they live on separate timers. The per-row guard is stricter than today's `timers.ts`, which has
+  none.
+- **A5** — `delivery.messageTtlSeconds` is the single knob (hash TTL at enqueue, index TTL at
+  moves); `MESSAGE_TTL_SECONDS` goes; the threaded parameter is renamed `indexTtlSeconds`.
+- **B3** — enqueue's distribute kick keys off `engine.enabled` instead of
+  `kickDistributeOnEnqueue`.
+
+Two contract changes C2 must make: `retryOrFail` and the shared incoming-event processor return
+a `StageOutcome` instead of `void` (both decide between "moved to retry" and "cleaned up"), and
+the runner catches a throwing action, treating it as `rescheduled` at the stage's normal wait —
+so a vendor error can neither strand a score nor abandon the batch.
+
+Plan 002's § *Design settled* and § *Option B* are now pointers into ADR-008; the ADR is the
+single source of truth, including Option B as its *Upgrade path* section.
+
+**Maintainer review of the ADR — decision 8 confirmed, three additions.** The question put was
+whether A3 keeps its real layer (the in-flight set) or drops back to log-and-count. Kept, plus:
+
+1. **120 s client safety deadline**, maintainer's number ("anything beyond that is outright
+   ridiculous"). Its job is to guarantee the promise settles, not to enforce timeliness — the
+   stage deadline does that. Unparks the fetch-deadline half of *Plugin HTTP hygiene*.
+2. **Shutdown.** The in-flight set is the seam v1 never had: `sendOne` promises are currently
+   anonymous, so shutdown has nothing to await. C2 exposes a bounded drain; **Shutdown v2** wires
+   it. Order is stop timers → drain → close Redis/Fastify, because a send landing mid-drain still
+   writes its external id. Budget is an ops number (~15–20 s against a 30 s grace), not 120 s.
+3. **Multi-replica.** Recorded in ADR-008 § *Triggers* as "move the write, not the state": the set
+   encodes a lease, and the NS score already **is** a lease, so the multi-replica form has the
+   **owner** heartbeat the score while awaiting instead of the **scanner** consulting a local set.
+   No new key. Flagged explicitly because the built version misbehaves under two replicas — a
+   second replica would not find the id in its own set and would fail a healthy send. Still the
+   cheapest of the three ADR-007 single-writer dependencies; the correlator `Map` and the
+   leaderless tick are the ones that actually gate multi-replica.
+
+**Next:** plan 002 item 4 (**C2** — implement the table). That session also writes **C1**'s
+concrete shape into the plan while the context is cheap.
+
+### 2026-08-21 — plan 002 item 4: C2.1–C2.3 (table, moves, runner, derived keys)
+
+Implementation went as ADR-008 described; no decision was reopened. `src/engine/lifecycle/`
+holds `stages.ts` (data), `moves.ts` (transitions), `actions.ts` (per-stage work) and
+`runner.ts` (the loop). Deleted: `lib/lifecycle.{push,pull}.ts`,
+`lib/queue-moving{,.push,.pull}.ts`, `runMessageResolutionCycle`, `pollPullPlugins`, and
+`base.ts`'s `requeueMessage` (now the `retry` row's action). Three intervals became one
+1000 ms `runner.tick()`. **A1, A2 and A4 are fixed**; A3 and A5 are C2.4 and C2.5.
+
+Three things worth carrying forward:
+
+- **`StageDefinition` is a discriminated union on `isPerPlugin`.** `as const` on the table
+  narrowed the core rows' `key` to `() => string`, so a single signature forced either a cast
+  or a dummy plugin argument. The union lets `enumerateStageQueues` call `stage.key()` or
+  `stage.key(pluginId)` with neither.
+- **Cleanup's key list is derived but not by the repository.** `StageMoves.purge({ message,
+  plugin })` builds it and `messageFullCleanup(message, queueKeys)` executes it. Putting the
+  derivation in the repository would have had storage import the stage table; putting the MULTI
+  in `moves.ts` would have had the lifecycle layer reimplement it. So: repo does Redis, the
+  lifecycle layer decides. Cancel now resolves the plugin before branching on status, which
+  makes `TO_RETRY` + unregistered plugin `NOT_CANCELLABLE` — accepted, consistent with every
+  other path refusing a message whose plugin is gone.
+- **The pinned assertions flip cleanly, but two needed their *setup* rewritten, not their
+  expectation.** The PULL age-cap spec put its aged message 60 s in the future, which the old
+  full-queue scan still saw and the stage table (correctly) does not; the A2 spec asserted
+  `tick()` rejects, where the runner now swallows a vendor error as `rescheduled`. Both are the
+  ADR's intent, but they read as regressions until you look at the setup.
+
+`test/helpers/engine-harness.ts` composes the engine for specs. Its `kickDistributeOnEnqueue`
+defaults to **`false`**, unlike `createOutgoingService` — most specs want to drive distribute
+themselves, and the two cancel/cleanup specs fail loudly if enqueue distributes behind them.
+B3 (gate the kick on `engine.enabled`) may make this moot; check it in C2.5.
+
+**Next:** C2.4 (**A3** — in-flight send set, claim-miss counter, 120 s client deadline, drain
+seam).
+
+### 2026-08-21 — plan 002 item 4: C2.4 (A3 — the in-flight send set)
+
+`src/engine/in-flight-sends.ts` is a `Map<messageId, Promise>` with `track` / `has` / `size` /
+`drain`, created once in `main.ts` and shared by the sender and the `ns` stage row. The sender
+registers the promise **synchronously** (`track(id, plugin.outgoing.sendOne(message))`, not a
+wrapper around an async function) because a tick landing between starting the send and awaiting
+it must already see the id. The `ns` action returns `rescheduled` while the id is present, so a
+slow send can no longer be retried underneath itself. **A3 is fixed.**
+
+Three consequences worth knowing:
+
+- **`advance`'s boolean is now read.** It was always returned and never used, which is where A3
+  hid. `moves.advance` records `recordStageClaimMiss(stage)` and warns when the ZREM gate finds
+  the message gone. Counted, not thrown — losing a claim is legitimate (cancel, or a deadline
+  that already fired); the rate is the signal. New series:
+  `device_messaging_stage_claim_misses_total{stage}`. This gave `createStageMoves` a `metrics`
+  dependency, so every caller passes it now.
+- **The deadline test had to be re-staged, not re-asserted.** "Retries a message whose NS
+  deadline passed" faked a lost send with a promise that never settles — exactly the case the
+  set now suspends. It now stages the real case: a message parked in the ns stage with no send
+  behind it, which is what a process death leaves. The A3 pin flipped to assert one `sendOne`
+  call, the late external id indexed, and the message advanced to `relayNode`.
+- **`CLIENT_SAFETY_DEADLINE_MS` = 120 s** in `plugins/_shared/`, applied to the CALIN V1 and V2
+  authenticated POSTs and to `nxt-sts`'s token POST. ChirpStack was left alone: its unary RPCs
+  already carry a 60 s deadline, which satisfies the requirement (the promise settles). Whether
+  to unify the two numbers is open — raised with the maintainer, not decided here.
+
+`outgoingService.drainInFlightSends(budgetMs)` is the shutdown seam ADR-008 §8 asked for,
+returning the number abandoned. Nothing calls it yet; wiring `SIGTERM` is **Shutdown v2**.
+
+**Next:** C2.5 (**A5** single TTL knob + **B3** enqueue kick on `engine.enabled`).
+
+### 2026-08-21 — plan 002 item 4: C2.5 (A5 + B3)
+
+**A5 closed.** `MESSAGE_TTL_SECONDS` is gone. `enqueueDeviceMessage(dto, queueKey, ttlSeconds)`
+takes the TTL from `delivery.messageTtlSeconds` — the same knob `moves.ts` already passes to
+Lua as `index_ttl_seconds`. No `indexTtlSeconds` rename: that parameter died with
+`lib/queue-moving.ts`.
+
+**B3 closed.** `kickDistributeOnEnqueue` is `engineEnabled: boolean` on
+`CreateOutgoingServiceOptions`, required, fed from `config.engine.enabled` in `main.ts`. The
+harness still defaults to `false` so specs drive distribute themselves.
+
+**Next:** C2.6 (verify no pins remain, sweep stale comments, full green bar).
+
+### 2026-08-21 — plan 002 item 4: C2.6 (closeout)
+
+Pins already asserted the fixed behaviour (A1/A2/A4 in `lifecycle-orphans-and-cleanup`,
+A2 in `incoming-poll-outcomes`, A3 in `outgoing-timeouts`). Swept live comments/JSDoc
+that still named deleted code (`resolution cycle`, `fromAnyToRetry`, candidate-deletion
+lists). Historical diagnosis in plan 002 / ADR Context sections left alone.
+
+**C2 is closed.** Next is **C1**, from plan 002's C1 concrete-shape section.
+
+### 2026-08-21 — plan 002 item 8: C1.1 (delete dead methods)
+
+Removed `getMessageRawPropsById`, `getAllMessageIdsInQueue`, `getMessagesDueForPolling`,
+and `updateNextPollTime` from `redisRepo`. Nothing in `src/` or `test/` called them: the
+first was leftover from when `requeueMessage` still HMGETed priority itself; the other
+three were the PULL full-queue scan the stage table replaced (`getExpiredMessagesInQueue`
+and `moves.reschedule` cover that work). 20 methods → 16.
+
+**Next:** C1.2 (`createRedisClient`).
+
+### 2026-08-21 — plan 002 item 8: C1.2 (`createRedisClient` + adapter)
+
+`src/lib/redis-repository/client.ts` exports `createRedisClient()` (env options, Lua
+`defineCommand`, connect log). `createRedisRepo(client)` is the adapter; methods close over
+the injected client. The process-wide `redisRepo` is still `createRedisRepo(createRedisClient())`
+so engine files can keep importing it until C1.3–C1.5. Calling the factory a second time from
+`main.ts` would be a second connection, so the composition root takes `const redis =
+redisRepo.client` as a local (metrics, webhook store, quit).
+
+**Next:** C1.3 (`AdmissionStore`).
+
+### 2026-08-21 — plan 002 item 8: C1.3 (`AdmissionStore`)
+
+Four admission methods left `redisRepo` for `createAdmissionStore({ client })` in
+`src/lib/redis-repository/admission-store.ts` (same factory shape as `createWebhookStore`).
+`createOutgoingService` takes required `admissionStore`; `_canAdmit` / `_onClaimAfterPick`
+are the only callers. Wired from `main.ts` with the process-wide client. `redisRepo` still
+exists for message CRUD and stage moves (C1.4 / C1.5).
+
+**Next:** C1.4 (`MessageStore`).
+
+### 2026-08-21 — plan 002 item 8: C1.4 (`MessageStore`)
+
+Five CRUD methods left `redisRepo` for `createMessageStore({ client })` in
+`src/lib/redis-repository/message-store.ts`. Injected into `createOutgoingService`,
+`createIncomingService`, `createBaseService`, and `createLifecycleRunner`. Incoming
+no longer imports `redisRepo`. `base` and the runner still use `redisRepo` for
+`removeMessageFromQueue` / `getExpiredMessagesInQueue` (C1.5 StageStore). Emit-only
+unit tests pass a stub so they do not open a Redis connection.
+
+**Next:** C1.5 (`StageStore`).
+
+### 2026-08-21 — plan 002 item 8: C1.5 (`StageStore`)
+
+`createStageStore({ client })` in `src/lib/redis-repository/stage-store.ts` holds the
+Lua moves, expiry scan, requeue, cleanup, ready-queue list, and the zscore / hmget /
+zadd XX / multi primitives `enterRetry` and `reschedule` need. Injected into
+`createStageMoves` and `createLifecycleRunner`. Outgoing and the `retry` action do not
+import it: they gained `StageMoves.listReadyQueues` / `claimFromQueue` / `requeue`.
+
+`createRedisRepo` is gone. `redisRepo` is now `{ client }` so tests and `main.ts` still
+have one process-wide connection.
+
+**Orphan ZREM dropped** from `base.retryOrFail`. The runner already scrubs members
+whose hash is gone (A1). Ingress and send paths that hit a vanished hash return
+`orphaned` and leave the member for the next tick. `base` needs no StageStore of its
+own — it only takes one so it can construct `StageMoves` for purge / enterRetry.
+
+**Next:** C1 closed; branch 3 is C4 / docs compact / optionals.
+
+### 2026-08-22 — plan 002 item 8 closeout: delete `redisRepo`
+
+`src/lib/redis-repository/index.ts` was only `{ client: createRedisClient() }`.
+Deleted. The process-wide connection is `redis` from `client.ts`. Tests and `main.ts`
+import that. The three stores share `assertExecSucceeded`. Plan checklist items 4–8
+ticked (C2 and C1).
+
+**Next:** branch 3 (C4 / docs compact / optionals).
+
 
 
 

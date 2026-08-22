@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { IncomingService } from '#src/engine/incoming.js';
-import type { OutgoingService } from '#src/engine/outgoing.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
 import {
-  POLL_PULL_INTERVAL_MS,
-  RESOLUTION_CYCLE_INTERVAL_MS,
+  ENGINE_TICK_INTERVAL_MS,
   startEngineTimers,
 } from '#src/engine/timers.js';
 
@@ -15,50 +13,37 @@ describe('startEngineTimers', () => {
 
   it('does nothing when engine is disabled', () => {
     vi.useFakeTimers();
-    const runMessageResolutionCycle = vi.fn(async () => undefined);
-    const pollPullPlugins = vi.fn(async () => undefined);
+    const tick = vi.fn(async () => undefined);
 
     const timers = startEngineTimers({
       enabled: false,
-      outgoingService: { runMessageResolutionCycle } as unknown as OutgoingService,
-      incomingService: { pollPullPlugins } as unknown as IncomingService,
+      runner: { tick } satisfies LifecycleRunner,
     });
 
-    vi.advanceTimersByTime(RESOLUTION_CYCLE_INTERVAL_MS * 3);
-    expect(runMessageResolutionCycle).not.toHaveBeenCalled();
-    expect(pollPullPlugins).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(ENGINE_TICK_INTERVAL_MS * 3);
+    expect(tick).not.toHaveBeenCalled();
     timers.stop();
   });
 
-  it('fires resolution cycle and poll on their intervals when enabled', () => {
+  it('fires the engine tick on ENGINE_TICK_INTERVAL_MS when enabled', () => {
     vi.useFakeTimers();
-    const runMessageResolutionCycle = vi.fn(async () => undefined);
-    const pollPullPlugins = vi.fn(async () => undefined);
+    const tick = vi.fn(async () => undefined);
 
     const timers = startEngineTimers({
       enabled: true,
-      outgoingService: { runMessageResolutionCycle } as unknown as OutgoingService,
-      incomingService: { pollPullPlugins } as unknown as IncomingService,
+      runner: { tick } satisfies LifecycleRunner,
     });
 
-    expect(runMessageResolutionCycle).not.toHaveBeenCalled();
-    expect(pollPullPlugins).not.toHaveBeenCalled();
+    expect(tick).not.toHaveBeenCalled();
 
-    const resolutionTicksAtFirstPoll = Math.floor(
-      POLL_PULL_INTERVAL_MS / RESOLUTION_CYCLE_INTERVAL_MS,
-    );
+    vi.advanceTimersByTime(ENGINE_TICK_INTERVAL_MS);
+    expect(tick).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(RESOLUTION_CYCLE_INTERVAL_MS);
-    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(1);
-    expect(pollPullPlugins).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(POLL_PULL_INTERVAL_MS - RESOLUTION_CYCLE_INTERVAL_MS);
-    expect(pollPullPlugins).toHaveBeenCalledTimes(1);
-    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(resolutionTicksAtFirstPoll);
+    vi.advanceTimersByTime(ENGINE_TICK_INTERVAL_MS);
+    expect(tick).toHaveBeenCalledTimes(2);
 
     timers.stop();
-    vi.advanceTimersByTime(POLL_PULL_INTERVAL_MS);
-    expect(runMessageResolutionCycle).toHaveBeenCalledTimes(resolutionTicksAtFirstPoll);
-    expect(pollPullPlugins).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(ENGINE_TICK_INTERVAL_MS);
+    expect(tick).toHaveBeenCalledTimes(2);
   });
 });

@@ -2,13 +2,20 @@ import { config, logger, pluginRegistry } from './runtime.js';
 
 import { buildApp } from './app.js';
 import { createBaseService } from './engine/base.js';
+import { createInFlightSends } from './engine/in-flight-sends.js';
 import { createIncomingService } from './engine/incoming.js';
+import { createStageActions } from './engine/lifecycle/actions.js';
+import { createStageMoves } from './engine/lifecycle/moves.js';
+import { createLifecycleRunner } from './engine/lifecycle/runner.js';
 import { createOutgoingService } from './engine/outgoing.js';
 import { startEngineTimers } from './engine/timers.js';
 import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
-import { redisRepo } from './lib/redis-repository/index.js';
+import { createAdmissionStore } from './lib/redis-repository/admission-store.js';
+import { redis } from './lib/redis-repository/client.js';
+import { createMessageStore } from './lib/redis-repository/message-store.js';
+import { createStageStore } from './lib/redis-repository/stage-store.js';
 import { createMetrics } from './metrics/index.js';
 
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
@@ -38,36 +45,72 @@ if (config.eventWebhook && (webhookSigningSecret === undefined || webhookSigning
 }
 
 const metrics = createMetrics({
-  redis: redisRepo.client,
+  redis,
   pullPluginIds: pluginRegistry.getByDeliveryPattern('PULL').map(plugin => plugin.id),
 });
 
 const webhookService = config.eventWebhook
   ? createWebhookService({
     config: config.eventWebhook,
-    store: createWebhookStore({ client: redisRepo.client }),
+    store: createWebhookStore({ client: redis }),
     signingSecret: webhookSigningSecret,
     metrics,
   })
   : undefined;
 
+const admissionStore = createAdmissionStore({ client: redis });
+const messageStore = createMessageStore({ client: redis });
+const stageStore = createStageStore({ client: redis });
+
 const baseService = createBaseService({
-  registry: pluginRegistry,
   delivery: config.delivery,
   webhook: webhookService,
+  messageStore,
+  stageStore,
   metrics,
 });
+/** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
+const inFlightSends = createInFlightSends();
+
 const outgoingService = createOutgoingService({
   registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  inFlightSends,
+  engineEnabled: config.engine.enabled,
+  admissionStore,
+  messageStore,
+  stageStore,
   metrics,
 });
 const incomingService = createIncomingService({
-  registry: pluginRegistry,
   delivery: config.delivery,
   baseService,
+  messageStore,
+  stageStore,
   metrics,
+});
+
+/** The stage table's runtime half: what to do per stage, and the loop that drives it. */
+const stageMoves = createStageMoves({
+  delivery: config.delivery,
+  metrics,
+  stageStore,
+});
+const stageActions = createStageActions({
+  baseService,
+  incomingService,
+  moves: stageMoves,
+  inFlightSends,
+  metrics,
+});
+const lifecycleRunner = createLifecycleRunner({
+  registry: pluginRegistry,
+  actions: stageActions,
+  moves: stageMoves,
+  messageStore,
+  stageStore,
+  distribute: outgoingService.distributeToNetworkServers,
 });
 const tokenService = createTokenService({
   registry: pluginRegistry,
@@ -84,8 +127,7 @@ const app = await buildApp({
 
 const engineTimers = startEngineTimers({
   enabled: config.engine.enabled,
-  outgoingService,
-  incomingService,
+  runner: lifecycleRunner,
 });
 
 /** Webhook drain is independent of `engine.enabled` (ingress can still emit). */
@@ -122,7 +164,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
-    await redisRepo.client.quit();
+    await redis.quit();
   }
   catch (err) {
     logger.error({ err }, 'Redis quit failed');

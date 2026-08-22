@@ -67,7 +67,7 @@ end
 -- ============================================================================
 -- Step 4: Move message to destination queue with timeout
 -- ============================================================================
--- The timeout score allows us to catch stuck messages in resolution cycles
+-- The timeout score is when the engine should next pay attention to this member
 redis.call('ZADD', destination_queue, timeout_at, message_id)
 
 -- ============================================================================

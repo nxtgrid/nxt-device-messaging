@@ -108,7 +108,7 @@ type Admission =
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
 | `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
-| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `fromAnyToRetry` | DCU / API concurrency (CALIN API-like) |
+| `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `enterRetry` | DCU / API concurrency (CALIN API-like) |
 | `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
@@ -181,13 +181,19 @@ option.
 4. Concurrency `onRelease` must run on the same paths that today `SREM` the gateway rate-limit
    set (success cleanup, retry, final fail).
 
-**Interim (Unit 2 → refined):** At concurrency **claim**, Redis stores
+**Concurrency release — settled.** At concurrency **claim**, Redis stores
 `concurrencyRateLimitKey` on the message hash (`claimConcurrencyRateLimit` = SADD + HSET).
-`messageFullCleanup` / `fromAnyToRetry` SREM that field (legacy-shaped) — no key threading.
-The field is **stripped** before adopter-facing emit / command GET (`omitInternalFields`).
-`messageFullCleanup` takes **no options** — fixed ZREM of stage keys +
-`queue_awaiting_task:{pluginId}` (not dynamic initial/retry queues; cancel ZREMs those first).
-Full exit-path audit is still D2 work.
+Cleanup and `enterRetry` SREM that field (legacy-shaped) — no key threading. The field is
+**stripped** before adopter-facing emit / command GET (`omitInternalFields`).
+
+**Queue list — resolved 2026-08-21 (C2.3, ADR-008 §7).** Criterion 1's flat array won, but it
+is *derived*, not written: `StageMoves.purge` builds it from `enumerateStageKeys` plus the
+plugin's ready queue and hands it to `messageFullCleanup`, which no longer decides anything.
+That closes plan 002's **A4** — the old fixed list omitted `queue_awaiting_retry` and the ready
+queue, so cancel had to ZREM those by hand. `queues_to_distribute_from` stays untouched: it
+holds queue keys, not message ids, and the distributor's Lua GCs it. Criterion 4 holds — the
+same call now serves success, final failure, the PULL age cap and cancel. Still open: the
+end-to-end exit-path suite (parked as *Thorough cleanup suite*).
 
 ### D3 — Wire `distribute` + admission execution
 
@@ -200,9 +206,9 @@ Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`)
 SPI `rateLimitKey`. On concurrency claim: SADD the track set and HSET
 `concurrencyRateLimitKey` on the message (`claimConcurrencyRateLimit`). After pick:
 fire-and-forget `sendOne` + PUSH|PULL post-send moves. Send-fail / success / timeout
-cleanup does **not** pass a key — `messageFullCleanup` and `fromAnyToRetry` read and
-SREM the stored field. Enqueue fire-and-forget kick (opt-out `kickDistributeOnEnqueue`
-for tests). Cron / `engine.enabled` still Unit 5.6.
+cleanup does **not** pass a key — `messageFullCleanup` and `enterRetry` read and
+SREM the stored field. Enqueue fire-and-forget kick when `engineEnabled` is true
+(ADR-008 §13). Cron / `engine.enabled` still Unit 5.6.
 
 ### D4 — Cosmetics — **landed** (session 29 / Unit 10)
 

@@ -1,7 +1,7 @@
 /**
- * Stage timeouts driven by the resolution cycle: NS, relay-node (with and without a
- * remote-status extension) and device. Includes the A3 case where the NS deadline
- * fires while `sendOne` is still in flight.
+ * Stage timeouts driven by the lifecycle runner: NS, relay-node (with and without a
+ * remote-status extension) and device. Includes the A3 case — an NS deadline that expires
+ * while `sendOne` is still in flight, which must not produce a second send.
  *
  * Opt-in (needs Valkey):
  *
@@ -11,22 +11,19 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
-import {
-  moveQueuePush,
-  QUEUE_DEVICE_KEY,
-  QUEUE_RELAY_NODE_KEY,
-} from '#src/lib/queue-moving.push.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { sleep } from '#src/lib/utilities.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 import {
   createProgrammablePlugin,
-  PROGRAMMABLE_DEFAULT_TUNING,
   type ProgrammablePluginCalls,
 } from '../helpers/programmable-plugin.js';
 import {
@@ -56,6 +53,7 @@ const QUEUE_KEY = createProgrammablePlugin({
 
 type Harness = {
   readonly outgoing: OutgoingService;
+  readonly runner: LifecycleRunner;
   readonly calls: ProgrammablePluginCalls;
 };
 
@@ -81,16 +79,9 @@ function createHarness(options: {
     }),
   });
 
-  const metrics = noopMetrics;
-  const outgoing = createOutgoingService({
-    registry,
-    delivery,
-    baseService: createBaseService({ registry, delivery, metrics }),
-    metrics,
-    kickDistributeOnEnqueue: false,
-  });
+  const { outgoing, runner } = createEngineHarness({ registry, delivery });
 
-  return { outgoing, calls };
+  return { outgoing, runner, calls };
 }
 
 const trash: Array<{ readonly id: string; readonly correlationId: string }> = [];
@@ -120,7 +111,7 @@ async function sendAndExpireStage(
   const enqueued = await enqueueTracked(outgoing, correlationId);
   await outgoing.distributeToNetworkServers();
   await waitForDeliveryStatus(outgoing, correlationId, [ 'DELIVERED_TO_NS' ]);
-  await redisRepo.client.zadd(stageQueueKey, Date.now() - 1, enqueued.id);
+  await redis.zadd(stageQueueKey, Date.now() - 1, enqueued.id);
   return enqueued;
 }
 
@@ -135,45 +126,48 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
-  it('retries a message whose NS deadline passed', async () => {
-    const { outgoing } = createHarness({
-      nsInFlightTimeoutMs: 0,
-      // Never resolves: the message sits in the NS stage for the whole test.
-      sendOne: () => new Promise<string>(() => {}),
-    });
+  it('retries a message whose NS deadline passed with no send in flight', async () => {
+    // The deadline's real case. A send this process is still holding suspends it (see the
+    // A3 test below), so what remains is a message no send belongs to: left in the ns stage
+    // by a process that died, which is how it is staged here.
+    const { outgoing, runner } = createHarness({ nsInFlightTimeoutMs: 0 });
     const correlationId = `ns-timeout-${ Date.now() }`;
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
-    await outgoing.distributeToNetworkServers();
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
+    await redis.zrem(QUEUE_KEY, enqueued.id);
+    await redis.hset(redisKeys.message(enqueued.id), {
+      deliveryStatus: 'SENT_TO_NS',
+    });
+    await redis.zadd(QUEUE_NS_KEY, Date.now() - 1, enqueued.id);
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'Timed out waiting for Network Server to accept message',
       isFinal: false,
     });
-    expect(await redisRepo.client.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
   });
 
-  it('sends twice when a slow send lands after its NS deadline expired', async () => {
-    // A3: the NS deadline fires while sendOne is still in flight (observed against
-    // CALIN at up to 37s on a 20s deadline). The late success is silently dropped
-    // because the Lua move is ZREM-gated, so the vendor gets the command twice.
-    // When the stage table lands, that dropped move must become observable and this
-    // test should assert one send, or an explicit duplicate-detected outcome.
+  it('holds the NS deadline open while the send is still in flight (A3)', async () => {
+    // A3: this used to send twice. The deadline fired while sendOne was still running
+    // (observed against CALIN at up to 37s on a 20s deadline), the late success was
+    // dropped by the ZREM-gated move, and the retry re-sent the same command to the
+    // same meter. The ns row now asks whether this process still holds the send, so
+    // with a deadline of 0 the message is rescheduled indefinitely rather than failed
+    // — and the slow send, when it lands, still owns its claim (ADR-008 §8).
     let sendCount = 0;
     let releaseFirstSend: ((deliveryQueueId: string) => void) | undefined;
     const firstSend = new Promise<string>(resolve => {
       releaseFirstSend = resolve;
     });
 
-    const { outgoing, calls } = createHarness({
+    const { outgoing, runner, calls } = createHarness({
       nsInFlightTimeoutMs: 0,
       retryBaseDelayMs: 10,
       sendOne: async () => {
@@ -185,62 +179,69 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
     await outgoing.distributeToNetworkServers();
-    await outgoing.runMessageResolutionCycle();
-    await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
 
-    // The vendor now accepts the command the service has already given up on.
+    // Two ticks, both finding the deadline long expired, and neither may act on it.
+    await runner.tick();
+    await runner.tick();
+
+    const stillSending = await outgoing.getByCorrelationId(correlationId);
+    expect(stillSending?.deliveryStatus).toBe('SENT_TO_NS');
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).not.toBeNull();
+
+    // Shutdown's seam sees the same send the ns row is waiting on.
+    expect(await outgoing.drainInFlightSends(10)).toBe(1);
+
+    // The vendor accepts, late. The claim is still ours, so the move commits.
     const lateDeliveryQueueId = `ext-late-${ Date.now() }`;
     releaseFirstSend?.(lateDeliveryQueueId);
     await sleep(SEND_CONTINUATION_MS);
 
-    // Dropped without a trace: no stage move, no index, no status change.
-    expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(STAGES.relayNode.key(), enqueued.id)).not.toBeNull();
     expect(
-      await redisRepo.client.exists(redisKeys.indexExternalDeliveryId(lateDeliveryQueueId)),
-    ).toBe(0);
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
+      await redis.exists(redisKeys.indexExternalDeliveryId(lateDeliveryQueueId)),
+    ).toBe(1);
+    expect(await redis.zscore(QUEUE_NS_KEY, enqueued.id)).toBeNull();
+    expect(await outgoing.drainInFlightSends(10)).toBe(0);
 
-    // And the retry re-sends the same command to the same device.
-    await sleep(40);
-    await outgoing.runMessageResolutionCycle();
-    await waitForDeliveryStatus(outgoing, correlationId, [ 'DELIVERED_TO_NS' ]);
-    expect(calls.sendOne).toEqual([ enqueued.id, enqueued.id ]);
+    // The point of all of it: the meter was commanded once.
+    expect(calls.sendOne).toEqual([ enqueued.id ]);
   });
 
   it('retries a relay-node timeout when the plugin cannot report remote status', async () => {
-    const { outgoing } = createHarness();
+    const { outgoing, runner } = createHarness();
     const correlationId = `relay-timeout-${ Date.now() }`;
-    const enqueued = await sendAndExpireStage(outgoing, correlationId, QUEUE_RELAY_NODE_KEY);
+    const enqueued = await sendAndExpireStage(outgoing, correlationId, STAGES.relayNode.key());
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'Timed out waiting for relay node to transmit message to device',
     });
-    expect(await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(STAGES.relayNode.key(), enqueued.id)).toBeNull();
   });
 
   it('extends a relay-node timeout while the network server still holds the command', async () => {
-    const { outgoing, calls } = createHarness({
+    const { outgoing, runner, calls } = createHarness({
       getRemoteStatus: async () => ({ deliveryStatus: 'QUEUED' }),
     });
     const correlationId = `relay-extend-${ Date.now() }`;
-    const enqueued = await sendAndExpireStage(outgoing, correlationId, QUEUE_RELAY_NODE_KEY);
+    const enqueued = await sendAndExpireStage(outgoing, correlationId, STAGES.relayNode.key());
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     expect(calls.getRemoteStatus).toEqual([ enqueued.id ]);
-    const extendedScore = await redisRepo.client.zscore(QUEUE_RELAY_NODE_KEY, enqueued.id);
+    const extendedScore = await redis.zscore(STAGES.relayNode.key(), enqueued.id);
     expect(Number(extendedScore)).toBeGreaterThan(Date.now());
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).toBeNull();
 
     const stillWaiting = await outgoing.getByCorrelationId(correlationId);
     expect(stillWaiting?.deliveryStatus).toBe('DELIVERED_TO_NS');
   });
 
   it('retries a device timeout', async () => {
-    const { outgoing } = createHarness();
+    const { outgoing, runner } = createHarness();
     const correlationId = `device-timeout-${ Date.now() }`;
     const enqueued = await enqueueTracked(outgoing, correlationId);
 
@@ -248,19 +249,29 @@ describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
     await waitForDeliveryStatus(outgoing, correlationId, [ 'DELIVERED_TO_NS' ]);
 
     // Relay-node ACK moves the message on, with an already-elapsed device deadline.
-    await moveQueuePush.fromRelayNodeToDevice({
-      id: enqueued.id,
-      tuning: { ...PROGRAMMABLE_DEFAULT_TUNING, deviceInFlightTimeoutMs: 0 },
-      messageTtlSeconds: baseDelivery.messageTtlSeconds,
+    const { plugin } = createProgrammablePlugin({
+      id: PLUGIN_ID,
+      deliveryPattern: 'PUSH',
+      tuning: { deviceInFlightTimeoutMs: 0 },
     });
-    expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).not.toBeNull();
+    const moves = createStageMoves({
+      delivery: baseDelivery,
+      metrics: noopMetrics,
+      stageStore: createStageStore({ client: redis }),
+    });
+    await moves.advance({
+      messageId: enqueued.id,
+      plugin,
+      from: 'relayNode',
+    });
+    expect(await redis.zscore(STAGES.device.key(), enqueued.id)).not.toBeNull();
 
-    await outgoing.runMessageResolutionCycle();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'Timed out waiting for device response after transmission',
     });
-    expect(await redisRepo.client.zscore(QUEUE_DEVICE_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(STAGES.device.key(), enqueued.id)).toBeNull();
   });
 });

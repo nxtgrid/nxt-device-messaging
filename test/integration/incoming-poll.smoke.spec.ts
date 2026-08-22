@@ -1,6 +1,6 @@
 /**
- * Real createIncomingService.pollPullPlugins smoke (Unit 5.5 Step B):
- * enqueue → distribute → sendOne → awaiting-task → poll tick → cleanup.
+ * Real lifecycle-runner PULL poll smoke (Unit 5.5 Step B):
+ * enqueue → distribute → sendOne → awaiting-task → tick → cleanup.
  *
  * Opt-in (needs Valkey):
  *
@@ -10,16 +10,14 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createIncomingService } from '#src/engine/incoming.js';
-import { createOutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, ParsedIncomingEvent } from '#src/lib/device-message/types.js';
 import { sleep } from '#src/lib/utilities.js';
 import type { PullPlugin } from '#src/plugins/plugin.interface.js';
 import type { PluginRegistry } from '#src/plugins/registry.js';
 import { createStubPullPlugin, STUB_PULL_ID } from '#src/plugins/stub/index.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createSinglePluginRegistry } from '../helpers/programmable-plugin.js';
+import { purgeMessageReferences } from '../helpers/redis-references.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
 
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
@@ -30,7 +28,7 @@ const delivery = deviceMessagingConfigSchema.parse({
 
 /**
  * Catalog stub-pull always returns null from fetchStatus; wrap so one poll
- * completes the message (same shared `_processIncomingEvent` as ingress).
+ * completes the message (same shared `processEvent` as ingress).
  * Short `initialPollDelayMs` so the smoke need not wait 10s.
  */
 function createPullRegistryWithSuccessFetch(): PluginRegistry {
@@ -51,35 +49,24 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
   return createSinglePluginRegistry(plugin);
 }
 
-describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () => {
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('stub-pull: awaiting-task → poll success → message cleaned up', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
 
     const registry = createPullRegistryWithSuccessFetch();
-    const metrics = noopMetrics;
-    const baseService = createBaseService({ registry, delivery, metrics });
-    const outgoingService = createOutgoingService({
+    const { outgoing: outgoingService, runner } = createEngineHarness({
       registry,
       delivery,
-      baseService,
-      metrics,
-      kickDistributeOnEnqueue: false,
-    });
-    const incomingService = createIncomingService({
-      registry,
-      delivery,
-      baseService,
-      metrics,
     });
 
     const correlationId = `poll-pull-${ Date.now() }`;
@@ -107,28 +94,28 @@ describe.skipIf(!shouldRun)('incoming pollPullPlugins', () => {
       await outgoingService.distributeToNetworkServers();
       const afterSend = await waitForPostSend(outgoingService, correlationId);
       expect(afterSend.deliveryQueueId).toMatch(/^stub-ext-/);
-      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).not.toBeNull();
+      expect(await redis.zscore(awaitingKey, enqueued.id)).not.toBeNull();
 
       // firstPollAt = now + initialPollDelayMs (1ms); wait until due.
       await sleep(5);
-      await incomingService.pollPullPlugins();
+      await runner.tick();
 
       const afterPoll = await outgoingService.getByCorrelationId(correlationId);
       expect(afterPoll).toBeNull();
-      expect(await redisRepo.client.zscore(awaitingKey, enqueued.id)).toBeNull();
+      expect(await redis.zscore(awaitingKey, enqueued.id)).toBeNull();
       // Success cleanup must release the slot (key was stored on the message at claim).
-      expect(await redisRepo.client.sismember(rateLimitKey, enqueued.id)).toBe(0);
+      expect(await redis.sismember(rateLimitKey, enqueued.id)).toBe(0);
     }
     finally {
       const leftover = await outgoingService.getByCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await redis.zrem(queueKey, leftover.id);
+        await purgeMessageReferences(leftover.id, { correlationId });
       }
       else if (enqueuedId) {
-        await redisRepo.client.srem(rateLimitKey, enqueuedId);
+        await redis.srem(rateLimitKey, enqueuedId);
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );

@@ -114,7 +114,7 @@ export type CreateWebhookStoreOptions = {
 };
 
 /**
- * Factory for webhook Redis access (injected client — same instance as `redisRepo.client`).
+ * Factory for webhook Redis access (injected client — same instance as `redis`).
  *
  * @param options - Redis client
  */

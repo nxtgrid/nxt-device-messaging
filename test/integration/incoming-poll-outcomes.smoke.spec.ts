@@ -1,6 +1,6 @@
 /**
  * Every outcome of a PULL status poll: still pending, vendor error, success, and a
- * reported execution failure. The happy path through `pollPullPlugins` is covered by
+ * reported execution failure. The happy path through `runner.tick` is covered by
  * `incoming-poll.smoke.spec.ts`; this file covers what happens when it is not happy.
  *
  * Opt-in (needs Valkey):
@@ -11,20 +11,19 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
+import { QUEUE_RETRY_KEY } from '#src/engine/lifecycle/stages.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type {
   DeviceMessage,
   DeviceMessageDevice,
   ParsedIncomingEvent,
 } from '#src/lib/device-message/types.js';
-import { QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
 import { sleep } from '#src/lib/utilities.js';
 import { buildConcurrencyRateLimitKey } from '#src/plugins/_shared/initial-queue-key.js';
-import { noopMetrics } from '../helpers/noop-metrics.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import {
   createProgrammablePlugin,
   type ProgrammablePluginCalls,
@@ -66,7 +65,7 @@ if (RATE_LIMIT_KEY === undefined) {
 
 type Harness = {
   readonly outgoing: OutgoingService;
-  readonly incoming: IncomingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
   readonly calls: ProgrammablePluginCalls;
 };
@@ -82,25 +81,17 @@ function createHarness(
     fetchStatus,
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
-  const baseService = createBaseService({
+  const { outgoing, runner } = createEngineHarness({
     registry,
     delivery,
     webhook: recorder.webhook,
-    metrics,
   });
 
   return {
     recorder,
     calls,
-    outgoing: createOutgoingService({
-      registry,
-      delivery,
-      baseService,
-      metrics,
-      kickDistributeOnEnqueue: false,
-    }),
-    incoming: createIncomingService({ registry, delivery, baseService, metrics }),
+    outgoing,
+    runner,
   };
 }
 
@@ -139,41 +130,43 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   it('pushes out the next poll time while the vendor is still working', async () => {
-    const { outgoing, incoming, calls } = createHarness(async () => null);
+    const { outgoing, runner, calls } = createHarness(async () => null);
     const correlationId = `poll-pending-${ Date.now() }`;
     const enqueued = await enqueueAndAwaitTask(outgoing, correlationId);
 
-    await incoming.pollPullPlugins();
+    await runner.tick();
 
     expect(calls.fetchStatus).toEqual([ enqueued.id ]);
-    const nextPollAt = Number(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id));
+    const nextPollAt = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
     expect(nextPollAt).toBeGreaterThan(Date.now() + PENDING_POLL_DELAY_MS - 1_000);
     expect(nextPollAt).toBeLessThan(Date.now() + PENDING_POLL_DELAY_MS + 1_000);
   });
 
-  it('re-polls a vendor error on every tick without advancing the score (A2)', async () => {
-    // A2: the score is only advanced on the "still pending" branch, so a throwing
-    // fetchStatus leaves the message due forever — and because the error escapes
-    // `pollAwaitingTasksFor`, it also aborts the batch, starving every message behind
-    // it in the same queue. The stage table must advance the score on every branch.
-    const { outgoing, incoming } = createHarness(async () => {
+  it('advances the score when the vendor is unreachable (A2)', async () => {
+    // A throwing vendor is not evidence about the message, so the member keeps its place
+    // and comes back on the ladder. Advancing the score on this branch too is what stops
+    // one unreachable vendor from being re-polled every tick forever — and, because the
+    // throw no longer escapes the loop, from starving the messages behind it in the queue.
+    const { outgoing, runner } = createHarness(async () => {
       throw new Error('vendor unreachable');
     });
     const correlationId = `poll-error-${ Date.now() }`;
     const enqueued = await enqueueAndAwaitTask(outgoing, correlationId);
-    const dueBefore = await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id);
+    const dueBefore = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
 
-    await expect(incoming.pollPullPlugins()).rejects.toThrow('vendor unreachable');
+    await runner.tick();
 
-    expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id)).toBe(dueBefore);
+    const dueAfter = Number(await redis.zscore(AWAITING_TASK_KEY, enqueued.id));
+    expect(dueAfter).toBeGreaterThan(dueBefore);
+    expect(dueAfter).toBeGreaterThan(Date.now() + PENDING_POLL_DELAY_MS - 1_000);
   });
 
   it('cleans up, notifies and releases the slot on a successful poll', async () => {
-    const { outgoing, incoming, recorder } = createHarness(async message => ({
+    const { outgoing, runner, recorder } = createHarness(async message => ({
       deliveryQueueId: message.deliveryQueueId,
       deliveryStatus: 'DELIVERY_SUCCESSFUL',
       device: message.device,
@@ -187,7 +180,7 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
       [ 'DELIVERED_TO_NS' ],
     );
 
-    await incoming.pollPullPlugins();
+    await runner.tick();
 
     expect(recorder.withStatus('DELIVERY_SUCCESSFUL')).toHaveLength(1);
     expect(await findMessageReferences(enqueued.id, { correlationId, deliveryQueueId }))
@@ -195,7 +188,7 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
   });
 
   it('retries and releases the slot when the vendor reports a failed execution', async () => {
-    const { outgoing, incoming } = createHarness(async message => ({
+    const { outgoing, runner } = createHarness(async message => ({
       deliveryQueueId: message.deliveryQueueId,
       deliveryStatus: 'DELIVERY_FAILED',
       device: message.device,
@@ -203,18 +196,18 @@ describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
     }));
     const correlationId = `poll-failed-${ Date.now() }`;
     const enqueued = await enqueueAndAwaitTask(outgoing, correlationId);
-    expect(await redisRepo.client.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(1);
+    expect(await redis.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(1);
 
-    await incoming.pollPullPlugins();
+    await runner.tick();
 
     const parked = await waitForDeliveryStatus(outgoing, correlationId, [ 'TO_RETRY' ]);
     expect(parked.failureHistory?.[0]).toMatchObject({
       reason: 'meter rejected the command',
       isFinal: false,
     });
-    expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, enqueued.id)).toBeNull();
-    expect(await redisRepo.client.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
+    expect(await redis.zscore(AWAITING_TASK_KEY, enqueued.id)).toBeNull();
+    expect(await redis.zscore(QUEUE_RETRY_KEY, enqueued.id)).not.toBeNull();
     // A held concurrency slot would cap the plugin's throughput forever.
-    expect(await redisRepo.client.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(0);
+    expect(await redis.sismember(RATE_LIMIT_KEY, enqueued.id)).toBe(0);
   });
 });

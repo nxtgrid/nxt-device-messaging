@@ -1,9 +1,9 @@
 # Plan 002 — Architecture review and deepening
 
-**Status:** open. Review complete (2026-08-18/19). Branch 1 items (B1, C2 design, B1b, C3) landed;
-awaiting review and merge. Branch 2 has not started.
-**Branch:** `chore/post-extraction-refactor` (branch 1) is complete and awaiting review/merge.
-Branch 2 is cut from `main` afterwards for the stage-table slice. See § *Branch discipline*.
+**Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
+Branch 2: **ADR-008, C2, and C1 landed.** Next is branch 3 (C4, docs compact, optionals).
+**Branch:** `refactor/message-lifecycle-stage-table` (branch 2), cut from `main` after branch 1
+merged as PR #12. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -48,12 +48,12 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 2 | **C2 design** — message-lifecycle stage table (discussion, no code) | 1 | Claude Opus 5 | 1 | ☑ 2026-08-20 |
 | 2b | **B1b** — thicken the engine integration suite *against current behaviour* | 1 | Grok 4.6 | 1 | ☑ 2026-08-20 |
 | 2c | **C3** — plugin SPI as a discriminated union on `deliveryPattern` | — | Grok 4.6 | 1 | ☑ 2026-08-20 |
-| 3 | **ADR-008** — message lifecycle stage table (first commit on branch 2) | 2 | Claude Opus 5 | 2 | ☐ |
-| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☐ |
-| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☐ folded into 4 |
-| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☐ folded into 4 |
-| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☐ folded into 4 |
-| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☐ |
+| 3 | **ADR-008** — message lifecycle stage table (first commit on branch 2) | 2 | Claude Opus 5 | 2 | ☑ 2026-08-20 |
+| 4 | **C2** — implement the stage table | 2b, 3 | Claude Opus 5 | 2 | ☑ 2026-08-21 |
+| 5 | **A1 + A2** — orphan scrubbing and poll-score advancement | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
+| 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
 | 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
@@ -63,7 +63,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 
 Branches in sequence. Nothing in this plan lands directly on `main`.
 
-**Branch 1 — `chore/post-extraction-refactor`** (complete; awaiting review and merge).
+**Branch 1 — `chore/post-extraction-refactor`** (merged as PR #12).
 Items 1 (B1), 2 (C2 design), 2b (B1b), and 2c (C3) are on this branch. Scope was **the
 prerequisites for C2 and nothing else**. Keeping the scope that tight is deliberate: it is what
 makes the review tractable and lets branch 2 start from a known-good base.
@@ -72,9 +72,9 @@ Nothing else qualifies as a prerequisite. **B2** resolves as a consequence of C1
 branch 2; **B3**'s single real offender (`kickDistributeOnEnqueue`) disappears inside C2 rather than
 needing a prior fix; **A1–A5** are folded into C2 by design. **C4 was not pulled onto branch 1.**
 
-**Branch 2 — cut from `main` after branch 1 merges.** The big slice as one reviewable, revertible
-unit: item 3 (ADR-008) as its first commit, then 4, with 5–8 folded in. Name it for the change, e.g.
-`refactor/message-lifecycle-stage-table`. Has not started.
+**Branch 2 — `refactor/message-lifecycle-stage-table`**, cut from `main` after branch 1 merged.
+The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first commit, then 4,
+with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
 directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
@@ -329,6 +329,59 @@ current 20-method surface removes the global and fixes B2, but leaves a dependen
 module — barely an improvement in reasoning terms. The depth win only appears once **C2** has
 collapsed what the engine needs to ask Redis for. C1 is an *outcome* of C2.
 
+#### Concrete shape (written 2026-08-21 at the end of C2.4, while the context was warm)
+
+**Step 1 is deletion, not injection.** Four methods are dead now that the stage table replaced the
+poll scan: `getMessageRawPropsById`, `getAllMessageIdsInQueue`, `getMessagesDueForPolling`,
+`updateNextPollTime`. Nothing in `src/` or `test/` calls them. That is 20 methods → 16 before any
+design work, and it is the cheapest review of the session.
+
+**Step 2 is one client, created not imported.** `src/lib/redis-repository/index.ts` builds its
+client at module load and registers the Lua scripts there; that module singleton *is* the global.
+Extract `createRedisClient(options)` (client + `defineCommand` registration), call it once in
+`main.ts`, and keep `redisRepo` as a thin adapter over the injected client so nothing else moves
+yet. `main.ts` already wants the raw client three times (metrics, `createWebhookStore`, `quit`), so
+it becomes a local rather than a property of a global.
+
+**Step 3 is three ports, not one.** A single injected `Store` would be the same shallow surface
+with a parameter — the failure the caution above warns about. The engine's remaining Redis calls
+cluster cleanly, so split along the clusters:
+
+| Port | Methods | Who imports it |
+|---|---|---|
+| `MessageStore` | `enqueueDeviceMessage`, `getMessageById`, `getMessageFromCorrelationId`, `getAllMessagesForCorrelationId`, `getMessageIdFromDeliveryQueueId` | `outgoing` (enqueue / get / cancel), `incoming` (ingress lookup), `base`, `runner` |
+| `StageStore` | `moveMessageBetweenQueues` + `fetchNextMessageInQueueAndMove` (Lua), `getExpiredMessagesInQueue`, `removeMessageFromQueue`, `requeueMessage`, `messageFullCleanup`, `fetchQueuesWithMessages`, and the raw `zadd` / `zscore` / `hmget` / `multi` that `enterRetry` needs | `lifecycle/moves.ts` and `lifecycle/runner.ts` — **nothing else** |
+| `AdmissionStore` | `lockQueueForTimeMs`, `claimConcurrencyRateLimit`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit` / `_onClaimAfterPick`) |
+
+The payoff is in the third column. `StageStore` is the one that carries real Redis vocabulary, and
+after C2 only two files touch it — `moves.ts` already hides it behind `StageMoves`. So once this
+lands, the engine's Redis knowledge is: `outgoing` knows admission and message CRUD, `incoming` and
+`base` know how to load a message, and nothing else speaks Redis at all. That is the depth win the
+caution was holding out for, and it is only available because C2 removed the callers first.
+
+Factories mirror `createWebhookStore`, which already takes an injected client:
+
+```ts
+export function createMessageStore(deps: { readonly client: Redis }): MessageStore;
+export function createStageStore(deps: { readonly client: Redis }): StageStore;
+export function createAdmissionStore(deps: { readonly client: Redis }): AdmissionStore;
+```
+
+**Suggested order**, cheapest proof first: delete the four dead methods → extract
+`createRedisClient` → `AdmissionStore` (4 methods, one consumer, proves the shape) → `MessageStore`
+→ `StageStore` last, because it is the largest but has only two consumers and a spec suite that
+already drives it end to end.
+
+**Two questions to settle when C1 starts.** Does `messageFullCleanup` belong to `StageStore` or
+`MessageStore`? It deletes the hash and indexes but ZREMs queues. Recommendation: `StageStore`,
+because its only caller is `moves.purge` and grouping by *caller* is what makes the third column
+above narrow. And `base.retryOrFail` currently ZREMs an orphan itself (`base.ts:97`) although the
+runner scrubs orphans too — check whether that call can simply go, which would drop `base`'s
+`StageStore` need entirely.
+
+**Out of scope.** C1 is about narrowing what the engine may ask, not about portability. Do not add
+an abstraction layer for swapping Redis out; the ports are typed against the real client.
+
 ### C2 — the message lifecycle exists nowhere as a single readable thing
 
 **Symptom.** To answer *"what happens when delivery fails at the relay-node stage?"* you must read
@@ -359,178 +412,29 @@ files. `runMessageResolutionCycle` becomes a loop over it. Candidate deletions:
 
 **Constraint.** Do not start this without **B1** green and **B1b** landed on `main`.
 
-#### Design settled (sessions 2026-08-19 / 2026-08-20)
+#### Design settled → **`docs/architecture/008-message-lifecycle-stage-table.md`**
 
-These were agreed with the maintainer. Implement them; do not relitigate.
+The design lives in **ADR-008**, which is the first commit on branch 2 and the normative source
+for the C2 implementation. Do not relitigate it; do not re-derive it from this plan.
 
-1. **The Redis key layout does not change.** Same six queue keys, same members, same score
-   meanings, same TTLs. `redis-cli --scan` output is identical before and after. No data migration,
-   no operational change, nothing for an operator to relearn. C2 is a **code-organisation change
-   only.** This constraint is what makes the refactor verifiable and reversible.
-2. **Two kinds of queue, not six.** A **ready queue** (the initial `queue:{plugin}:{kind}:{id}`,
-   score = `-priority`, drained by admission) and **scheduled stages** (score = *the time the engine
-   should next pay attention*, one action per stage). The split is forced by Redis — a sorted set has
-   one score, and the ready queue spends it on priority. That is *why* `queue_awaiting_retry` exists
-   as a separate queue rather than as a future score on the ready queue.
-3. **A deadline and a next-poll-time are the same concept** with different actions attached. This is
-   the insight the table encodes.
-4. **`onDue` returns a discriminated result** — `'rescheduled' | 'movedOn' | 'removed' | 'orphaned'`.
-   The **runner**, not the action, scrubs orphans and advances scores. This is the mechanism that
-   fixes **A1** and **A2** structurally: an action that returns nothing is a type error, so a future
-   stage cannot forget either rule.
-5. **The table owns the edges between stages**, not just the exits. `ns → relayNode` (PUSH) and
-   `ns → awaitingTask` (PULL) currently live as an `if` inside `_sendOneToNetworkServer`
-   (`outgoing.ts:223`) — which is exactly where **A3** hides. With the edge in the table, the
-   stage-entry helper reports "the move failed" in one place.
-6. **One tick, at 1000 ms**, replacing the 2 s resolution cycle and the 5 s PULL poll. Rationale:
-   punctuality error is bounded by the interval; the shortest meaningful wait in the system is
-   `retryBaseDelayMs` (2000 ms), so 1 s is comfortably under everything; an idle tick is ~5–8
-   `ZRANGEBYSCORE … LIMIT 50` calls per second, which is nil; and `WEBHOOK_DRAIN_INTERVAL_MS` is
-   already `1_000`, so the process gains one cadence instead of three numbers.
-   - *Consequence, accepted:* PULL polling becomes **punctual** rather than rounded up to the next
-     5 s boundary. A message scheduled 10 s out is polled at 10 s, not 10–15 s. Because each poll
-     advances the ladder, a message fits marginally more polls into its life. This is the message
-     getting the cadence it declared; if the ladder is too aggressive that is a ladder question,
-     now visible and tunable.
-   - *Bonus:* a tick faster than `minIntervalMs` removes the hidden floor under `spacing` admission
-     (see *Optional → Spacing floor*). LoRaWAN pacing comes from the `SET NX PX` lock on the ready
-     queue, not the tick, so `minIntervalMs` finally means what it says.
-   - *Ponytail:* a fixed tick is a deliberate simplification. The exact design is to sleep until the
-     earliest due score, which needs recomputation on every insert. Leave a comment at the tick
-     naming the ceiling (±1 s punctuality) and the upgrade path (sleep-until-due).
-7. **Stage pipelines are Option A** — two fixed pipelines derived from the two delivery patterns
-   (`PUSH` / `PULL`), as data rather than as `if` branches. `'NONE'` (token-only) has no pipeline;
-   those plugins never enqueue. **Option B** (per-plugin pipelines) is designed and documented
-   below; it is deliberately not built yet. See § *Option B*.
+What it settles, in one line each: the Redis layout does not change (1); ready queue vs scheduled
+stage (2); the five-row table, deadline ≡ next-poll time (3); pipelines as data, Option A (4);
+`onDue` returns a discriminated outcome and the **runner** scrubs orphans and advances scores —
+the structural fix for **A1** and **A2** (5); one `advance` owns the edges — **A3** layer one (6);
+cleanup and metrics derive their key lists from the table — **A4** (7); the NS deadline does not
+fire while this process still holds the send — **A3** layer two (8); the 48 h PULL cap becomes a
+property of the `awaitingTask` stage (9); one 1000 ms tick, stages concurrent, members sequential,
+per-stage re-entry guard (10); one TTL knob — **A5** (11); the stage stays derivable, no new hash
+field (12); enqueue's distribute kick is gated on the engine, not a test flag — **B3** (13).
 
-#### Option B — per-plugin stage pipelines (designed, not built)
+Decision 8 carries two riders the maintainer added on review: a **120 s client safety deadline**
+so `sendOne` always settles (unparks that half of *Plugin HTTP hygiene*), and a **bounded drain**
+over the in-flight set that C2 exposes and **Shutdown v2** wires.
 
-> **Status: designed, deliberately deferred.** Do not build this speculatively. When the trigger
-> below fires, implement what is written here — the design is settled and does not need to be
-> re-derived. If ADR-008 exists, this text is its *Alternatives / upgrade path* section; the stage
-> table in code should carry a one-line comment pointing here.
-
-**Trigger — build B when, and only when, all three hold:**
-
-1. A new plugin needs a **different number or kind of waits** than its `deliveryPattern`'s pipeline
-   provides — not different *timeouts* (that is `PluginTuning`, already per-plugin) and not a
-   different *transport* (that is the SPI, already per-plugin), but a genuinely different *sequence
-   of things the engine waits on*.
-2. The extra wait needs its **own queue** — i.e. its own deadline, its own action, and its own
-   depth metric. If the wait can be expressed as "the same stage, with a longer timeout", it is not
-   a new stage.
-3. Squeezing it into an existing pipeline would mean putting an `if pluginId === …` inside a stage
-   action. That `if` is the smell that says the pipeline should be data.
-
-If only (1) holds, prefer a third fixed *delivery* pipeline in the pattern table — cheaper than B
-and honest, because the pipeline really is a property of a *pattern*, not of a *vendor*. (`'NONE'`
-is not a candidate: token-only plugins have no pipeline.)
-
-**Known candidate.** SparkMeter: HTTP/API-shaped (so `PULL`-ish), but one `sparknet-http` instance
-per gateway, with a radio mesh behind each gateway. The vendor API accepting a command says nothing
-about the mesh having carried it — that is a second, independent wait with its own failure mode.
-Worked example at the end of this section.
-
-**The design.**
-
-Under Option A, core owns the whole map:
-
-```ts
-// stage names and definitions: closed, core-owned
-const STAGES = { ns, relayNode, device, awaitingTask, retry } as const;
-// pipelines: data, derived from the two delivery patterns — not from DeliveryPattern,
-// which also includes 'NONE'. Token-only plugins have no pipeline; they never enqueue.
-const PIPELINES = {
-  PUSH: ['ns', 'relayNode', 'device'],
-  PULL: ['ns', 'awaitingTask'],
-} as const satisfies Record<'PUSH' | 'PULL', readonly StageName[]>;
-```
-
-Under Option B, a plugin may **contribute stages** and **declare its own pipeline**:
-
-```ts
-type StageDefinition = {
-  /** Redis key suffix; namespaced per plugin by the engine. */
-  readonly name: string;
-  /** How this stage stops waiting. Decides which runner drives it. */
-  readonly advancedBy: 'ingress' | 'poll' | 'timeout';
-  /** Deadline (ingress/timeout) or next-poll delay (poll), in ms. */
-  readonly waitMs: (message: DeviceMessage) => number;
-  /** What running out of wait means. */
-  readonly onExpiry: 'fail' | 'retry';
-};
-
-type DeliveryPlugin = {
-  // …existing PUSH | PULL SPI…
-  /** Stages this plugin adds beyond the core set. Optional. */
-  readonly stages?: readonly StageDefinition[];
-  /** Ordered stages a message traverses. Defaults to PIPELINES[deliveryPattern]. */
-  readonly pipeline?: readonly string[];
-};
-```
-
-`advancedBy` is the real conceptual addition, and the reason B buys flexibility rather than just
-indirection: it lets a single plugin mix a *polled* wait and an *ingress* wait in one pipeline —
-which is precisely what a hybrid (API front, radio behind) integration needs and what neither fixed
-pipeline can express today.
-
-**What changes, concretely — four things:**
-
-1. **A `stage` field on the message hash.** Under A the current stage is derivable from
-   `(deliveryStatus, deliveryPattern)` without ambiguity, so no new field is needed. Under B,
-   arbitrary stages reuse statuses, so the stage must be stored explicitly. This is the only
-   non-trivial addition. It is additive and backfillable: for messages in flight at deploy time,
-   derive `stage` from the same `(deliveryStatus, deliveryPattern)` rule Option A used.
-2. **Stage keys become plugin-namespaced.** `queue_stage:{pluginId}:{stageName}`. The convention
-   already exists — `queue_awaiting_task:{pluginId}` is exactly this shape — so under B
-   `awaitingTask` stops being special and becomes an ordinary stage that the CALIN plugins happen to
-   share. Core stages stay on their current unnamespaced keys.
-3. **The three enumeration sites read the registry instead of the constant.** Cleanup's key list,
-   the metrics stage-key list, and the tick's scan loop each become "core stages + contributed
-   stages of every enabled plugin". Mechanical, *provided* Option A routed all three through the
-   table (see invariants below).
-4. **`advance()` consults the plugin.** `plugin.pipeline ?? PIPELINES[plugin.deliveryPattern]`, then
-   `pipeline[indexOf(current) + 1]`. One function, one call site. The plugin here is a
-   `DeliveryPlugin` (`PUSH` | `PULL`); `'NONE'` never reaches `advance`.
-
-Not changed: admission, the ready queue, the retry ladder, the webhook layer, the SPI's transport
-methods. B is confined to the stage table.
-
-**Invariants Option A must hold so that B stays this small.** These are the actual load-bearing
-part of this section — if A is built any other way, B becomes a rewrite instead of a patch.
-
-- **No hand-written stage lists anywhere.** Cleanup, metrics and the scan loop derive their keys
-  from the table. A literal array of queue names in a second file is the bug that makes B expensive
-  (and is, today, exactly how **A4** and the metrics list drifted apart).
-- **Pipelines are data, not control flow.** `PIPELINES[pattern]`, never
-  `if (pattern === 'PULL') … else …`. A lookup becomes overridable by adding one `??`; an `if` does
-  not.
-- **Exactly one `advance(message, plugin)`.** Every stage-to-stage move goes through it. If two call
-  sites decide "what comes next", B has to fix both — and one of them will be forgotten, which is
-  the shape of **A3**.
-- **Stage actions never name a plugin.** An action reads the stage definition and the message. The
-  moment an action tests `pluginId`, the pipeline has become per-plugin in fact but not in type, and
-  the cheap upgrade path is gone.
-
-**Worked example — SparkMeter under B.**
-
-```ts
-export const sparkMeterPlugin = {
-  id: 'sparkmeter',
-  deliveryPattern: 'PULL',
-  stages: [
-    { name: 'gatewayAccepted', advancedBy: 'poll',    waitMs: pollLadder, onExpiry: 'retry' },
-    { name: 'meshDelivered',   advancedBy: 'ingress', waitMs: () => 300_000, onExpiry: 'retry' },
-  ],
-  pipeline: ['ns', 'gatewayAccepted', 'meshDelivered'],
-  // …transport methods…
-};
-```
-
-Reading it: send to the gateway's `sparknet-http` (`ns`); poll the gateway until it confirms it took
-the command (`gatewayAccepted`, ladder-polled, retry on expiry); then wait up to five minutes for the
-mesh to report the meter actually got it (`meshDelivered`, ingress-driven, retry on expiry). Three
-waits, two mechanisms, one plugin — and core needs no knowledge of SparkMeter to run it.
+ADR-008 also carries the **invariants** the implementation must hold, the *Rejected* alternatives,
+Option B (per-plugin pipelines) as its deferred upgrade path with the trigger that fires it, and
+— under *Triggers* — the multi-replica form of the in-flight set ("move the write, not the
+state": the owner heartbeats the NS score instead of a scanner consulting a local set).
 
 ### C3 — the plugin SPI should be a discriminated union
 
@@ -630,7 +534,7 @@ is a purely internal refactor.
 difference. `'NONE'` already stopped token-only plugins from growing fake delivery fields; the
 bundle refactor only has to absorb one member, not unwind a lie.
 
-**Relationship to C2 Option B.** This and Option B are two axes of the same idea — a plugin
+**Relationship to C2 Option B** (ADR-008 § *Upgrade path*). This and Option B are two axes of the same idea — a plugin
 declaring which capabilities and which policy it has — and would naturally land together. B
 contributes stages and a pipeline; bundles contribute which of `{delivery, token}` the module
 even has. Neither needs the other, but building them apart means two SPI reshapes instead of one.
@@ -747,8 +651,8 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |
-| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, now complete (B1, C2 design, B1b, C3) and awaiting review/merge. Branch 2 = cut from `main` afterwards, the stage-table slice only — not started. Branch 3 = everything else (C4, D, Optional, capability bundles). |
-| **Stage pipelines** | **Option A now** (two pipelines, keyed on `PUSH` / `PULL` as data — not on `DeliveryPattern`, which also has `'NONE'`). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed under C2 § *Option B* and built only when its trigger fires. Option A must hold four invariants listed there so B stays a patch. |
+| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, merged as PR #12 (B1, C2 design, B1b, C3). Branch 2 = `refactor/message-lifecycle-stage-table`, the stage-table slice only — in progress. Branch 3 = everything else (C4, D, Optional, capability bundles). |
+| **Stage pipelines** | **Option A now** (two pipelines, keyed on `PUSH` / `PULL` as data — not on `DeliveryPattern`, which also has `'NONE'`). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed in **ADR-008 § *Upgrade path*** and built only when its trigger fires. Option A must hold the four invariants listed there so B stays a patch. |
 
 ---
 
@@ -798,3 +702,103 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-20** — Branch 1 review nits. Docs wording/MD040; test-helper DRY and typed
   `withStatus`; smoke keys from `initialQueueKey`; shared `createSinglePluginRegistry`.
   Settled calls left alone. Maintainer commits; still awaiting merge.
+- **2026-08-20** — **Branch 1 merged (PR #12).** Branch 2 `refactor/message-lifecycle-stage-table`
+  cut from `main`.
+- **2026-08-20** — **ADR-008 written** (`docs/architecture/008-message-lifecycle-stage-table.md`),
+  first commit on branch 2. It absorbs the plan's seven settled decisions unchanged and adds six
+  that the plan had left to "the item-4 discussion", so C2 is implementation rather than design:
+  cleanup/metrics key lists derive from the table (**A4**); the `ns` deadline does not fire while
+  this process still holds the `sendOne` promise, using ADR-007's single writer — this is **A3**'s
+  real layer, and the plan's alternative (a fetch deadline on the plugin client) is rejected in the
+  ADR because aborting after vendor acceptance reproduces the duplicate command; the 48 h PULL cap
+  moves into the `awaitingTask` action, which deletes a per-tick full ZRANGE of the whole queue;
+  stages run concurrently within a tick with a per-stage re-entry guard, so collapsing three
+  intervals into one does not serialise a slow `fetchStatus` ahead of NS timeouts; one TTL knob
+  (**A5**); and enqueue's distribute kick keys off `engine.enabled` rather than
+  `kickDistributeOnEnqueue` (**B3**). The plan's § *Design settled* and § *Option B* are now
+  pointers — ADR-008 is the single source of truth. Two things for the C2 session to watch:
+  `retryOrFail` and the shared incoming-event processor must start returning a `StageOutcome`
+  instead of `void`, and `messageFullCleanup` needs the plugin (to derive the ready-queue key),
+  which is the first pull toward **C1**. Next: item 4 (C2), and per the plan's C1 note, that
+  session should write C1's concrete shape — which factories take the store, what the composition
+  root looks like — into this plan while the context is cheap.
+- **2026-08-20** — **ADR-008 reviewed and confirmed.** Decision 8 (the in-flight set) stays, with
+  three additions: a 120 s plugin-client safety deadline so `sendOne` always settles; a bounded
+  drain over the in-flight set, which C2 exposes and Shutdown v2 wires (stop timers → drain →
+  close Redis, in that order); and the multi-replica form recorded under *Triggers* — the owner
+  heartbeats the NS score rather than a scanner consulting process-local state, which is a
+  known move rather than a rewrite. C2 therefore also touches the two CALIN clients (fetch
+  deadline). Item 4 starts next.
+- **2026-08-21** — **C2.1–C2.3 landed** (item 4). `src/engine/lifecycle/` now holds the table
+  (`stages.ts`), the transitions (`moves.ts`), the per-stage actions (`actions.ts`) and the one
+  runner (`runner.ts`); `lib/lifecycle.{push,pull}.ts` and `lib/queue-moving{,.push,.pull}.ts`
+  are deleted, as are `runMessageResolutionCycle` and `pollPullPlugins` — three intervals
+  collapsed into one 1000 ms `runner.tick()`. **A1 and A2 are fixed** (the runner scrubs
+  orphans in every stage and always writes the next score, because the score is the runner's
+  job and not the action's). **A4 is fixed** by C2.3: `StageMoves.purge` derives the sweep list
+  from `enumerateStageKeys` plus the plugin's ready queue, and `messageFullCleanup(message,
+  queueKeys)` no longer chooses; metrics' `KNOWN_STAGE_KEYS` is gone the same way, so a new
+  stage row shows up in `/metrics` with no edit. Two deliberate behaviour changes to know
+  about: cancel resolves the plugin before branching on status, so cancelling a `TO_RETRY`
+  message whose plugin is unregistered is now `NOT_CANCELLABLE`; and the 48 h PULL cap fires on
+  a message's next poll rather than in a full-queue scan, which the ladder bounds at 30 s.
+  `messageFullCleanup`'s teardown callers in the smoke specs moved to the
+  `purgeMessageReferences` helper, which was always the right tool there. Next: **C2.4** (A3).
+- **2026-08-21** — **C2.4 landed** (**A3** fixed). `src/engine/in-flight-sends.ts`, one instance
+  from `main.ts`, shared by the sender and the `ns` stage row; the row returns `rescheduled`
+  while this process still holds the send. `moves.advance` now reads its own boolean and counts
+  losses (`device_messaging_stage_claim_misses_total{stage}`), which is what A3 was hiding.
+  `CLIENT_SAFETY_DEADLINE_MS` (120 s) on the CALIN V1/V2 and `nxt-sts` clients; ChirpStack kept
+  its existing 60 s gRPC deadline. `outgoingService.drainInFlightSends(budgetMs)` is the
+  shutdown seam, unwired until Shutdown v2. Full detail in `docs/decisions-log.md`
+  **2026-08-21** C2.4.
+- **2026-08-21** — **C2.7 written early, and the rest of C2 specified for handover.** The C1
+  section above now carries its concrete shape (three ports, suggested order, two open
+  questions), written while C2's context was still loaded rather than after it. The remaining
+  two slices are execution against the spec below and need no further design input:
+
+  **C2.5 — A5 and B3.**
+  1. *A5.* `MESSAGE_TTL_SECONDS` (`src/lib/redis-repository/index.ts:30`) is the second source
+     of truth. Delete it; give `enqueueDeviceMessage(dto, queueKey, ttlSeconds)` a third
+     parameter and use it at both `expire` (line 198) and the correlation index `EX` (line 211).
+     Its only caller is `outgoing.enqueue`, which already holds `delivery`, so it passes
+     `delivery.messageTtlSeconds`. Nothing else imports the constant. The `indexTtlSeconds`
+     rename the A5 section asks for is already done — it died with `lib/queue-moving.ts`;
+     `moves.ts` passes `delivery.messageTtlSeconds` straight to the Lua's `index_ttl_seconds`.
+     Confirm that and mark A5 closed rather than renaming anything.
+  2. *B3.* Replace `kickDistributeOnEnqueue?: boolean` (default `true`) on
+     `CreateOutgoingServiceOptions` with a required `engineEnabled: boolean`, passed from
+     `config.engine.enabled` in `main.ts`. This is the decision B3 was waiting for: the flag
+     stops being test support because it now names a real production condition — a service with
+     the engine off accepts and stores commands but must not distribute, since no tick would
+     follow up. In `test/helpers/engine-harness.ts` rename the option to `engineEnabled?:
+     boolean`, keep the default `false`, and update the four specs that pass
+     `kickDistributeOnEnqueue: false` (`outgoing-distribute` ×2, `outgoing-cancel`,
+     `incoming-ingress`).
+
+  **C2.6 — close out.** A1/A2 flipped in C2.2b, A4 in C2.3, A3 in C2.4, so no pinned assertion
+  should remain; verify that rather than assume it. Then sweep comments and JSDoc for names the
+  refactor deleted — `resolution cycle`, `runMessageResolutionCycle`, `pollPullPlugins`,
+  `queue-moving`, `lifecycle.push` / `lifecycle.pull`, `fromAnyToRetry` — and fix the ones that
+  now describe code that no longer exists. Finish on a green
+  `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, then `pnpm test:integration` with
+  Valkey up. Then C2 is closed and **C1** starts from the section above.
+- **2026-08-21** — **C2.5 landed** (**A5** and **B3**). `MESSAGE_TTL_SECONDS` deleted;
+  enqueue takes `ttlSeconds` from `delivery.messageTtlSeconds`. `kickDistributeOnEnqueue`
+  is now required `engineEnabled`, passed from `config.engine.enabled`. Next: **C2.6**.
+- **2026-08-21** — **C2.6 landed.** Pins already flipped (A1–A4). Stale names swept from
+  live comments/JSDoc/ADR current-behaviour rows. **C2 closed.** Next: **C1**.
+- **2026-08-21** — **C1.1 landed.** Deleted the four dead `redisRepo` methods. Next: **C1.2**.
+- **2026-08-21** — **C1.2 landed.** `createRedisClient` + `createRedisRepo(client)`. The
+  process-wide `redisRepo` remains until the stores are injected. Next: **C1.3**.
+- **2026-08-21** — **C1.3 landed.** `createAdmissionStore({ client })` — four methods,
+  injected into `createOutgoingService`. Methods removed from `redisRepo`. Next: **C1.4**.
+- **2026-08-21** — **C1.4 landed.** `createMessageStore({ client })` — five CRUD methods,
+  injected into outgoing, incoming, base, and the runner. Incoming no longer imports
+  `redisRepo`. Next: **C1.5**.
+- **2026-08-21** — **C1.5 landed.** `createStageStore({ client })`. `createRedisRepo` gone;
+  `redisRepo` is `{ client }`. Orphan ZREM dropped from `base.retryOrFail` (runner A1).
+  **C1 closed.**
+- **2026-08-22** — **C1 closeout.** Deleted `redis-repository/index.ts`. Process-wide
+  client is `redis` from `client.ts`. Shared `assertExecSucceeded`. Checklist items
+  4–8 ticked.

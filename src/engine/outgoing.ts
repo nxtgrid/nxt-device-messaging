@@ -1,27 +1,22 @@
 /**
- * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel,
- * distribute, send, resolution cycle.
+ * @fileoverview Outgoing command surface: enqueue, get-by-correlation, cancel, distribute,
+ * send.
  *
- * Unit 5.4 — fire-and-forget `sendOne` + post-send PUSH|PULL queue moves.
- * Unit 5.6 — `runMessageResolutionCycle` (timer wiring in `timers.ts`).
+ * Stage timeouts and retry requeueing are not here — they are rows in the stage table,
+ * driven by `lifecycle/runner.ts` (ADR-008). What remains is the ready queue: admission,
+ * the claim into `ns`, and the handoff to the plugin.
  */
 
 import type { DeliveryConfig } from '../config/schema.js';
-import {
-  getPushTimeouts,
-  maybeExtendMessageInRelayNodeQueue,
-} from '../lib/lifecycle.push.js';
-import { getPullTimeouts } from '../lib/lifecycle.pull.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, moveQueue } from '../lib/queue-moving.js';
-import { moveQueuePull } from '../lib/queue-moving.pull.js';
-import { QUEUE_RELAY_NODE_KEY, moveQueuePush } from '../lib/queue-moving.push.js';
-import { redisRepo } from '../lib/redis-repository/index.js';
-import { redisKeys } from '../lib/redis-repository/keys.js';
 import type {
   CancelMessageResult,
   CreateDeviceMessage,
   DeviceMessage,
 } from '../lib/device-message/types.js';
+import type { AdmissionStore } from '../lib/redis-repository/admission-store.js';
+import { redisKeys } from '../lib/redis-repository/keys.js';
+import type { MessageStore } from '../lib/redis-repository/message-store.js';
+import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
@@ -39,6 +34,9 @@ import {
   UnknownPluginError,
   UnsupportedCommandTypeError,
 } from './errors.js';
+import type { InFlightSends } from './in-flight-sends.js';
+import { createStageMoves } from './lifecycle/moves.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from './lifecycle/stages.js';
 
 /**
  * Outgoing command operations used by HTTP (and later by the engine).
@@ -67,15 +65,20 @@ export type OutgoingService = {
   cancelMany(correlationIds: readonly string[]): Promise<CancelMessageResult[]>;
   /**
    * One distribute tick: admit + pick into NS + fire-and-forget `sendOne`.
-   * Also invoked at the end of {@link OutgoingService.runMessageResolutionCycle}.
-   * Tests may call this directly.
+   * Kicked at the end of every engine tick; tests may call it directly.
    */
   distributeToNetworkServers(): Promise<void>;
   /**
-   * One resolution-cycle tick: NS/PUSH/PULL timeouts, retry requeue, then distribute.
-   * Timer wiring lands in `startEngineTimers`; tests may invoke this directly.
+   * Wait for sends already handed to a plugin, up to a budget (ADR-008 §8).
+   *
+   * Shutdown's order is: stop the timers so nothing new is picked, drain here, *then* close
+   * Redis — a send landing mid-drain still has to write its external id and move stage.
+   * Wiring that into `SIGTERM` is Shutdown v2; this only exposes the seam.
+   *
+   * @param budgetMs - How long to wait before abandoning the rest
+   * @returns The number still outstanding when the budget ran out
    */
-  runMessageResolutionCycle(): Promise<void>;
+  drainInFlightSends(budgetMs: number): Promise<number>;
 };
 
 /** Dependencies for {@link createOutgoingService}. */
@@ -85,21 +88,41 @@ export type CreateOutgoingServiceOptions = {
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
   /**
-   * When true (default), fire-and-forget {@link OutgoingService.distributeToNetworkServers}
-   * after a successful enqueue. Set false in tests that need the message to remain
-   * `QUEUED` (e.g. cancel smoke).
+   * Sends this process is still awaiting. Shared with the `ns` stage action, which must not
+   * time out a send we are still holding (ADR-008 §8).
    */
-  readonly kickDistributeOnEnqueue?: boolean;
+  readonly inFlightSends: InFlightSends;
+  /**
+   * When true, fire-and-forget {@link OutgoingService.distributeToNetworkServers}
+   * after a successful enqueue. Production passes `config.engine.enabled` so a
+   * service with the engine off stores commands but does not distribute them —
+   * no tick would follow up (ADR-008 §13 / B3).
+   */
+  readonly engineEnabled: boolean;
+  readonly admissionStore: AdmissionStore;
+  readonly messageStore: MessageStore;
+  readonly stageStore: StageStore;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, baseService, and optional enqueue-kick flag
+ * @param options - Registry, delivery, baseService, in-flight set, engine gate, stores, metrics
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
-  const { registry, delivery, baseService, kickDistributeOnEnqueue = true, metrics } = options;
+  const {
+    registry,
+    delivery,
+    baseService,
+    inFlightSends,
+    engineEnabled,
+    admissionStore,
+    messageStore,
+    stageStore,
+    metrics,
+  } = options;
+  const moves = createStageMoves({ delivery, metrics, stageStore });
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -114,7 +137,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     switch (admission.strategy) {
       case 'spacing': {
         const lockKey = redisKeys.lockForQueue(queueKey);
-        const lockAcquired = await redisRepo.lockQueueForTimeMs(
+        const lockAcquired = await admissionStore.lockQueueForTimeMs(
           lockKey,
           admission.minIntervalMs,
         );
@@ -123,9 +146,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return false;
-        const tracked = await redisRepo.getConcurrencyRateLimitCount(rateLimitKey);
+        const tracked = await admissionStore.getConcurrencyRateLimitCount(rateLimitKey);
         if (tracked >= admission.maxInFlight) {
-          const liveCount = await redisRepo.validateAndCleanConcurrencyRateLimit(rateLimitKey);
+          const liveCount = await admissionStore.validateAndCleanConcurrencyRateLimit(rateLimitKey);
           if (liveCount >= admission.maxInFlight) return false;
         }
         return true;
@@ -151,7 +174,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       case 'concurrency': {
         const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
         if (!rateLimitKey) return;
-        await redisRepo.claimConcurrencyRateLimit(rateLimitKey, messageId);
+        await admissionStore.claimConcurrencyRateLimit(rateLimitKey, messageId);
         return;
       }
       case 'custom':
@@ -193,6 +216,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         message.id,
         QUEUE_NS_KEY,
         plugin.outgoing.parseError(err),
+        plugin,
       );
       return;
     }
@@ -205,7 +229,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         externalReference: message.device.externalReference,
         correlationId: message.correlationId,
         messageId: message.id,
-      }, 'sendOne slow; resolution cycle may have already scheduled a retry');
+      }, 'sendOne slow; its ns deadline was held off while we waited');
     }
 
     if (!deliveryQueueId) {
@@ -216,86 +240,17 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
           reason: 'Plugin returned an empty deliveryQueueId after sendOne',
           skipRetry: true,
         },
+        plugin,
       );
       return;
     }
 
-    if (plugin.deliveryPattern === 'PULL') {
-      await moveQueuePull.fromNsToAwaitingTask({
-        id: message.id,
-        deliveryQueueId,
-        pluginId: plugin.id,
-        tuning: plugin.tuning,
-        messageTtlSeconds: delivery.messageTtlSeconds,
-      });
-      return;
-    }
-
-    await moveQueuePush.fromNsToRelayNode({
-      id: message.id,
+    await moves.advance({
+      messageId: message.id,
+      plugin,
+      from: 'ns',
       deliveryQueueId,
-      tuning: plugin.tuning,
-      messageTtlSeconds: delivery.messageTtlSeconds,
-    });
-  }
-
-  /**
-   * One lifecycle tick:
-   * 1. NS queue timeouts → retryOrFail
-   * 2. PUSH GW/Device timeouts (GW may extend via remote status) → retryOrFail
-   * 3. PULL age timeouts → emitDeliveryEvent then cleanup
-   * 4. Retry queue → requeue ready messages
-   * 5. Distribute (fire-and-forget)
-   */
-  async function runMessageResolutionCycle(): Promise<void> {
-    const now = Date.now();
-
-    // 1. Shared: NS queue timeout (both PUSH and PULL before branching)
-    const nsZombieIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_NS_KEY, now);
-    for (const messageId of nsZombieIds) {
-      await baseService.retryOrFail(messageId, QUEUE_NS_KEY, {
-        reason: 'Timed out waiting for Network Server to accept message',
-      });
-    }
-
-    // 2. PUSH: relay-node + device timeouts
-    const pushTimeouts = await getPushTimeouts(now);
-    for (const { messageId, queueKey, reason } of pushTimeouts) {
-      if (queueKey === QUEUE_RELAY_NODE_KEY) {
-        const message = await redisRepo.getMessageById(messageId);
-        if (message) {
-          const plugin = registry.get(message.pluginId);
-          if (plugin?.deliveryPattern === 'PUSH') {
-            const extended = await maybeExtendMessageInRelayNodeQueue(
-              messageId,
-              message,
-              plugin,
-            );
-            if (extended) continue;
-          }
-        }
-      }
-      await baseService.retryOrFail(messageId, queueKey, { reason });
-    }
-
-    // 3. PULL: age-based permanent failure — durable webhook first, then cleanup
-    const pullPluginIds = registry.getByDeliveryPattern('PULL').map(plugin => plugin.id);
-    const pullTimeouts = await getPullTimeouts(now, pullPluginIds);
-    for (const { message } of pullTimeouts) {
-      await baseService.emitDeliveryEvent(message);
-      metrics.recordMessageTerminal('DELIVERY_FAILED', message.retryCount ?? 0);
-      await redisRepo.messageFullCleanup(message);
-    }
-
-    // 4. Requeue messages whose backoff has elapsed
-    const readyToRetryIds = await redisRepo.getExpiredMessagesInQueue(QUEUE_RETRY_KEY, now);
-    for (const messageId of readyToRetryIds) {
-      await baseService.requeueMessage(messageId);
-    }
-
-    // 5. Kick distribution (not awaited — tick completes at handoff)
-    void distributeToNetworkServers().catch(err => {
-      logger.error({ module: 'outgoing', err }, 'distributeToNetworkServers failed');
+      retryCount: message.retryCount ?? 0,
     });
   }
 
@@ -307,7 +262,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    * or custom hooks — never inferred from the human `kind` segment of the queue key.
    */
   async function distributeToNetworkServers(): Promise<void> {
-    const activeQueues = await redisRepo.fetchQueuesWithMessages();
+    const activeQueues = await moves.listReadyQueues();
 
     await Promise.all(activeQueues.map(async queueKey => {
       const pluginId = getPluginIdFromInitialQueueKey(queueKey);
@@ -319,7 +274,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       const admitted = await _canAdmit(plugin, queueKey);
       if (!admitted) return;
 
-      const messageToSend = await moveQueue.pickNextAndMoveToNs(queueKey, plugin.tuning);
+      const messageToSend = await moves.pickIntoNs(queueKey, plugin);
       if (!messageToSend) return;
 
       await _onClaimAfterPick(plugin, queueKey, messageToSend.id);
@@ -330,8 +285,12 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         await baseService.emitDeliveryEvent(messageToSend);
       }
 
-      // Fire-and-forget: distribute considers the handoff done once picked.
-      void _sendOneToNetworkServer(plugin, messageToSend).catch(err => {
+      // Track the whole send-and-transition so a due ns tick cannot retry while
+      // we still hold the member (ADR-008 §8). Register before the event loop turns.
+      void inFlightSends.track(
+        messageToSend.id,
+        _sendOneToNetworkServer(plugin, messageToSend),
+      ).catch(err => {
         logger.error({ module: 'outgoing', err }, 'sendOne failed');
       });
     }));
@@ -358,23 +317,20 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       return false;
     }
 
-    let queueKey: string | undefined;
-    if (deliveryStatus === 'TO_RETRY') {
-      queueKey = QUEUE_RETRY_KEY;
-    }
-    else {
-      const plugin = registry.get(message.pluginId);
-      if (!plugin || plugin.deliveryPattern === 'NONE') return false;
-      queueKey = plugin.initialQueueKey({
+    const plugin = registry.get(message.pluginId);
+    if (!plugin || plugin.deliveryPattern === 'NONE') return false;
+
+    const queueKey = deliveryStatus === 'TO_RETRY'
+      ? QUEUE_RETRY_KEY
+      : plugin.initialQueueKey({
         networkId: message.networkId,
         device: message.device,
       });
-    }
 
-    const removed = await redisRepo.removeMessageFromQueue(queueKey, message.id);
-    if (removed === 0) return false;
+    const claimed = await moves.claimFromQueue(queueKey, message.id);
+    if (!claimed) return false;
 
-    await redisRepo.messageFullCleanup(message);
+    await moves.purge({ message, plugin });
     metrics.recordMessageTerminal('CANCELLED', message.retryCount ?? 0);
     return true;
   }
@@ -393,7 +349,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   async function _cancelOneByCorrelationId(
     correlationId: string,
   ): Promise<CancelMessageResult> {
-    const messages = await redisRepo.getAllMessagesForCorrelationId(correlationId);
+    const messages = await messageStore.getAllMessagesForCorrelationId(correlationId);
 
     if (messages.length === 0) {
       return { correlationId, result: 'NOT_FOUND' };
@@ -426,10 +382,14 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
         device: create.device,
       });
 
-      const message = await redisRepo.enqueueDeviceMessage(create, queueKey);
+      const message = await messageStore.enqueueDeviceMessage(
+        create,
+        queueKey,
+        delivery.messageTtlSeconds,
+      );
 
       // Fire-and-forget: try a distribute tick after enqueue.
-      if (kickDistributeOnEnqueue) {
+      if (engineEnabled) {
         void distributeToNetworkServers().catch(err => {
           logger.error({ module: 'outgoing', err }, 'distribute after enqueue failed');
         });
@@ -439,7 +399,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     getByCorrelationId(correlationId: string): Promise<DeviceMessage | null> {
-      return redisRepo.getMessageFromCorrelationId(correlationId);
+      return messageStore.getMessageFromCorrelationId(correlationId);
     },
 
     cancelOne(correlationId: string): Promise<CancelMessageResult> {
@@ -464,6 +424,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     distributeToNetworkServers,
-    runMessageResolutionCycle,
+
+    drainInFlightSends(budgetMs: number): Promise<number> {
+      return inFlightSends.drain(budgetMs);
+    },
   };
 }

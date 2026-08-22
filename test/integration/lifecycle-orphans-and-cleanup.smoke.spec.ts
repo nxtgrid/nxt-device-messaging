@@ -4,8 +4,9 @@
  * 1. **Orphan scrubbing** — a queue member whose hash is gone must not stay forever.
  * 2. **Cleanup completeness** — a message that ends leaves no Redis reference behind.
  *
- * Both are asserted against *today's* behaviour, gaps included, so the refactor's diff
- * shows exactly which assertions it fixes.
+ * Both were first written against the pre-refactor behaviour, gaps included, so that the
+ * stage table's diff would show exactly which assertions it fixed. They now assert the
+ * fixed behaviour (A1, A2, A4).
  *
  * Opt-in (needs Valkey):
  *
@@ -16,14 +17,15 @@ import { ulid } from 'ulid';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
-import { createBaseService } from '#src/engine/base.js';
-import { createIncomingService, type IncomingService } from '#src/engine/incoming.js';
-import { createOutgoingService, type OutgoingService } from '#src/engine/outgoing.js';
+import type { LifecycleRunner } from '#src/engine/lifecycle/runner.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
+import { QUEUE_NS_KEY, QUEUE_RETRY_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
+import type { OutgoingService } from '#src/engine/outgoing.js';
 import type { DeviceMessage, DeviceMessageDevice } from '#src/lib/device-message/types.js';
-import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from '#src/lib/queue-moving.js';
-import { QUEUE_DEVICE_KEY, QUEUE_RELAY_NODE_KEY } from '#src/lib/queue-moving.push.js';
+import { redis } from '#src/lib/redis-repository/client.js';
 import { redisKeys } from '#src/lib/redis-repository/keys.js';
-import { redisRepo } from '#src/lib/redis-repository/index.js';
+import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
+import { createEngineHarness } from '../helpers/engine-harness.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 import { createProgrammablePlugin } from '../helpers/programmable-plugin.js';
 import {
@@ -43,7 +45,7 @@ const PULL_PLUGIN_ID = 'smoke-cleanup-pull';
 const NETWORK_ID = 503;
 const RELAY_NODE_ID = 21;
 const AWAITING_TASK_KEY = redisKeys.queueAwaitingTask(PULL_PLUGIN_ID);
-/** Past the hardcoded 48h PULL ceiling in `lifecycle.pull.ts`. */
+/** Past the hardcoded 48h PULL ceiling (`PULL_MAX_MESSAGE_AGE_MS`). */
 const AGED_MESSAGE_OFFSET_MS = 49 * 60 * 60 * 1000;
 
 const PUSH_DEVICE: DeviceMessageDevice = {
@@ -66,6 +68,7 @@ const PULL_QUEUE_KEY = createProgrammablePlugin({
 
 type PushHarness = {
   readonly outgoing: OutgoingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
 };
 
@@ -83,28 +86,18 @@ function createPushHarness(options: {
     sendOne: options.sendOne,
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
+  const { outgoing, runner } = createEngineHarness({
+    registry,
+    delivery,
+    webhook: recorder.webhook,
+  });
 
-  return {
-    recorder,
-    outgoing: createOutgoingService({
-      registry,
-      delivery,
-      baseService: createBaseService({
-        registry,
-        delivery,
-        webhook: recorder.webhook,
-        metrics,
-      }),
-      metrics,
-      kickDistributeOnEnqueue: false,
-    }),
-  };
+  return { recorder, outgoing, runner };
 }
 
 type PullHarness = {
   readonly outgoing: OutgoingService;
-  readonly incoming: IncomingService;
+  readonly runner: LifecycleRunner;
   readonly recorder: WebhookRecorder;
 };
 
@@ -115,24 +108,16 @@ function createPullHarness(): PullHarness {
     deliveryPattern: 'PULL',
   });
   const recorder = createWebhookRecorder();
-  const metrics = noopMetrics;
-  const baseService = createBaseService({
+  const { outgoing, runner } = createEngineHarness({
     registry,
     delivery,
     webhook: recorder.webhook,
-    metrics,
   });
 
   return {
     recorder,
-    outgoing: createOutgoingService({
-      registry,
-      delivery,
-      baseService,
-      metrics,
-      kickDistributeOnEnqueue: false,
-    }),
-    incoming: createIncomingService({ registry, delivery, baseService, metrics }),
+    outgoing,
+    runner,
   };
 }
 
@@ -173,38 +158,36 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
   });
 
   afterAll(async () => {
-    await redisRepo.client.quit();
+    await redis.quit();
   });
 
   describe('orphan scrubbing', () => {
     it.each([
       { stage: 'NS', queueKey: QUEUE_NS_KEY },
-      { stage: 'relay-node', queueKey: QUEUE_RELAY_NODE_KEY },
-      { stage: 'device', queueKey: QUEUE_DEVICE_KEY },
+      { stage: 'relay-node', queueKey: STAGES.relayNode.key() },
+      { stage: 'device', queueKey: STAGES.device.key() },
       { stage: 'retry', queueKey: QUEUE_RETRY_KEY },
     ])('scrubs an orphan from the $stage queue', async ({ queueKey }) => {
-      const { outgoing } = createPushHarness();
+      const { runner } = createPushHarness();
       const orphanId = trackedOrphanId();
-      await redisRepo.client.zadd(queueKey, Date.now() - 1, orphanId);
+      await redis.zadd(queueKey, Date.now() - 1, orphanId);
 
-      await outgoing.runMessageResolutionCycle();
+      await runner.tick();
 
-      expect(await redisRepo.client.zscore(queueKey, orphanId)).toBeNull();
+      expect(await redis.zscore(queueKey, orphanId)).toBeNull();
     });
 
-    it('never scrubs an orphan from the awaiting-task queue (A1/A2)', async () => {
-      // A1: the poll loop `continue`s past a missing hash without removing the member.
-      // A2: it also leaves the score untouched, so the orphan is re-read every tick
-      // and the vendor is asked about it forever. The stage table must scrub here and
-      // advance the score on every branch; this should then be null.
-      const { incoming } = createPullHarness();
+    it('scrubs an orphan from the awaiting-task queue (A1)', async () => {
+      // The stage the poll loop used to skip: a missing hash left the member in place at
+      // an unchanged score, so the vendor was asked about a message that no longer
+      // existed, on every tick, forever. The runner scrubs every stage the same way.
+      const { runner } = createPullHarness();
       const orphanId = trackedOrphanId();
-      const dueAt = Date.now() - 1;
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, dueAt, orphanId);
+      await redis.zadd(AWAITING_TASK_KEY, Date.now() - 1, orphanId);
 
-      await incoming.pollPullPlugins();
+      await runner.tick();
 
-      expect(await redisRepo.client.zscore(AWAITING_TASK_KEY, orphanId)).toBe(String(dueAt));
+      expect(await redis.zscore(AWAITING_TASK_KEY, orphanId)).toBeNull();
     });
   });
 
@@ -253,12 +236,12 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
     });
 
     it('leaves nothing behind when a PULL message exceeds its maximum age', async () => {
-      const { outgoing, recorder } = createPullHarness();
+      const { runner, recorder } = createPullHarness();
       const correlationId = `cleanup-pull-aged-${ Date.now() }`;
       const agedId = ulid(Date.now() - AGED_MESSAGE_OFFSET_MS);
       trash.push({ id: agedId, correlationId });
 
-      await redisRepo.client.hset(redisKeys.message(agedId), {
+      await redis.hset(redisKeys.message(agedId), {
         commandType: 'READ_CREDIT',
         priority: 1,
         pluginId: PULL_PLUGIN_ID,
@@ -267,14 +250,16 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
         deliveryStatus: 'DELIVERED_TO_NS',
         deliveryQueueId: 'ext-aged',
       });
-      await redisRepo.client.set(
+      await redis.set(
         redisKeys.indexCorrelationId(correlationId),
         redisKeys.message(agedId),
       );
-      // Not yet due for polling — the age reaper, not the poll loop, must claim it.
-      await redisRepo.client.zadd(AWAITING_TASK_KEY, Date.now() + 60_000, agedId);
+      // Due, because the age cap is now a property of the awaiting-task stage rather than
+      // a separate full-queue scan (ADR-008 §9): an aged message is caught on its next
+      // poll, which the ladder puts at most 30s out against a two-day cap.
+      await redis.zadd(AWAITING_TASK_KEY, Date.now() - 1, agedId);
 
-      await outgoing.runMessageResolutionCycle();
+      await runner.tick();
 
       const failures = recorder.withStatus('DELIVERY_FAILED');
       expect(failures).toHaveLength(1);
@@ -287,23 +272,28 @@ describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
       ).toEqual([]);
     });
 
-    it('cannot clear the initial or retry queue (A4)', async () => {
-      // A4: `messageFullCleanup` only sweeps the fixed stage queues plus awaiting-task,
-      // so membership of an initial queue or the retry queue survives it as a permanent
-      // orphan. No production path reaches this today, which is why it is asserted at the
-      // repository contract rather than through the engine. The stage table must derive
-      // the sweep list from the table; this should then be [].
+    it('clears the ready and retry queues too (A4)', async () => {
+      // A4 was a hand-written sweep list that omitted the retry queue and the ready queue,
+      // leaving permanent orphans there. `purge` derives the list from the stage table plus
+      // the plugin's ready queue, so both go — even with the message in two queues at once,
+      // which no production path produces but which pins the derivation.
       const { outgoing } = createPushHarness();
+      const { plugin } = createProgrammablePlugin({
+        id: PUSH_PLUGIN_ID,
+        deliveryPattern: 'PUSH',
+      });
+      const moves = createStageMoves({
+        delivery: baseDelivery,
+        metrics: noopMetrics,
+        stageStore: createStageStore({ client: redis }),
+      });
       const correlationId = `cleanup-partial-${ Date.now() }`;
       const enqueued = await enqueuePushTracked(outgoing, correlationId);
-      await redisRepo.client.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);
+      await redis.zadd(QUEUE_RETRY_KEY, Date.now() + 60_000, enqueued.id);
 
-      await redisRepo.messageFullCleanup(enqueued);
+      await moves.purge({ message: enqueued, plugin });
 
-      expect(await findMessageReferences(enqueued.id, { correlationId })).toEqual([
-        PUSH_QUEUE_KEY,
-        QUEUE_RETRY_KEY,
-      ]);
+      expect(await findMessageReferences(enqueued.id, { correlationId })).toEqual([]);
     });
   });
 });

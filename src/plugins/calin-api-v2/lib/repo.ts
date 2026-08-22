@@ -11,6 +11,7 @@
  */
 
 import { logger } from '../../../log.js';
+import { CLIENT_SAFETY_DEADLINE_MS } from '../../_shared/client-safety-deadline.js';
 
 /** Options for {@link CalinApiV2Error}. */
 export type CalinApiV2ErrorOptions = {
@@ -257,6 +258,7 @@ export function createCalinApiV2Client(deps: {
           Authorization: `Bearer ${ bearer }`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CLIENT_SAFETY_DEADLINE_MS),
       });
 
       if (response.status === 401) {

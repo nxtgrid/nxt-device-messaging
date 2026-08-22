@@ -7,6 +7,7 @@
  */
 
 import { logger } from '../../../log.js';
+import { CLIENT_SAFETY_DEADLINE_MS } from '../../_shared/client-safety-deadline.js';
 
 /** Transport / vendor failure from {@link createNxtStsClient}. */
 export class NxtStsError extends Error {
@@ -56,6 +57,7 @@ export function createNxtStsClient(deps: { readonly apiBaseUrl: string }) {
           Accept: 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(CLIENT_SAFETY_DEADLINE_MS),
       });
 
       if (!response.ok) {

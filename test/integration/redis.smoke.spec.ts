@@ -13,28 +13,32 @@ import { afterAll, describe, expect, it } from 'vitest';
 const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 
 describe.skipIf(!shouldRun)('redis repository smoke', () => {
-  let redisRepo: typeof import('../../src/lib/redis-repository/index.js').redisRepo;
+  let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 
   afterAll(async () => {
-    if (redisRepo) {
-      await redisRepo.client.quit();
+    if (redis) {
+      await redis.quit();
     }
   });
 
   it('connects, registers Lua commands, and round-trips a message', async () => {
-    ({ redisRepo } = await import('../../src/lib/redis-repository/index.js'));
+    ({ redis } = await import('../../src/lib/redis-repository/client.js'));
     ({ redisKeys } = await import('../../src/lib/redis-repository/keys.js'));
+    const { createMessageStore } = await import('../../src/lib/redis-repository/message-store.js');
+    const { createStageStore } = await import('../../src/lib/redis-repository/stage-store.js');
+    const messageStore = createMessageStore({ client: redis });
+    const stageStore = createStageStore({ client: redis });
 
-    expect(await redisRepo.client.ping()).toBe('PONG');
-    expect(typeof redisRepo.client.fetchNextMessageInQueueAndMove).toBe('function');
-    expect(typeof redisRepo.client.moveMessageBetweenQueues).toBe('function');
+    expect(await redis.ping()).toBe('PONG');
+    expect(typeof redis.fetchNextMessageInQueueAndMove).toBe('function');
+    expect(typeof redis.moveMessageBetweenQueues).toBe('function');
 
     const correlationId = `smoke-${ Date.now() }`;
     const queueKey = `queue:smoke:${ correlationId }`;
 
     try {
-      const enqueued = await redisRepo.enqueueDeviceMessage(
+      const enqueued = await messageStore.enqueueDeviceMessage(
         {
           commandType: 'READ_CREDIT',
           priority: 1,
@@ -47,12 +51,13 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
           },
         },
         queueKey,
+        604800,
       );
 
       expect(enqueued.commandType).toBe('READ_CREDIT');
       expect(enqueued.deliveryStatus).toBe('QUEUED');
 
-      const message = await redisRepo.getMessageFromCorrelationId(correlationId);
+      const message = await messageStore.getMessageFromCorrelationId(correlationId);
       expect(message).not.toBeNull();
       expect(message?.commandType).toBe('READ_CREDIT');
       expect(message?.pluginId).toBe('smoke-test');
@@ -60,35 +65,34 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       expect(message?.deliveryStatus).toBe('QUEUED');
       expect(message?.device.externalReference).toBe('smoke-meter');
 
-      // Initial bottleneck queue is not in messageFullCleanup's stage list.
-      await redisRepo.client.zrem(queueKey, message!.id);
-      await redisRepo.messageFullCleanup(message!);
+      // The caller names the queues to sweep; here that is just the initial queue this
+      // message was enqueued into (`StageMoves.purge` derives the real list).
+      await stageStore.messageFullCleanup(message!, [ queueKey ]);
 
       // messageFullCleanup does not SREM queues_to_distribute_from — the distributor Lua
       // GC's that when a queue empties. Smoke has no distribute pass, so tidy explicitly.
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );
 
-      expect(await redisRepo.getMessageFromCorrelationId(correlationId)).toBeNull();
-      expect(await redisRepo.client.zcard(queueKey)).toBe(0);
-      expect(await redisRepo.client.sismember(
+      expect(await messageStore.getMessageFromCorrelationId(correlationId)).toBeNull();
+      expect(await redis.zcard(queueKey)).toBe(0);
+      expect(await redis.sismember(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       )).toBe(0);
     }
     finally {
-      const leftover = await redisRepo.getMessageFromCorrelationId(correlationId);
+      const leftover = await messageStore.getMessageFromCorrelationId(correlationId);
       if (leftover) {
-        await redisRepo.client.zrem(queueKey, leftover.id);
-        await redisRepo.messageFullCleanup(leftover);
+        await stageStore.messageFullCleanup(leftover, [ queueKey ]);
       }
-      await redisRepo.client.srem(
+      await redis.srem(
         redisKeys.listOfInitialQueuesToDistributeFrom(),
         queueKey,
       );
-      await redisRepo.client.del(queueKey);
+      await redis.del(queueKey);
     }
   });
 });

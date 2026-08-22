@@ -87,6 +87,7 @@ PUSH — gRPC enqueue, encode/decode/correlate, outgoing, incoming; enable via `
 `registerOpenApi` → `/v3/api-docs` + `/swagger`; `smoke/` httpYac),
 `src/engine/` peer factories — `createBaseService` (optional `webhook`) /
 `createOutgoingService` / `createIncomingService` / `createTokenService` +
+`src/engine/lifecycle/` (stage table, moves, actions, one 1000 ms runner) +
 `startEngineTimers` (`engine.enabled`). Outbound adopter notify →
 `src/engine/webhook/` (`storeAndEmit` / private drain / POST / retry / DLQ / opt-in
 HMAC; OpenAPI `webhooks.deliveryEvent` + `WebhookEvent`); wired from `main` when
@@ -146,6 +147,7 @@ confusingly, both repos have an ADR-001 and both are relevant here.
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency` / `custom`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
+| 008 | Message lifecycle is a stage table — one runner, one 1000 ms tick, pipelines as data |
 
 ### `nxt-backend` ADRs that constrain this repo
 

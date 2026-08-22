@@ -86,8 +86,8 @@ export function createInMemoryOutgoingService(
       // no-op — HTTP unit tests do not exercise distribute
     },
 
-    async runMessageResolutionCycle(): Promise<void> {
-      // no-op — HTTP unit tests do not exercise the resolution cycle
+    async drainInFlightSends(_budgetMs: number): Promise<number> {
+      return 0;
     },
   };
 }
