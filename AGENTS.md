@@ -94,7 +94,7 @@ index table above.
 | File | What it holds | Load when |
 |---|---|---|
 | `docs/decisions-log.md` | Parked / open / deferred-with-criteria | The task is follow-ups or “is this parked?” |
-| `docs/plans/002-architecture-review.md` | Open follow-up plan | Working an item on that plan |
+| `docs/plans/002-architecture-review.md` | Finished follow-up plan | Only if the task cites it |
 | `docs/architecture/` | ADRs | The index above says so |
 | `docs/archive/` | Named-era journals | The task cites a file there. Not otherwise. |
 

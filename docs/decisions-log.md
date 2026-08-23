@@ -18,13 +18,14 @@ outbound webhook, metrics, first-party plugins (CALIN V1/V2, ChirpStack, nxt-sts
 Message lifecycle is a stage table (ADR-008). One replica (ADR-007). Core-owned
 `PluginTuning` defaults (ADR-002).
 
-Open follow-up plan: [`docs/plans/002-architecture-review.md`](plans/002-architecture-review.md).
+Plan 002 is finished: [`docs/plans/002-architecture-review.md`](plans/002-architecture-review.md).
+Leftovers live in **Parked / revisit** below.
 
 ---
 
 ## Open decisions
 
-Nothing blocking. Follow-ups are **Parked / revisit** and plan 002.
+Nothing blocking. Follow-ups are **Parked / revisit**.
 
 ---
 
@@ -50,7 +51,8 @@ item lands, strike it here.
 | Message-bus adapter for delivery events | A consumer needs broker delivery | ADR-003 |
 | Dead-letter admin / replay HTTP | Ops needs DLQ replay without Redis access | ADR-003 |
 | Debug HTTP to run distribute / poll once | Manual smoke against timers becomes painful | — |
-| HA / multi-replica (leader election, Redis-backed correlator) | Operator needs >1 replica | ADR-007 |
+| HA / multi-replica (leader election, Redis-backed correlator) | Operator needs >1 replica | ADR-007; plan 002 item 11 |
+| Capability bundles — token providers vs delivery plugins | A second token-only plugin, or a delivery plugin that also mints | Plan 002 item 12; designed, not built |
 | Domain rename (`DeviceMessage` → dispatch-flavoured) | Only if the service is real and test-covered | ADR-001 Rejected |
 
 ---

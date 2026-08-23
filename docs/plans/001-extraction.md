@@ -1,8 +1,9 @@
 # Extraction Plan — device-messages → nxt-device-messaging
 
 > **History. Not executable.** This plan is finished (Phase 0–4 done). Do not treat it as
-> instructions. Living follow-ups: [`docs/decisions-log.md`](../decisions-log.md). Open plan:
-> [`002-architecture-review.md`](002-architecture-review.md). The extraction-era journal is
+> instructions. Living follow-ups: [`docs/decisions-log.md`](../decisions-log.md). Plan 002 is
+> also finished: [`002-architecture-review.md`](002-architecture-review.md). The extraction-era
+> journal is
 > [`docs/archive/decisions-log-extraction.md`](../archive/decisions-log-extraction.md).
 
 **Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), ADR-004 (tooling),

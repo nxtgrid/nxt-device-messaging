@@ -1,9 +1,12 @@
 # Plan 002 — Architecture review and deepening
 
-**Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 and D landed.** Next is the remaining optionals
-(item 11: `eventCorrelator` stays parked for multi-replica). Check-then-claim landed. Spacing floor struck. C5 helper-sharing declined in full. Capability bundles stay trigger-gated.
-**Branch:** branch 3, cut after branch 2. See § *Branch discipline*.
+> **History. Not executable.** Checklist items 1–10 landed. Item 11 (`eventCorrelator`) stays
+> parked for multi-replica (ADR-007). Item 12 (capability bundles) stays trigger-gated. Living
+> follow-ups: [`docs/decisions-log.md`](../decisions-log.md).
+
+**Status:** finished — 2026-08-23. Review complete (2026-08-18/19). Branches 1–3 landed.
+Check-then-claim landed. Spacing floor struck. C5 helper-sharing declined in full.
+**Branch:** branch 3 (last). See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -77,7 +80,8 @@ The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first 
 with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
-directions. **9 (C4) and 10 (D) landed** on this branch. 11–12 remain.
+directions. **9 (C4) and 10 (D) landed** on this branch. Item 11 stays parked (multi-replica).
+Item 12 stays trigger-gated. No further work on this plan.
 
 ### Why this order
 
@@ -889,5 +893,5 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
   only sweeps dead members when at cap. Review follow-up: argument order matches Redis
   (KEYS then ARGV, no shuffle); `ConcurrencyRateLimit` (`key` / `max`) is chosen in
   `outgoing` and forwarded by `moves`. `_onClaimAfterPick` / `onClaim` / `onRelease`
-  and the `custom` strategy are gone. Next on item 11: `eventCorrelator` stays
-  parked (ADR-007 / multi-replica).
+  and the `custom` strategy are gone. Plan 002 is finished: item 11 (`eventCorrelator`)
+  stays parked (ADR-007 / multi-replica); item 12 stays trigger-gated.
