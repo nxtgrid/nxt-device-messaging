@@ -2,7 +2,7 @@
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
 Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 and D landed.** Next is the remaining optionals
-(item 11: check-then-claim). Spacing floor struck. C5 helper-sharing declined in full. Capability bundles stay trigger-gated.
+(item 11: `eventCorrelator` stays parked for multi-replica). Check-then-claim landed. Spacing floor struck. C5 helper-sharing declined in full. Capability bundles stay trigger-gated.
 **Branch:** branch 3, cut after branch 2. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
@@ -56,7 +56,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☑ 2026-08-22 |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☑ 2026-08-22 |
-| 11 | **Optional** — check-then-claim race | — | Composer / Grok | 3 | ☐ |
+| 11 | **Optional** — `eventCorrelator` module state (parked, multi-replica) | — | Composer / Grok | 3 | ☐ parked |
 | 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
 
 ### Branch discipline
@@ -350,7 +350,7 @@ cluster cleanly, so split along the clusters:
 |---|---|---|
 | `MessageStore` | `enqueueDeviceMessage`, `getMessageById`, `getMessageFromCorrelationId`, `getAllMessagesForCorrelationId`, `getMessageIdFromDeliveryQueueId` | `outgoing` (enqueue / get / cancel), `incoming` (ingress lookup), `base`, `runner` |
 | `StageStore` | `moveMessageBetweenQueues` + `fetchNextMessageInQueueAndMove` (Lua), `getExpiredMessagesInQueue`, `removeMessageFromQueue`, `requeueMessage`, `messageFullCleanup`, `fetchQueuesWithMessages`, and the raw `zadd` / `zscore` / `hmget` / `multi` that `enterRetry` needs | `lifecycle/moves.ts` and `lifecycle/runner.ts` — **nothing else** |
-| `AdmissionStore` | `lockQueueForTimeMs`, `claimConcurrencyRateLimit`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit` / `_onClaimAfterPick`) |
+| `AdmissionStore` | `lockQueueForTimeMs`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit`). Concurrency claim is in fetch-next Lua. |
 
 The payoff is in the third column. `StageStore` is the one that carries real Redis vocabulary, and
 after C2 only two files touch it — `moves.ts` already hides it behind `StageMoves`. So once this
@@ -686,7 +686,7 @@ history banner. README status describes a standalone service.
 |---|---|
 | Drop `ramda` | **Declined 2026-08-23.** Four imports, four one-liners (`isNotNil`, `isEmpty`, `fromPairs`, `splitEvery`). Sites: `engine/base.ts`, `engine/incoming.ts`, `redis-repository/message-store.ts` (was `index.ts` at review), `redis-repository/helpers.ts`. An inline replacement was attempted and reverted; `ramda` and `@types/ramda` stay. |
 | Spacing floor | **Struck 2026-08-23.** The 2 s resolution cycle is gone; C2's 1 s tick already removed that floor (ADR-008 §10). Residual: values under 1 s are still only observed on the next tick. Noted in `CONTRIBUTING.md`, `docs/guides/integrating.md`, and the plugin SPI — prefer whole-second config. |
-| Check-then-claim race | `_canAdmit` reads the concurrency count (`outgoing.ts:126`) and `_onClaimAfterPick` writes the claim (`outgoing.ts:154`) as separate round-trips, with a Lua pick between. Every enqueue fire-and-forgets its own distribute pass, so concurrent passes can all see `tracked < maxInFlight` and transiently overshoot. Fold the claim into the pick. |
+| Check-then-claim race | **Landed 2026-08-23.** Fetch-next Lua takes an optional concurrency set + cap: SCARD ≥ max returns nil without popping; otherwise ZPOPMIN + SADD + HSET `concurrencyRateLimitKey` in the same script. `_canAdmit` only sweeps dead members when at cap. Post-pick `onClaim` and `custom` admission removed. |
 | `eventCorrelator` module state | `plugins/calin-chirpstack/lib/correlate-request-response.ts:33,119` — module-level `Map` plus a module-level `setInterval` started on import. Same convention mismatch as C1, much smaller blast radius. Deliberate per ADR-007; revisit only with multi-replica. |
 
 ---
@@ -697,7 +697,7 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 
 | Topic | Outcome |
 |---|---|
-| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Spacing-floor residue **struck** (2026-08-23); remaining optional is the check-then-claim race. |
+| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Spacing-floor residue **struck** (2026-08-23); check-then-claim **landed** (2026-08-23). `eventCorrelator` stays parked (multi-replica). |
 | **A3 severity** | Confirmed reachable in production — CALIN calls observed at up to 37 seconds against a 20s NS timeout. Rare but real; fix properly rather than patch. |
 | **Ordering** | B1 first (no design needed, it is the safety net). Then settle C2's shape before A1–A4, because those four are symptoms of C2. Abandon C2 and write point fixes if its design proves sprawling. |
 | **C1 scope** | Not a standalone project. Injecting a shallow module yields a shallow injected module. C1 follows C2. |
@@ -884,3 +884,10 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-23** — **Spacing floor struck.** 2 s cycle gone; 1 s tick is the grain
   (ADR-008 §10). Whole-second note in `CONTRIBUTING.md`, `docs/guides/integrating.md`,
   and the plugin SPI. Next: check-then-claim.
+- **2026-08-23** — **Check-then-claim landed.** Fetch-next Lua claims the concurrency
+  slot in the same script as the pick (SCARD cap → ZPOPMIN + SADD/HSET). `_canAdmit`
+  only sweeps dead members when at cap. Review follow-up: argument order matches Redis
+  (KEYS then ARGV, no shuffle); `ConcurrencyRateLimit` (`key` / `max`) is chosen in
+  `outgoing` and forwarded by `moves`. `_onClaimAfterPick` / `onClaim` / `onRelease`
+  and the `custom` strategy are gone. Next on item 11: `eventCorrelator` stays
+  parked (ADR-007 / multi-replica).

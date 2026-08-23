@@ -37,12 +37,19 @@ export type StageStore = {
     deliveryQueueId: string,
     indexTtlSeconds: number | string,
   ): Promise<MoveMessageResult>;
+  /**
+   * Pop the highest-priority member of `sourceQueue` into `destinationQueue`.
+   * Argument order is Lua order: KEYS[1..4], then ARGV[1..3]. Pass `''` / `0`
+   * for the occupancy pair to skip the cap.
+   */
   fetchNextMessageInQueueAndMove(
     sourceQueue: string,
     destinationQueue: string,
     queuesToDistributeFrom: string,
+    concurrencyRateLimitKey: string,
     timeoutAt: number | string,
     newStatus: DeviceMessageDeliveryStatus,
+    maxInFlight: number | string,
   ): Promise<FetchNextMessageResult>;
   /**
    * Find members whose score is at or below `cutoffDate`.
@@ -147,15 +154,19 @@ export function createStageStore(options: CreateStageStoreOptions): StageStore {
       sourceQueue,
       destinationQueue,
       queuesToDistributeFrom,
+      concurrencyRateLimitKey,
       timeoutAt,
       newStatus,
+      maxInFlight,
     ) {
       return client.fetchNextMessageInQueueAndMove(
         sourceQueue,
         destinationQueue,
         queuesToDistributeFrom,
+        concurrencyRateLimitKey,
         timeoutAt,
         newStatus,
+        maxInFlight,
       );
     },
 

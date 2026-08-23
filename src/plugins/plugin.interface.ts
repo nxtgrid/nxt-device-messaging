@@ -45,15 +45,9 @@ export type InitialQueueKeyInput = {
   device: DeviceMessageDevice;
 };
 
-/** Context passed to custom admission hooks. */
-export type DistributeCtx = {
-  readonly queueKey: string;
-  readonly pluginId: PluginId;
-};
-
 /**
  * Named admission strategies (ADR-006 §2).
- * Core executes `spacing` / `concurrency`; plugins only declare (or supply `custom` hooks).
+ * Core executes `spacing` / `concurrency`; plugins only declare which one.
  */
 export type Admission =
   | {
@@ -67,12 +61,6 @@ export type Admission =
   | {
     readonly strategy: 'concurrency';
     readonly maxInFlight: number;
-  }
-  | {
-    readonly strategy: 'custom';
-    canDistribute(ctx: DistributeCtx): Promise<boolean>;
-    onClaim?(ctx: DistributeCtx & { messageId: string }): Promise<void>;
-    onRelease?(ctx: DistributeCtx & { messageId: string }): Promise<void>;
   };
 
 /**

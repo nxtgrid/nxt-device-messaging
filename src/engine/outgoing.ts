@@ -23,10 +23,7 @@ import {
   buildConcurrencyRateLimitKey,
   getPluginIdFromInitialQueueKey,
 } from '../plugins/_shared/initial-queue-key.js';
-import type {
-  DeliveryPlugin,
-  DistributeCtx,
-} from '../plugins/plugin.interface.js';
+import type { DeliveryPlugin } from '../plugins/plugin.interface.js';
 import type { PluginRegistry } from '../plugins/registry.js';
 import type { BaseService } from './base.js';
 import {
@@ -132,7 +129,6 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    */
   async function _canAdmit(plugin: DeliveryPlugin, queueKey: string): Promise<boolean> {
     const { admission } = plugin;
-    const ctx: DistributeCtx = { queueKey, pluginId: plugin.id };
 
     switch (admission.strategy) {
       case 'spacing': {
@@ -151,37 +147,9 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
           const liveCount = await admissionStore.validateAndCleanConcurrencyRateLimit(rateLimitKey);
           if (liveCount >= admission.maxInFlight) return false;
         }
+        // Slot claim is atomic with the pick (fetch-next Lua). This is only the dead-member sweep.
         return true;
       }
-      case 'custom':
-        return admission.canDistribute(ctx);
-    }
-  }
-
-  /**
-   * Post-pick admission hook (concurrency claim / custom `onClaim`).
-   *
-   * @param plugin - Owning delivery plugin (`admission`)
-   * @param queueKey - Initial-queue Redis key the message was picked from
-   * @param messageId - ULID of the claimed message
-   */
-  async function _onClaimAfterPick(plugin: DeliveryPlugin, queueKey: string, messageId: string): Promise<void> {
-    const { admission } = plugin;
-
-    switch (admission.strategy) {
-      case 'spacing':
-        return;
-      case 'concurrency': {
-        const rateLimitKey = buildConcurrencyRateLimitKey(queueKey);
-        if (!rateLimitKey) return;
-        await admissionStore.claimConcurrencyRateLimit(rateLimitKey, messageId);
-        return;
-      }
-      case 'custom':
-        if (admission.onClaim) {
-          await admission.onClaim({ queueKey, pluginId: plugin.id, messageId });
-        }
-        return;
     }
   }
 
@@ -258,8 +226,8 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
    * Process all initial queues that have work: admit, pick into NS, emit first-send event,
    * then fire-and-forget plugin `sendOne` (tick completes at handoff).
    *
-   * Distribution strategy is plugin-declared (ADR-006): spacing lock, concurrency cap,
-   * or custom hooks — never inferred from the human `kind` segment of the queue key.
+   * Distribution strategy is plugin-declared (ADR-006): spacing lock or concurrency
+   * cap — never inferred from the human `kind` segment of the queue key.
    */
   async function distributeToNetworkServers(): Promise<void> {
     const activeQueues = await moves.listReadyQueues();
@@ -274,10 +242,15 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       const admitted = await _canAdmit(plugin, queueKey);
       if (!admitted) return;
 
-      const messageToSend = await moves.pickIntoNs(queueKey, plugin);
-      if (!messageToSend) return;
+      const concurrencyRateLimit = plugin.admission.strategy === 'concurrency'
+        ? {
+          key: buildConcurrencyRateLimitKey(queueKey) ?? '',
+          max: plugin.admission.maxInFlight,
+        }
+        : undefined;
 
-      await _onClaimAfterPick(plugin, queueKey, messageToSend.id);
+      const messageToSend = await moves.pickIntoNs(queueKey, plugin, concurrencyRateLimit);
+      if (!messageToSend) return;
 
       // If not a retry, notify the adopter that the message is getting handled.
       // (The message status is already 'SENT_TO_NS'.) Await Redis enqueue only.
