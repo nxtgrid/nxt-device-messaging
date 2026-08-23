@@ -1,8 +1,8 @@
 # Plan 002 — Architecture review and deepening
 
 **Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 and D landed.** Next is optionals
-(item 11). Capability bundles stay trigger-gated.
+Branch 2: **ADR-008, C2, and C1 landed.** Branch 3: **C4 and D landed.** Next is the remaining optionals
+(item 11: check-then-claim). Spacing floor struck. C5 helper-sharing declined in full. Capability bundles stay trigger-gated.
 **Branch:** branch 3, cut after branch 2. See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
@@ -56,7 +56,7 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
 | 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☑ 2026-08-22 |
 | 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☑ 2026-08-22 |
-| 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
+| 11 | **Optional** — check-then-claim race | — | Composer / Grok | 3 | ☐ |
 | 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
 
 ### Branch discipline
@@ -590,9 +590,9 @@ Worth sharing (byte-identical and vendor-neutral):
 
 | Helper | v1 | v2 |
 |---|---|---|
-| `validateEnqueue` (same message string) | `index.ts:101-107` | `index.ts:106-112` |
-| `_formatDate` safe-integer + UTC-rollover check | `outgoing.ts:100-123` | `outgoing.ts:82-98` |
-| `ParsedResponseSlice` + `_createSuccessfulResponseData` | `incoming.ts:50-60` | `incoming.ts:49-59` |
+| `validateEnqueue` (same message string) | **Leave duplicated** (2026-08-23): plugin admission policy, not CALIN protocol | same |
+| `_formatDate` safe-integer + UTC-rollover check | **Leave duplicated** (2026-08-23): wire formats differ (`yymmddww` vs `YYYY-MM-DD HH:mm:ss`); sharing only the check is not worth a module | same |
+| `ParsedResponseSlice` + `_createSuccessfulResponseData` | **Leave duplicated** (2026-08-23): four-line domain wrapper; v1 also has a failure helper v2 does not. C5 share list **declined in full** | same |
 
 Also noted: `src/plugins/_shared/generate-random-number.ts` (used only by `nxt-sts/token.ts`) and
 `src/plugins/_shared/chirpstack-repository/` (used only by `calin-chirpstack`) are not shared. Leave
@@ -684,8 +684,8 @@ history banner. README status describes a standalone service.
 
 | Item | Detail |
 |---|---|
-| Drop `ramda` | Four imports, four functions, all one-liners: `isNotNil` → `!= null`, `isEmpty` → `Object.keys().length === 0`, `fromPairs` → `Object.fromEntries`, `splitEvery(2, …)` → a loop. Sites: `engine/base.ts:11`, `engine/incoming.ts:8`, `redis-repository/index.ts:3`, `redis-repository/helpers.ts:1`. Removes a dependency and `@types/ramda`. |
-| Spacing floor | `RESOLUTION_CYCLE_INTERVAL_MS = 2_000` (`engine/timers.ts:13`) is a hidden floor under `spacing` admission. `calin-chirpstack` declares `minIntervalMs: 2000`; the two agreeing is coincidence. Setting spacing below the tick silently has no effect. Document or clamp. |
+| Drop `ramda` | **Declined 2026-08-23.** Four imports, four one-liners (`isNotNil`, `isEmpty`, `fromPairs`, `splitEvery`). Sites: `engine/base.ts`, `engine/incoming.ts`, `redis-repository/message-store.ts` (was `index.ts` at review), `redis-repository/helpers.ts`. An inline replacement was attempted and reverted; `ramda` and `@types/ramda` stay. |
+| Spacing floor | **Struck 2026-08-23.** The 2 s resolution cycle is gone; C2's 1 s tick already removed that floor (ADR-008 §10). Residual: values under 1 s are still only observed on the next tick. Noted in `CONTRIBUTING.md`, `docs/guides/integrating.md`, and the plugin SPI — prefer whole-second config. |
 | Check-then-claim race | `_canAdmit` reads the concurrency count (`outgoing.ts:126`) and `_onClaimAfterPick` writes the claim (`outgoing.ts:154`) as separate round-trips, with a Lua pick between. Every enqueue fire-and-forgets its own distribute pass, so concurrent passes can all see `tracked < maxInFlight` and transiently overshoot. Fold the claim into the pick. |
 | `eventCorrelator` module state | `plugins/calin-chirpstack/lib/correlate-request-response.ts:33,119` — module-level `Map` plus a module-level `setInterval` started on import. Same convention mismatch as C1, much smaller blast radius. Deliberate per ADR-007; revisit only with multi-replica. |
 
@@ -697,7 +697,7 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 
 | Topic | Outcome |
 |---|---|
-| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Residue is the spacing floor and the check-then-claim race, both moved to *Optional*. |
+| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Spacing-floor residue **struck** (2026-08-23); remaining optional is the check-then-claim race. |
 | **A3 severity** | Confirmed reachable in production — CALIN calls observed at up to 37 seconds against a 20s NS timeout. Rare but real; fix properly rather than patch. |
 | **Ordering** | B1 first (no design needed, it is the safety net). Then settle C2's shape before A1–A4, because those four are symptoms of C2. Abandon C2 and write point fixes if its design proves sprawling. |
 | **C1 scope** | Not a standalone project. Injecting a shallow module yields a shallow injected module. C1 follows C2. |
@@ -866,3 +866,21 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-22** — **D landed.** `AGENTS.md` rewritten; living decisions-log is short;
   extraction journal archived as `docs/archive/decisions-log-extraction.md`; plan 001
   marked history; README is a standalone service. Next: **optional** (item 11).
+- **2026-08-23** — **Item 11 / drop `ramda` declined.** Inline replacement was
+  reverted; `ramda` stays. Plan path `redis-repository/index.ts` is now
+  `message-store.ts` (C1). Next slice: share the CALIN helpers (C5), one helper
+  at a time. `_formatDate` is **not** byte-identical (v1 `yymmddww` vs v2
+  `YYYY-MM-DD HH:mm:ss`). Spacing-floor evidence is stale: C2's 1 s tick already
+  removed the 2 s floor (ADR-008 §10). `eventCorrelator` stays parked
+  (multi-replica).
+- **2026-08-23** — **C5 / `validateEnqueue` left duplicated.** Same six-line DCU
+  guard in both plugin factories; admission policy, not protocol. Next: judge
+  `_formatDate`.
+- **2026-08-23** — **C5 / `_formatDate` left duplicated.** Validation overlaps;
+  output formats and error classes do not. Next: judge `ParsedResponseSlice`.
+- **2026-08-23** — **C5 helper-sharing declined in full.** `ParsedResponseSlice`
+  left duplicated (four-line success wrapper; v1-only failure helper). No CALIN
+  shared module. Next: spacing-floor note.
+- **2026-08-23** — **Spacing floor struck.** 2 s cycle gone; 1 s tick is the grain
+  (ADR-008 §10). Whole-second note in `CONTRIBUTING.md`, `docs/guides/integrating.md`,
+  and the plugin SPI. Next: check-then-claim.

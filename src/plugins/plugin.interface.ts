@@ -56,7 +56,14 @@ export type DistributeCtx = {
  * Core executes `spacing` / `concurrency`; plugins only declare (or supply `custom` hooks).
  */
 export type Admission =
-  | { readonly strategy: 'spacing'; readonly minIntervalMs: number }
+  | {
+    readonly strategy: 'spacing';
+    /**
+     * Minimum gap between picks from the same initial queue.
+     * Observed on the 1 s engine tick — use whole seconds (e.g. `2000`).
+     */
+    readonly minIntervalMs: number;
+  }
   | {
     readonly strategy: 'concurrency';
     readonly maxInFlight: number;
@@ -74,6 +81,7 @@ export type Admission =
  * and pass only deltas. Config `plugins[].tuning` overrides.
  * Shared `delivery` keeps only retry knobs + message TTL.
  * Delivery plugins only — token-only plugins have no stage timers.
+ * Timeouts are scored against a 1 s engine tick; whole seconds are the useful grain.
  */
 export type PluginTuning = {
   /** Score timeout on `queue_in_flight_to_ns`. */
