@@ -8,7 +8,6 @@
  */
 
 import { isNil } from 'ramda';
-
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
   CreateDeviceMessage,
