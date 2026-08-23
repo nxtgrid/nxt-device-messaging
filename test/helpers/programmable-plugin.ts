@@ -10,6 +10,7 @@
  * between files (integration files share one Valkey and run serially).
  */
 
+import { isNil } from 'ramda';
 import { ulid } from 'ulid';
 
 import { ENQUEUEABLE_COMMAND_TYPES } from '#src/lib/device-message/command-types.js';
@@ -114,7 +115,7 @@ function makeInitialQueueKey(
     return buildInitialQueueKey(
       id,
       NODE_KIND[deliveryPattern],
-      nodePart == null ? 'unassigned' : String(nodePart),
+      isNil(nodePart) ? 'unassigned' : String(nodePart),
     );
   };
 }

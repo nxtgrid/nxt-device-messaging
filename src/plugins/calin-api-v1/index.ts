@@ -7,6 +7,8 @@
  * `CALIN_API_V1_*` env (see `.env.example`). Missing secrets fail at construct.
  */
 
+import { isNil } from 'ramda';
+
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
   CreateDeviceMessage,
@@ -80,13 +82,13 @@ export function createCalinApiV1Plugin(entry: PluginConfigEntry): PullPlugin {
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
     const relayNodeId = input.device.relayNode?.id;
-    const dcuPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+    const dcuPart = isNil(relayNodeId) ? 'unassigned' : String(relayNodeId);
     return buildInitialQueueKey(CALIN_API_V1_ID, CALIN_API_V1_NODE_KIND, dcuPart);
   };
 
   /** Enqueue requires a DCU id — do not park on `…:dcu:unassigned`. */
   const validateEnqueue = (create: CreateDeviceMessage): string | undefined => {
-    if (create.device.relayNode?.id == null) {
+    if (isNil(create.device.relayNode?.id)) {
       return 'device.relayNode.id is required';
     }
     return undefined;

@@ -705,7 +705,7 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 | **A3 severity** | Confirmed reachable in production — CALIN calls observed at up to 37 seconds against a 20s NS timeout. Rare but real; fix properly rather than patch. |
 | **Ordering** | B1 first (no design needed, it is the safety net). Then settle C2's shape before A1–A4, because those four are symptoms of C2. Abandon C2 and write point fixes if its design proves sprawling. |
 | **C1 scope** | Not a standalone project. Injecting a shallow module yields a shallow injected module. C1 follows C2. |
-| **C5 scope** | Do not abstract the CALIN vendor mapping. Share only the three byte-identical helpers listed above. |
+| **C5 scope** | Do not abstract the CALIN vendor mapping. The three helpers that looked byte-identical stay duplicated; sharing was declined in full (2026-08-23). |
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |

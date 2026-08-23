@@ -11,6 +11,8 @@
  * shared client is constructed.
  */
 
+import { isNil } from 'ramda';
+
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { EnqueueableCommandType } from '../../lib/device-message/types.js';
 import { createChirpstackClient } from '../_shared/chirpstack-repository/index.js';
@@ -74,7 +76,7 @@ export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugi
   const tuning = mergePluginTuning(entry);
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
-    const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
+    const networkPart = isNil(input.networkId) ? 'unassigned' : String(input.networkId);
     return buildInitialQueueKey(
       CALIN_CHIRPSTACK_ID,
       CALIN_CHIRPSTACK_NODE_KIND,

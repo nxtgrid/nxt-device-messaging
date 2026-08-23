@@ -115,7 +115,7 @@ describe.skipIf(!shouldRun)('redis repository smoke', () => {
       const first = await messageStore.enqueueDeviceMessage(
         {
           commandType: 'READ_CREDIT',
-          priority: 1,
+          priority: 2,
           pluginId: 'smoke-test',
           networkId: null,
           correlationId: correlationA,

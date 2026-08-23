@@ -5,6 +5,7 @@
  * Do not reuse these ids for vendor plugins.
  */
 
+import { isNil } from 'ramda';
 import { ulid } from 'ulid';
 
 import type { DeviceMessagingConfig } from '../../config/schema.js';
@@ -105,7 +106,7 @@ function stubPushInitialQueueKey(
   nodeKind: string,
   input: InitialQueueKeyInput,
 ): string {
-  const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
+  const networkPart = isNil(input.networkId) ? 'unassigned' : String(input.networkId);
   return buildInitialQueueKey(id, nodeKind, networkPart);
 }
 
@@ -115,7 +116,7 @@ function stubPullInitialQueueKey(
   input: InitialQueueKeyInput,
 ): string {
   const relayNodeId = input.device.relayNode?.id;
-  const relayPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+  const relayPart = isNil(relayNodeId) ? 'unassigned' : String(relayNodeId);
   return buildInitialQueueKey(id, nodeKind, relayPart);
 }
 
