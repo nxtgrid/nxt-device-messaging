@@ -1,7 +1,6 @@
 /**
  * @fileoverview In-memory correlator for LoRaWAN up + ack race.
  *
- * Port of legacy `adapters/calin-lorawan/lib/correlate-request-response.ts`.
  * ChirpStack may deliver the data uplink and the ACK in either order; we key
  * on `deduplicationId` and emit a combined {@link ParsedIncomingEvent} once
  * both halves arrive (or drop stale halves via GC).

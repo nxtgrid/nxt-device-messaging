@@ -1,11 +1,11 @@
 /**
- * @fileoverview Plugin SPI (Unit 6).
+ * @fileoverview Plugin SPI.
  *
  * Normative surface for hardware integrations. Plugins are plain objects (ADR-001).
  * Admission declaration lives here (ADR-006); execution is
- * `OutgoingService.distributeToNetworkServers` (Unit 5.3 / D3).
+ * `OutgoingService.distributeToNetworkServers`.
  * Initial queues: {@link DeliveryPlugin.initialQueueKey} + `buildInitialQueueKey`
- * (ADR-006 D1). Stage timeouts / poll delay: {@link PluginTuning} (D5).
+ * (ADR-006). Stage timeouts / poll delay: {@link PluginTuning}.
  *
  * The SPI is a discriminated union on {@link DeliveryPattern}:
  * {@link PushPlugin} | {@link PullPlugin} | {@link TokenOnlyPlugin}.
@@ -46,36 +46,30 @@ export type InitialQueueKeyInput = {
 };
 
 /**
- * Context passed to custom admission hooks.
- * Widened in Unit 5 if distribute needs more fields.
- */
-export type DistributeCtx = {
-  readonly queueKey: string;
-  readonly pluginId: PluginId;
-};
-
-/**
  * Named admission strategies (ADR-006 §2).
- * Core executes `spacing` / `concurrency`; plugins only declare (or supply `custom` hooks).
+ * Core executes `spacing` / `concurrency`; plugins only declare which one.
  */
 export type Admission =
-  | { readonly strategy: 'spacing'; readonly minIntervalMs: number }
+  | {
+    readonly strategy: 'spacing';
+    /**
+     * Minimum gap between picks from the same initial queue.
+     * Observed on the 1 s engine tick — use whole seconds (e.g. `2000`).
+     */
+    readonly minIntervalMs: number;
+  }
   | {
     readonly strategy: 'concurrency';
     readonly maxInFlight: number;
-  }
-  | {
-    readonly strategy: 'custom';
-    canDistribute(ctx: DistributeCtx): Promise<boolean>;
-    onClaim?(ctx: DistributeCtx & { messageId: string }): Promise<void>;
-    onRelease?(ctx: DistributeCtx & { messageId: string }): Promise<void>;
   };
 
 /**
- * Per-plugin stage timeouts / poll delay (D5 / ADR-002 §5).
- * Defaults live in plugin code; config `plugins[].tuning` overrides (Unit 6.2 Step F).
+ * Per-plugin stage timeouts / poll delay (ADR-002 §5).
+ * Core owns `DEFAULT_PLUGIN_TUNING`; plugins call `mergePluginTuning(entry)`
+ * and pass only deltas. Config `plugins[].tuning` overrides.
  * Shared `delivery` keeps only retry knobs + message TTL.
  * Delivery plugins only — token-only plugins have no stage timers.
+ * Timeouts are scored against a 1 s engine tick; whole seconds are the useful grain.
  */
 export type PluginTuning = {
   /** Score timeout on `queue_in_flight_to_ns`. */
@@ -146,7 +140,7 @@ type DeliveryPluginBase = PluginBase & {
   /** How hard the distributor may hit this plugin's initial queues. */
   readonly admission: Admission;
 
-  /** Stage timeouts / initial poll delay (D5). */
+  /** Stage timeouts / initial poll delay. */
   readonly tuning: PluginTuning;
 };
 

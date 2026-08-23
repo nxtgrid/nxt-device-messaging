@@ -1,5 +1,5 @@
 /**
- * @fileoverview Redis client (ADR-002 §8, plan 002 C1).
+ * @fileoverview Redis client (ADR-002 §8).
  *
  * Lua commands are registered here so every caller sees
  * `fetchNextMessageInQueueAndMove` / `moveMessageBetweenQueues` on the type.
@@ -28,16 +28,20 @@ declare module 'iovalkey' {
      * @param source_queue - Source sorted set to pop message from (KEYS[1])
      * @param destination_queue - Destination sorted set to move message to (KEYS[2])
      * @param queues_to_distribute_from - Set tracking which queues have work (KEYS[3])
+     * @param concurrency_set - Concurrency track set, or '' to skip the cap (KEYS[4])
      * @param timeout_at - Unix timestamp for timeout in destination queue (ARGV[1])
      * @param new_status - New delivery status to set on message (ARGV[2])
-     * @returns Promise resolving to [messageId, fields[]] or null if queue empty
+     * @param max_in_flight - Cap for KEYS[4]; ignored when KEYS[4] is '' (ARGV[3])
+     * @returns Promise resolving to [messageId, fields[]] or null if queue empty / at cap
      */
     fetchNextMessageInQueueAndMove(
       source_queue: string,
       destination_queue: string,
       queues_to_distribute_from: string,
+      concurrency_set: string,
       timeout_at: number | string,
       new_status: DeviceMessageDeliveryStatus,
+      max_in_flight: number | string,
     ): Promise<FetchNextMessageResult>;
 
     /**
@@ -113,7 +117,7 @@ export function createRedisClient(): Redis {
   const client = new Redis(createRedisClientOptions());
 
   client.defineCommand('fetchNextMessageInQueueAndMove', {
-    numberOfKeys: 3,
+    numberOfKeys: 4,
     lua: fetchNextLua,
   });
   client.defineCommand('moveMessageBetweenQueues', {

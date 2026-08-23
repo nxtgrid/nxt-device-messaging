@@ -1,9 +1,8 @@
 /**
- * @fileoverview `calin-api-v2` token facet (Unit 9.5).
+ * @fileoverview `calin-api-v2` token facet.
  *
- * Port of legacy `adapters/calin-api-v2/_token.service.ts`.
- * Wire type is `TOP_UP_KWH` (not legacy `TOP_UP`). `serialNumber` uses
- * `crypto.randomUUID()` (no `uuid` package).
+ * Wire type is `TOP_UP_KWH`. `serialNumber` uses `crypto.randomUUID()`
+ * (no `uuid` package).
  */
 
 import { randomUUID } from 'node:crypto';

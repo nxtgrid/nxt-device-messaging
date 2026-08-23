@@ -1,8 +1,7 @@
 /**
  * @fileoverview Decode CALIN uplink base64 frames from ChirpStack.
  *
- * Port of legacy `adapters/calin-lorawan/lib/decode-response-data.ts`.
- * `response.data` keys are **camelCase** (same Unit 7/9 lock).
+ * `response.data` keys are **camelCase**.
  */
 
 import type { PhaseEnum } from '../../../lib/device-message/types.js';

@@ -38,8 +38,14 @@ export type StageMoves = {
   /**
    * Claim the highest-priority message from a ready queue into the `ns` stage.
    * Atomic in Lua so concurrent distribute passes cannot pick the same message.
+   * `concurrencyRateLimit` is optional: when set, the same script also claims an
+   * in-flight slot (outgoing decides; this layer only forwards `key` + `max`).
    */
-  pickIntoNs(readyQueueKey: string, plugin: DeliveryPlugin): Promise<DeviceMessage | undefined>;
+  pickIntoNs(
+    readyQueueKey: string,
+    plugin: DeliveryPlugin,
+    concurrencyRateLimit?: ConcurrencyRateLimit,
+  ): Promise<DeviceMessage | undefined>;
   /**
    * Move a message to the next stage of its plugin's pipeline.
    * @returns `false` when the claim missed — the message was no longer in `from`,
@@ -67,6 +73,16 @@ export type StageMoves = {
    * @returns `false` when the claim missed — cancel or cleanup already took the member.
    */
   requeue(args: RequeueArgs): Promise<boolean>;
+};
+
+/**
+ * Concurrency-strategy payload for fetch-next Lua (KEYS[4] + ARGV[3]).
+ * Outgoing sets `key` (`buildConcurrencyRateLimitKey`) and `max` (`admission.maxInFlight`).
+ * `moves` only forwards them.
+ */
+export type ConcurrencyRateLimit = {
+  readonly key: string;
+  readonly max: number;
 };
 
 /** Arguments for {@link StageMoves.advance}. */
@@ -164,6 +180,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
     async pickIntoNs(
       readyQueueKey: string,
       plugin: DeliveryPlugin,
+      concurrencyRateLimit?: ConcurrencyRateLimit,
     ): Promise<DeviceMessage | undefined> {
       const dueAt = Date.now() + STAGES.ns.entryWaitMs({
         tuning: plugin.tuning,
@@ -175,8 +192,10 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
         readyQueueKey,
         STAGES.ns.key(),
         redisKeys.listOfInitialQueuesToDistributeFrom(),
+        concurrencyRateLimit?.key ?? '',
         dueAt,
         STAGES.ns.entryStatus,
+        concurrencyRateLimit?.max ?? 0,
       );
 
       if (!raw) return undefined;

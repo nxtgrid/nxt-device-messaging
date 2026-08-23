@@ -9,8 +9,8 @@ import { PhaseEnum } from '../device-message/types.js';
  * - Segment separator is `:` (not `#`).
  *
  * Other notes:
- * - Unit 2 intentionally omits `queueInitial()` (ADR-006): initial queue selection
- *   is owned by plugins via `initialQueueKey` → `buildInitialQueueKey`.
+ * - No `queueInitial()` (ADR-006): initial queue selection is owned by plugins
+ *   via `initialQueueKey` → `buildInitialQueueKey`.
  * - Queue key shape: `queue:{pluginId}:{kind}:{id}` (ADR-006).
  *   Core must not parse queue keys for policy.
  * - Concurrency rate-limit keys are derived from the initial-queue key

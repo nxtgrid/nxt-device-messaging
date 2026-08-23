@@ -36,6 +36,10 @@ take config and secrets as arguments. Log with `logger` and a `module` field
 
 Admission and queue keys: [ADR-006](docs/architecture/006-bottleneck-and-admission.md).
 
+The engine wakes once a second. Time-based knobs (`admission.minIntervalMs`,
+`tuning` timeouts, poll delays) are therefore best as **whole seconds**
+(2000, 10_000, …). A value under 1 s is still only observed on the next tick.
+
 ## Secrets
 
 Never commit decoder keys, vendor passwords, API tokens, or `.env`.

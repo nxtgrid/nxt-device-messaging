@@ -1,9 +1,7 @@
 /**
- * @fileoverview nxt-sts HTTP client (Unit 8.2).
+ * @fileoverview nxt-sts HTTP client.
  *
- * Port of legacy `adapters/nxt-sts/_token.service.ts` HTTP path with native
- * `fetch` instead of Nest `HttpService` / axios. Base URL from secrets
- * (`NXT_STS_URL`).
+ * Native `fetch`. Base URL from secrets (`NXT_STS_URL`).
  */
 
 import { logger } from '../../../log.js';

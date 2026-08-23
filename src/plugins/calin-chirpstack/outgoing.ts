@@ -1,9 +1,8 @@
 /**
- * @fileoverview `calin-chirpstack` outgoing facet (Unit 10.4).
+ * @fileoverview `calin-chirpstack` outgoing facet.
  *
- * Port of legacy `adapters/calin-lorawan/_outgoing.service.ts`. Encodes CALIN
- * frames, enqueues via the shared ChirpStack gRPC client, and maps gRPC /
- * local encode failures into {@link FailureContext}.
+ * Encodes CALIN frames, enqueues via the shared ChirpStack gRPC client, and maps
+ * gRPC / local encode failures into {@link FailureContext}.
  */
 
 import type {

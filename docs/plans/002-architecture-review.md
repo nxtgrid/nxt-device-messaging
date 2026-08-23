@@ -1,9 +1,12 @@
 # Plan 002 — Architecture review and deepening
 
-**Status:** open. Review complete (2026-08-18/19). Branch 1 (B1, C2 design, B1b, C3) merged.
-Branch 2: **ADR-008, C2, and C1 landed.** Next is branch 3 (C4, docs compact, optionals).
-**Branch:** `refactor/message-lifecycle-stage-table` (branch 2), cut from `main` after branch 1
-merged as PR #12. See § *Branch discipline*.
+> **History. Not executable.** Checklist items 1–10 landed. Item 11 (`eventCorrelator`) stays
+> parked for multi-replica (ADR-007). Item 12 (capability bundles) stays trigger-gated. Living
+> follow-ups: [`docs/decisions-log.md`](../decisions-log.md).
+
+**Status:** finished — 2026-08-23. Review complete (2026-08-18/19). Branches 1–3 landed.
+Check-then-claim landed. Spacing floor struck. C5 helper-sharing declined in full.
+**Branch:** branch 3 (last). See § *Branch discipline*.
 **Supersedes nothing.** `docs/plans/001-extraction.md` is finished work and stays as history.
 
 This plan is the executable follow-up to a deep architectural review of the service as it stands
@@ -54,9 +57,9 @@ Ordered. Later items may depend on earlier ones — the dependency is called out
 | 6 | **A3** — NS-stage timeout vs. in-flight send | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
 | 7 | **A4 + A5** — cleanup completeness; single source of truth for the TTL | 4 | — | 2 | ☑ 2026-08-21 folded into 4 |
 | 8 | **C1** — inject the message store instead of importing a global | 4 | Claude Opus 5 | 2 | ☑ 2026-08-22 |
-| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☐ |
-| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☐ |
-| 11 | **Optional** — drop `ramda`; share the three identical CALIN helpers; spacing-floor note; check-then-claim race | — | Composer / Grok | 3 | ☐ |
+| 9 | **C4** — core-owned default `PluginTuning` | 2c | Grok 4.6 | 3 | ☑ 2026-08-22 |
+| 10 | **D** — compact the docs; strip extraction markers from `src/` | — | Composer 2.5 | 3 | ☑ 2026-08-22 |
+| 11 | **Optional** — `eventCorrelator` module state (parked, multi-replica) | — | Composer / Grok | 3 | ☐ parked |
 | 12 | **Capability bundles** — token providers vs delivery plugins (designed, not built) | — | — | 3 | ☐ trigger-gated |
 
 ### Branch discipline
@@ -77,8 +80,8 @@ The big slice as one reviewable, revertible unit: item 3 (ADR-008) as its first 
 with 5–8 folded in. **C2 and C1 landed.**
 
 **Branch 3 — anything after that.** Items 9, 10, 11 and 12 are independent of C2 in both
-directions. **9 (C4) rides naturally on 2c (C3)** — both reshape the plugin SPI — but the cheap
-call to pull C4 into branch 1 was not taken; C4 stays on branch 3.
+directions. **9 (C4) and 10 (D) landed** on this branch. Item 11 stays parked (multi-replica).
+Item 12 stays trigger-gated. No further work on this plan.
 
 ### Why this order
 
@@ -351,7 +354,7 @@ cluster cleanly, so split along the clusters:
 |---|---|---|
 | `MessageStore` | `enqueueDeviceMessage`, `getMessageById`, `getMessageFromCorrelationId`, `getAllMessagesForCorrelationId`, `getMessageIdFromDeliveryQueueId` | `outgoing` (enqueue / get / cancel), `incoming` (ingress lookup), `base`, `runner` |
 | `StageStore` | `moveMessageBetweenQueues` + `fetchNextMessageInQueueAndMove` (Lua), `getExpiredMessagesInQueue`, `removeMessageFromQueue`, `requeueMessage`, `messageFullCleanup`, `fetchQueuesWithMessages`, and the raw `zadd` / `zscore` / `hmget` / `multi` that `enterRetry` needs | `lifecycle/moves.ts` and `lifecycle/runner.ts` — **nothing else** |
-| `AdmissionStore` | `lockQueueForTimeMs`, `claimConcurrencyRateLimit`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit` / `_onClaimAfterPick`) |
+| `AdmissionStore` | `lockQueueForTimeMs`, `getConcurrencyRateLimitCount`, `validateAndCleanConcurrencyRateLimit` | `outgoing` (`_canAdmit`). Concurrency claim is in fetch-next Lua. |
 
 The payoff is in the third column. `StageStore` is the one that carries real Redis vocabulary, and
 after C2 only two files touch it — `moves.ts` already hides it behind `StageMoves`. So once this
@@ -567,9 +570,17 @@ initialPollDelayMs:         10_000
 ```
 
 **Direction.** Core-owned defaults; plugins call `mergePluginTuning(entry)` and override only what
-differs. Folding the split into C3's union makes the per-pattern dead fields unrepresentable.
+differs. The four-field `PluginTuning` type stays one type — after C2 the stage table is the
+shared consumer, and splitting it into PUSH/PULL would make every `entryWaitMs` a type error
+unless the engine kept a wide type anyway. Dead fields become something no plugin *writes down*,
+not something the type system forbids. The poll ladder stays a core function of age.
 
 **Done when.** No plugin restates a default it does not change.
+
+**✅ Landed 2026-08-22.** `DEFAULT_PLUGIN_TUNING` + `mergePluginTuning(entry, overrides?)` in
+`src/plugins/_shared/merge-plugin-tuning.ts`. All four delivery factories and both stubs call
+`mergePluginTuning(entry)` with no delta. Per-plugin `*_DEFAULT_TUNING` constants and
+`STUB_DEFAULT_TUNING` / `PROGRAMMABLE_DEFAULT_TUNING` are gone. ADR-002 amended.
 
 ### C5 — CALIN v1/v2 duplication: mostly leave it
 
@@ -583,9 +594,9 @@ Worth sharing (byte-identical and vendor-neutral):
 
 | Helper | v1 | v2 |
 |---|---|---|
-| `validateEnqueue` (same message string) | `index.ts:101-107` | `index.ts:106-112` |
-| `_formatDate` safe-integer + UTC-rollover check | `outgoing.ts:100-123` | `outgoing.ts:82-98` |
-| `ParsedResponseSlice` + `_createSuccessfulResponseData` | `incoming.ts:50-60` | `incoming.ts:49-59` |
+| `validateEnqueue` (same message string) | **Leave duplicated** (2026-08-23): plugin admission policy, not CALIN protocol | same |
+| `_formatDate` safe-integer + UTC-rollover check | **Leave duplicated** (2026-08-23): wire formats differ (`yymmddww` vs `YYYY-MM-DD HH:mm:ss`); sharing only the check is not worth a module | same |
+| `ParsedResponseSlice` + `_createSuccessfulResponseData` | **Leave duplicated** (2026-08-23): four-line domain wrapper; v1 also has a failure helper v2 does not. C5 share list **declined in full** | same |
 
 Also noted: `src/plugins/_shared/generate-random-number.ts` (used only by `nxt-sts/token.ts`) and
 `src/plugins/_shared/chirpstack-repository/` (used only by `calin-chirpstack`) are not shared. Leave
@@ -595,34 +606,81 @@ them where they are, but the `_shared/` name is misleading.
 
 ## D. Documentation
 
+**Status:** landed 2026-08-22 (two commits: `src/` markers, then working-set rewrite).
+
 **Symptom.** The documentation is still shaped for an extraction in progress, and the extraction is
-over.
+over. Humans will not read most of it. Agents *will* load whatever `AGENTS.md` tells them to, on
+every cold start — today that path is the full `AGENTS.md` (phase tables, origin brief) plus
+“read `decisions-log.md` first” (~2k lines) plus “plan 001 is the executable plan” (it is not).
+That is context bloat, not context.
 
-**Evidence.**
+**Audiences.**
 
-- `docs/decisions-log.md` — 1778 lines. It is a session journal, and it is the first thing a cold
-  reader is told to read.
-- `docs/plans/001-extraction.md` — 330 lines describing finished work.
-- `README.md:26-28` — "Still an extraction".
-- Source comments carry markers that resolve to struck-through rows in another document: `Unit 5.4`,
-  `(D5)`, `(D6)`, `(I3)`, `session 23c`, `ADR-006 D1`, `Phase 2`, `Intermezzo`. Measured: **70
-  occurrences across 42 files** under `src/`.
+| Layer | Who | What belongs |
+|---|---|---|
+| **Working set** | Agents, every session | Current service, workflow, ADR *index*, where to look next. Short. |
+| **Archive** | Humans, and agents only when the task cites the file | Named era logs, extraction plan. Never on the cold-start path. |
 
-**Why the source markers matter most.** To a human they are noise. To an AI they are worse than
-noise — they look like navigable references and resolve to nothing local, so they invite exactly the
-wrong lookup.
+Code is truth. ADRs are the surviving decisions. Everything else is a pointer or history.
 
-**Direction.**
+**Nothing historical is on the agent cold-start path.** Archive may be large. `AGENTS.md` plus the
+living decisions-log must stay small enough that a session can load both and still have room for
+the task.
 
-1. Strip extraction/unit/session markers from `src/` comments. Mechanical, safe, highest daily value.
-2. Archive `docs/plans/001-extraction.md` (keep it; mark it history).
-3. Compress `decisions-log.md` into a short "state of the service + parked work" document; move the
-   chronological journal to an archive section or file.
-4. Update the README status paragraph to describe a standalone service.
-5. Keep the ADRs. They are good and still normative.
+**This is a standalone service.** Do not write the repo as an extraction, and do not add a
+“don’t look in other repositories” sentence. Repositories are standalone unless a task says they
+work together. The open repo is the baseline; other repos in the suite are relevant when the task
+says so. In-repo work starts at **this** repo’s ADRs 001–008. Leave `nxt-backend` links inside ADR
+bodies (provenance). Do not put them on the cold-start path. Move the decisions-log “Other repo”
+parked table into the extraction archive.
 
-**Done when.** A cold reader can orient from `README.md` + `AGENTS.md` + the ADR index without
-reading anything about the extraction.
+**Named, chunked logs — by era, not by topic.** ADRs already own topics.
+
+| File | What it is | Who loads it |
+|---|---|---|
+| `docs/decisions-log.md` | Living log for the standalone service. Open / parked / deferred-with-criteria, plus new notes from now on. Short (target ≲150 lines). | Agents, when the task is follow-ups or “is this parked?” — **not** every session. Stop saying “read this first.” |
+| `docs/archive/decisions-log-extraction.md` | Today’s journal, moved, covering extraction through Phase 4. | Nobody, unless a parked row or ADR cites it. |
+| `docs/archive/README.md` | Five lines: do not load these for implementation. | — |
+| `docs/plans/001-extraction.md` | Keep; history banner at top. | Nobody, unless the task is historical. |
+
+Do **not** archive plan 002 into a third log while 002 is open — its session notes are already a
+named chunk. When 002 closes: leave the notes in the plan, or move them to
+`docs/archive/decisions-log-plan-002.md`.
+
+**Going forward:** when a living log goes stale, archive it as
+`docs/archive/decisions-log-<era>.md` and start a fresh living file. Cite archives by filename.
+Do not read them unless the task names them. Agents do not append a diary to the living log:
+new architecture → ADR; plan work → that plan’s session notes; parked item lands → strike the
+row.
+
+**`AGENTS.md` is paid for on every turn.** Cut until it is only: what this service is; workflow /
+communication / conventions / plugin rules; ADR index + “read 2–3, Context+Status first”; a
+short directory map (`engine/lifecycle`, `plugins/`, `http/`, …); where to look for *living*
+state (parked table, open plan 002). Delete: origin-and-baseline table, Phase 3/4 status tables,
+Intermezzo working rule, “Units 5–10 complete”, “already in place” inventory, pointer to plan 001
+as executable, nxt-backend ADR routing table.
+
+**`README.md`.** Standalone service. Pin tags, read `integrating.md`, ADRs are normative. No
+“still an extraction”, no link to plan 001.
+
+**`src/` comments (commit 1).** Strip `Unit N`, `Phase N`, `Intermezzo`, `(D5)` / `(D6)` / `(D3)`,
+`session …`, `ADR-006 D1`, `plan 002 C1`, `Port of legacy …`, `frozen tiamat`, nxt-backend path
+citations. Keep the technical sentence. Fileoverviews describe the module as it is. Keep real
+ADR citations (`ADR-002 §5`, `ADR-006`, `ADR-007`).
+
+**ADRs.** Keep. Do not rewrite bodies. Drop “see plan 001 Phase N” as if it were executable.
+
+**Out of scope.** Item 11 optionals, capability bundles, CONTRIBUTING (already human-sized).
+
+**Two commits.** (1) `src/` marker strip. (2) Working-set rewrite + archive move.
+
+**Done when.** A cold agent orients from `README.md` + `AGENTS.md` + the ADR index, without loading
+extraction history, and without being told to open another repository unless the task says so.
+
+**✅ Landed 2026-08-22.** `src/` markers stripped. `AGENTS.md` is the working set (no origin
+table, no phase inventory, no nxt-backend routing). Living `docs/decisions-log.md` is parked /
+open only. Extraction journal is `docs/archive/decisions-log-extraction.md`. Plan 001 has a
+history banner. README status describes a standalone service.
 
 ---
 
@@ -630,9 +688,9 @@ reading anything about the extraction.
 
 | Item | Detail |
 |---|---|
-| Drop `ramda` | Four imports, four functions, all one-liners: `isNotNil` → `!= null`, `isEmpty` → `Object.keys().length === 0`, `fromPairs` → `Object.fromEntries`, `splitEvery(2, …)` → a loop. Sites: `engine/base.ts:11`, `engine/incoming.ts:8`, `redis-repository/index.ts:3`, `redis-repository/helpers.ts:1`. Removes a dependency and `@types/ramda`. |
-| Spacing floor | `RESOLUTION_CYCLE_INTERVAL_MS = 2_000` (`engine/timers.ts:13`) is a hidden floor under `spacing` admission. `calin-chirpstack` declares `minIntervalMs: 2000`; the two agreeing is coincidence. Setting spacing below the tick silently has no effect. Document or clamp. |
-| Check-then-claim race | `_canAdmit` reads the concurrency count (`outgoing.ts:126`) and `_onClaimAfterPick` writes the claim (`outgoing.ts:154`) as separate round-trips, with a Lua pick between. Every enqueue fire-and-forgets its own distribute pass, so concurrent passes can all see `tracked < maxInFlight` and transiently overshoot. Fold the claim into the pick. |
+| Drop `ramda` | **Declined 2026-08-23.** Four imports, four one-liners (`isNotNil`, `isEmpty`, `fromPairs`, `splitEvery`). Sites: `engine/base.ts`, `engine/incoming.ts`, `redis-repository/message-store.ts` (was `index.ts` at review), `redis-repository/helpers.ts`. An inline replacement was attempted and reverted; `ramda` and `@types/ramda` stay. |
+| Spacing floor | **Struck 2026-08-23.** The 2 s resolution cycle is gone; C2's 1 s tick already removed that floor (ADR-008 §10). Residual: values under 1 s are still only observed on the next tick. Noted in `CONTRIBUTING.md`, `docs/guides/integrating.md`, and the plugin SPI — prefer whole-second config. |
+| Check-then-claim race | **Landed 2026-08-23.** Fetch-next Lua takes an optional concurrency set + cap: SCARD ≥ max returns nil without popping; otherwise ZPOPMIN + SADD + HSET `concurrencyRateLimitKey` in the same script. `_canAdmit` only sweeps dead members when at cap. Post-pick `onClaim` and `custom` admission removed. |
 | `eventCorrelator` module state | `plugins/calin-chirpstack/lib/correlate-request-response.ts:33,119` — module-level `Map` plus a module-level `setInterval` started on import. Same convention mismatch as C1, much smaller blast radius. Deliberate per ADR-007; revisit only with multi-replica. |
 
 ---
@@ -643,15 +701,15 @@ Decisions reached with the maintainer. Recorded so they are not relitigated.
 
 | Topic | Outcome |
 |---|---|
-| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Residue is the spacing floor and the check-then-claim race, both moved to *Optional*. |
+| **Distribution throughput ("A6")** | **Dissolved — the original finding was wrong.** Distribution picks one message per queue per tick, but `maxInFlight` is still reachable because in-flight messages accumulate across ticks. Throughput = min(tick rate, `maxInFlight`/latency); the crossover is at 10s latency, and CALIN task latency is well above that (`initialPollDelayMs` alone is 10s). The concurrency cap binds, as designed; the tick rate does not. Spacing-floor residue **struck** (2026-08-23); check-then-claim **landed** (2026-08-23). `eventCorrelator` stays parked (multi-replica). |
 | **A3 severity** | Confirmed reachable in production — CALIN calls observed at up to 37 seconds against a 20s NS timeout. Rare but real; fix properly rather than patch. |
 | **Ordering** | B1 first (no design needed, it is the safety net). Then settle C2's shape before A1–A4, because those four are symptoms of C2. Abandon C2 and write point fixes if its design proves sprawling. |
 | **C1 scope** | Not a standalone project. Injecting a shallow module yields a shallow injected module. C1 follows C2. |
-| **C5 scope** | Do not abstract the CALIN vendor mapping. Share only the three byte-identical helpers listed above. |
+| **C5 scope** | Do not abstract the CALIN vendor mapping. The three helpers that looked byte-identical stay duplicated; sharing was declined in full (2026-08-23). |
 | **Queue priority** | The score on the initial `queue:{plugin}:{kind}:{id}` is `-priority`, so it orders messages **within** one queue. Queues do **not** have priority over each other: distribution scans queue keys in `SCAN` order and takes one message from each admissible queue. A high-priority message in queue X does not outrank a low-priority one in queue Y. That is correct — the queues partition by *device/relay-node*, which are independent contention domains — and it stays as is. |
 | **C2 Redis layout** | Unchanged by the refactor. Same keys, members, scores, TTLs. C2 is code organisation only, which is what makes it verifiable and reversible. |
 | **C2 tick** | One 1000 ms tick replaces the 2 s resolution cycle and 5 s PULL poll. PULL polling becomes punctual instead of rounded up to a 5 s boundary — accepted and desired. |
-| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, merged as PR #12 (B1, C2 design, B1b, C3). Branch 2 = `refactor/message-lifecycle-stage-table`, the stage-table slice only — in progress. Branch 3 = everything else (C4, D, Optional, capability bundles). |
+| **Branching** | Sequential branches, nothing straight to `main`. Branch 1 = `chore/post-extraction-refactor`, merged as PR #12 (B1, C2 design, B1b, C3). Branch 2 = `refactor/message-lifecycle-stage-table` (C2 + C1). Branch 3 = C4 (landed), D, Optional, capability bundles. |
 | **Stage pipelines** | **Option A now** (two pipelines, keyed on `PUSH` / `PULL` as data — not on `DeliveryPattern`, which also has `'NONE'`). Option B (per-plugin pipelines with plugin-contributed stages and `advancedBy`) is fully designed in **ADR-008 § *Upgrade path*** and built only when its trigger fires. Option A must hold the four invariants listed there so B stays a patch. |
 
 ---
@@ -802,3 +860,38 @@ next session needs to know. Keep the detail in `docs/decisions-log.md`; keep thi
 - **2026-08-22** — **C1 closeout.** Deleted `redis-repository/index.ts`. Process-wide
   client is `redis` from `client.ts`. Shared `assertExecSucceeded`. Checklist items
   4–8 ticked.
+- **2026-08-22** — **C4 landed.** `DEFAULT_PLUGIN_TUNING` is the one four-field blob;
+  `mergePluginTuning(entry, overrides?)` layers core → plugin delta → config. No plugin
+  restates a default. `PluginTuning` was **not** split by pattern — the stage table is
+  one consumer. Poll ladder stays core-owned. Next: **D**.
+- **2026-08-22** — **D design locked.** Working set vs named-era archive; no nxt-backend
+  on the cold-start path; no “don’t look in other repos” sentence. **Commit 1** (`src/`
+  marker strip) done. Next: commit 2 (working-set rewrite + archive).
+- **2026-08-22** — **D landed.** `AGENTS.md` rewritten; living decisions-log is short;
+  extraction journal archived as `docs/archive/decisions-log-extraction.md`; plan 001
+  marked history; README is a standalone service. Next: **optional** (item 11).
+- **2026-08-23** — **Item 11 / drop `ramda` declined.** Inline replacement was
+  reverted; `ramda` stays. Plan path `redis-repository/index.ts` is now
+  `message-store.ts` (C1). Next slice: share the CALIN helpers (C5), one helper
+  at a time. `_formatDate` is **not** byte-identical (v1 `yymmddww` vs v2
+  `YYYY-MM-DD HH:mm:ss`). Spacing-floor evidence is stale: C2's 1 s tick already
+  removed the 2 s floor (ADR-008 §10). `eventCorrelator` stays parked
+  (multi-replica).
+- **2026-08-23** — **C5 / `validateEnqueue` left duplicated.** Same six-line DCU
+  guard in both plugin factories; admission policy, not protocol. Next: judge
+  `_formatDate`.
+- **2026-08-23** — **C5 / `_formatDate` left duplicated.** Validation overlaps;
+  output formats and error classes do not. Next: judge `ParsedResponseSlice`.
+- **2026-08-23** — **C5 helper-sharing declined in full.** `ParsedResponseSlice`
+  left duplicated (four-line success wrapper; v1-only failure helper). No CALIN
+  shared module. Next: spacing-floor note.
+- **2026-08-23** — **Spacing floor struck.** 2 s cycle gone; 1 s tick is the grain
+  (ADR-008 §10). Whole-second note in `CONTRIBUTING.md`, `docs/guides/integrating.md`,
+  and the plugin SPI. Next: check-then-claim.
+- **2026-08-23** — **Check-then-claim landed.** Fetch-next Lua claims the concurrency
+  slot in the same script as the pick (SCARD cap → ZPOPMIN + SADD/HSET). `_canAdmit`
+  only sweeps dead members when at cap. Review follow-up: argument order matches Redis
+  (KEYS then ARGV, no shuffle); `ConcurrencyRateLimit` (`key` / `max`) is chosen in
+  `outgoing` and forwarded by `moves`. `_onClaimAfterPick` / `onClaim` / `onRelease`
+  and the `custom` strategy are gone. Plan 002 is finished: item 11 (`eventCorrelator`)
+  stays parked (ADR-007 / multi-replica); item 12 stays trigger-gated.

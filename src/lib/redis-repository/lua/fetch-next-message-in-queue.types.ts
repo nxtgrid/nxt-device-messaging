@@ -8,6 +8,7 @@ export type FetchNextMessageKeys = [
   sourceQueue: string,
   destinationQueue: string,
   listOfQueuesToDistributeFrom: string,
+  concurrencySet: string,
 ];
 
 /**
@@ -17,6 +18,7 @@ export type FetchNextMessageKeys = [
 export type FetchNextMessageArgv = [
   timeoutAt: number | string,
   newStatus: DeviceMessageDeliveryStatus,
+  maxInFlight: number | string,
 ];
 
 /**

@@ -3,7 +3,7 @@
  *
  * Config `plugins[].id` must appear here. Each factory receives that plugin's
  * config entry (settings/tuning; secrets stay in env) and merges tuning onto
- * code defaults.
+ * core defaults.
  */
 
 import type { DeviceMessagingConfig } from '../config/schema.js';

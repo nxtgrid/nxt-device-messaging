@@ -2,7 +2,7 @@
  * @fileoverview Map Zod/Fastify request validation failures to `{ error, issues }`.
  *
  * Domain 400s / 401 / 404 keep `{ error }` only. Schema failures add `issues`
- * with dotted field paths and Zod messages (Phase 3.3B).
+ * with dotted field paths and Zod messages.
  */
 
 import { hasZodFastifySchemaValidationErrors } from '@fastify/type-provider-zod';

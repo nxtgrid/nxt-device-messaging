@@ -8,16 +8,9 @@ import {
   CALIN_API_V1_ENV_KEYS,
   loadCalinApiV1Secrets,
 } from '#src/plugins/calin-api-v1/lib/secrets.js';
+import { DEFAULT_PLUGIN_TUNING } from '#src/plugins/_shared/merge-plugin-tuning.js';
 import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
-
-/** Expected code defaults (asserted via factory; not imported from the plugin). */
-const EXPECTED_DEFAULT_TUNING = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-} as const;
 
 const deviceOnly: InitialQueueKeyInput = {
   networkId: 42,
@@ -87,7 +80,7 @@ describe('createCalinApiV1Plugin', () => {
     expect(plugin.supportedCommandTypes).toContain('DELIVER_PREEXISTING_TOKEN');
     expect(plugin.supportedCommandTypes).not.toContain('READ_TIME');
     expect(plugin.supportedCommandTypes).not.toContain('SET_TIME');
-    expect(plugin.tuning).toEqual(EXPECTED_DEFAULT_TUNING);
+    expect(plugin.tuning).toEqual(DEFAULT_PLUGIN_TUNING);
     expect(plugin.admission).toEqual({ strategy: 'concurrency', maxInFlight: 5 });
     expect(
       plugin.initialQueueKey({
@@ -138,7 +131,7 @@ describe('createCalinApiV1Plugin', () => {
       tuning: { initialPollDelayMs: 30_000 },
     });
     expect(plugin.tuning).toEqual({
-      ...EXPECTED_DEFAULT_TUNING,
+      ...DEFAULT_PLUGIN_TUNING,
       initialPollDelayMs: 30_000,
     });
   });

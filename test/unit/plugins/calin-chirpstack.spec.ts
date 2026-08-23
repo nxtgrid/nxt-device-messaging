@@ -8,16 +8,9 @@ import {
   CHIRPSTACK_ENV_KEYS,
   loadChirpstackSecrets,
 } from '#src/plugins/_shared/chirpstack-repository/secrets.js';
+import { DEFAULT_PLUGIN_TUNING } from '#src/plugins/_shared/merge-plugin-tuning.js';
 import type { InitialQueueKeyInput } from '#src/plugins/plugin.interface.js';
 import { createPluginRegistry } from '#src/plugins/registry.js';
-
-/** Expected code defaults (asserted via factory; not imported from the plugin). */
-const EXPECTED_DEFAULT_TUNING = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-} as const;
 
 const deviceOnly: InitialQueueKeyInput = {
   networkId: 42,
@@ -85,7 +78,7 @@ describe('createCalinChirpstackPlugin', () => {
     expect(plugin.supportedCommandTypes).toContain('SET_TIME');
     expect(plugin.supportedCommandTypes).toContain('DELIVER_PREEXISTING_TOKEN');
     expect(plugin.supportedCommandTypes).not.toContain('READ_VERSION');
-    expect(plugin.tuning).toEqual(EXPECTED_DEFAULT_TUNING);
+    expect(plugin.tuning).toEqual(DEFAULT_PLUGIN_TUNING);
     expect(plugin.admission).toEqual({ strategy: 'spacing', minIntervalMs: 2_000 });
     expect(plugin.initialQueueKey(deviceOnly)).toBe(
       'queue:calin-chirpstack:network:42',
@@ -116,7 +109,7 @@ describe('createCalinChirpstackPlugin', () => {
       tuning: { deviceInFlightTimeoutMs: 30_000 },
     });
     expect(plugin.tuning).toEqual({
-      ...EXPECTED_DEFAULT_TUNING,
+      ...DEFAULT_PLUGIN_TUNING,
       deviceInFlightTimeoutMs: 30_000,
     });
   });

@@ -124,4 +124,8 @@ Keep the handler short: persist, 2xx, do the rest later.
 | Env | `DEVICE_MESSAGING_WEBHOOK_SECRET` (optional but you want it) |
 | Env | `DEVICE_MESSAGING_API_KEY` (optional locally) |
 
+The engine ticks once a second, so duration knobs (`plugins[].tuning`, retry
+backoffs, `delivery.messageTtlSeconds`) are most useful as whole seconds.
+Sub-second values do not buy finer scheduling.
+
 Knobs and Redis keys: [ADR-003 §6](../architecture/003-public-http-contract.md).

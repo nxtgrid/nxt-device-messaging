@@ -30,6 +30,11 @@
 > **Amendment (2026-08-20):** C3 — `tuning` is a delivery-plugin field (`PushPlugin` /
 > `PullPlugin`). Token-only plugins (`deliveryPattern: 'NONE'`) have none. D5's four names
 > are unchanged.
+>
+> **Amendment (2026-08-22):** C4 — defaults are **core-owned** (`DEFAULT_PLUGIN_TUNING`).
+> Plugins call `mergePluginTuning(entry, overrides?)` and pass only deltas. The four-field
+> `PluginTuning` type is unchanged (the stage table is one consumer). The poll ladder
+> stays a core function of message age, not a tuning knob.
 
 ---
 
@@ -177,14 +182,16 @@ original justification applies with more force, not less.
 The repo ships the Zod schema, a documented `config.example.json`, and a minimal
 `config.default.json` that boots with no plugins enabled.
 
-### 5. Tuning layers: plugin defaults in code, config overrides per deployment
+### 5. Tuning layers: core defaults, plugin deltas, config overrides per deployment
 
-Each plugin declares its own default tuning values **in code** — the shape `nxt-backend` ADR-001
-recommended. The config artifact *overrides* them. Every value under `tuning` is therefore
-optional, and an operator who does not care writes nothing.
+Core owns `DEFAULT_PLUGIN_TUNING`. Plugins call `mergePluginTuning(entry)` and pass a
+`Partial<PluginTuning>` only when they differ. The config artifact *overrides* the result.
+Every value under `tuning` is therefore optional, and an operator who does not care writes
+nothing.
 
-This keeps the vendor knowledge (that CALIN needs ~30s and LoRaWAN ~10s) in the plugin that knows
-it, while leaving an operator free to tune for their own network.
+A plugin that actually needs a different NS timeout (or poll delay, or mid-stage wait) still
+owns that delta in its factory — the vendor knowledge stays next to the vendor. Until one
+does, no plugin restates the four numbers.
 
 **Shared `delivery.*` vs plugin `tuning` (D5, locked 2026-07-29; names locked 2026-08-04):**
 
@@ -199,8 +206,9 @@ PULL max-age / poll-delay ladder stay module defaults until a real PULL plugin n
 Concurrency caps stay on `admission` (ADR-006), not `tuning`.
 
 Unit 3 put stage timeouts on `delivery` before a registry existed. Unit 6.2 moves them to
-plugin `tuning` (defaults in code, config override) and drops those keys from core
-`delivery`. Queue helpers take knobs as arguments; they do not import `runtime`.
+plugin `tuning` and drops those keys from core `delivery`. C4 moves the default *values*
+to one core constant so plugins stop copying them. Queue helpers take knobs as arguments;
+they do not import `runtime`.
 
 ### 6. Honesty rules — fail fast, but degrade gracefully at runtime
 
@@ -243,7 +251,7 @@ instance name and has no meaning to an adopter.
 | `public` presentation subtree | Omitted | No browser consumer; nothing to expose |
 | Adapter list "constrains a data-driven route map" | Same, made explicit as decision 6 | Was implied in ADR-007 decision 6; stated as behaviour here |
 | Central Zod schema owns all adapter shapes | Plugin-contributed schemas composed at registration | Required by the single-file-plugin goal |
-| Tuning not addressed | Plugin defaults in code, config overrides | Implements `nxt-backend` ADR-001's unimplemented recommendation |
+| Tuning not addressed | Core-owned defaults, plugin deltas, config overrides | Implements `nxt-backend` ADR-001's unimplemented recommendation |
 
 ## Consequences
 

@@ -1,8 +1,7 @@
 /**
- * @fileoverview `calin-api-v1` incoming facet (Unit 7.4).
+ * @fileoverview `calin-api-v1` incoming facet.
  *
- * Port of legacy `adapters/calin-api-v1/_incoming.service.ts` (PULL poll).
- * `response.data` keys are camelCase (deliberate vs legacy snake_case).
+ * PULL poll. `response.data` keys are camelCase.
  */
 
 import {

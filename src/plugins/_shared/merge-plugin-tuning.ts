@@ -1,8 +1,9 @@
 /**
- * @fileoverview Shared config `plugins[].tuning` merge (ADR-002 §5 / D5).
+ * @fileoverview Shared config `plugins[].tuning` merge (ADR-002 §5).
  *
- * Plugins declare defaults in code; the JSON artifact may override any
- * {@link PluginTuning} key. Unknown keys fail at construct.
+ * Core owns the default {@link PluginTuning}. Plugins call
+ * {@link mergePluginTuning} and pass only deltas. The JSON artifact may
+ * override any key. Unknown keys fail at construct.
  */
 
 import { z } from 'zod';
@@ -11,6 +12,19 @@ import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { PluginTuning } from '../plugin.interface.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
+
+/**
+ * Service-wide default stage timeouts / first-poll delay.
+ *
+ * No first-party plugin currently differs. Pass a delta to
+ * {@link mergePluginTuning} when one does.
+ */
+export const DEFAULT_PLUGIN_TUNING: PluginTuning = {
+  nsInFlightTimeoutMs: 20_000,
+  relayNodeInFlightTimeoutMs: 900_000,
+  deviceInFlightTimeoutMs: 12_000,
+  initialPollDelayMs: 10_000,
+};
 
 /** Partial override shape for `plugins[].tuning` (unknown keys rejected). */
 const tuningOverrideSchema = z.object({
@@ -21,17 +35,19 @@ const tuningOverrideSchema = z.object({
 }).strict();
 
 /**
- * Merge config tuning overrides onto plugin code defaults.
+ * Merge core defaults, optional plugin deltas, and config `plugins[].tuning`.
  *
- * @param defaults - Plugin-owned default {@link PluginTuning}
  * @param entry - Config `plugins[]` entry (`id` used in error text)
- * @returns Merged tuning (defaults when `entry.tuning` is absent)
+ * @param overrides - Plugin-owned deltas; omit when the core defaults stand
+ * @returns Merged tuning
  * @throws If `entry.tuning` has unknown keys or invalid values
  */
 export function mergePluginTuning(
-  defaults: PluginTuning,
   entry: PluginConfigEntry,
+  overrides?: Partial<PluginTuning>,
 ): PluginTuning {
+  const defaults: PluginTuning = { ...DEFAULT_PLUGIN_TUNING, ...overrides };
+
   if (entry.tuning === undefined) {
     return defaults;
   }

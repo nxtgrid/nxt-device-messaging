@@ -1,18 +1,16 @@
 # Extraction Plan — device-messages → nxt-device-messaging
 
+> **History. Not executable.** This plan is finished (Phase 0–4 done). Do not treat it as
+> instructions. Living follow-ups: [`docs/decisions-log.md`](../decisions-log.md). Plan 002 is
+> also finished: [`002-architecture-review.md`](002-architecture-review.md). The extraction-era
+> journal is
+> [`docs/archive/decisions-log-extraction.md`](../archive/decisions-log-extraction.md).
+
 **Decisions:** ADR-001 (runtime), ADR-002 (config), ADR-003 (HTTP contract), ADR-004 (tooling),
-ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission), `nxt-backend` ADR-010 +
-its 2026-07-27 amendment
+ADR-005 (deployment / OSS hygiene), ADR-006 (bottleneck + admission)
 **Plan number:** 001
 **Created:** 2026-07-27
-**Status:** Phase 0–4 done. Parked follow-ups: `docs/decisions-log.md` § Parked / revisit.
-
-Supersedes `nxt-backend`'s `docs/plans/001-device-messaging-service-extraction.md`, which is marked
-stale. That document is still useful as the **source of task detail** (retry semantics, queue stages,
-plugin interface sketch) — but its phase order, framework assumptions, and several task descriptions
-are wrong. Read `nxt-backend` ADR-010's amendment before using it. Phase 3 is **ADR-003 polish**
-(webhook HMAC/DLQ, OpenAPI, auth); command/ingress routes land thin with the engine units that
-need them (same pattern as Intermezzo enqueue/get).
+**Status:** finished — history.
 
 ---
 

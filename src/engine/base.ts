@@ -4,8 +4,8 @@
  * Adopter notification goes through {@link BaseService.emitDeliveryEvent}, which
  * thin-forwards to the outbound webhook messenger when configured (ADR-003 §6).
  *
- * Concurrency admission: the rate-limit key is stored on the message hash at claim
- * (`claimConcurrencyRateLimit`). `messageFullCleanup` / `enterRetry` SREM it.
+ * Concurrency admission: the rate-limit key is stored on the message hash when the
+ * pick Lua claims a slot. `messageFullCleanup` / `enterRetry` SREM it.
  */
 
 import { isNotNil } from 'ramda';

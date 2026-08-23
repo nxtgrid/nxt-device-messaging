@@ -1,5 +1,5 @@
 /**
- * @fileoverview OpenAPI document + Swagger UI (Phase 3.2; ADR-001 §3 / ADR-003 §7).
+ * @fileoverview OpenAPI document + Swagger UI (ADR-001 §3 / ADR-003 §7).
  *
  * Paths mirror `nxt-sts`: machine JSON at `/v3/api-docs`, UI at `/swagger`.
  * Docs endpoints stay unauthenticated; command routes keep Bearer separately.

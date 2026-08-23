@@ -1,14 +1,13 @@
 /**
- * @fileoverview Redis port for ready-queue admission (plan 002 C1).
+ * @fileoverview Redis port for ready-queue admission.
  *
  * Spacing locks and concurrency slots — the only Redis this port speaks.
- * `OutgoingService` is the only consumer (`_canAdmit` / `_onClaimAfterPick`).
+ * `OutgoingService` is the only consumer (`_canAdmit`). Concurrency claim is in fetch-next Lua.
  */
 
 import type { Redis } from 'iovalkey';
 
 import { logger } from '../../log.js';
-import { assertExecSucceeded } from './assert-exec.js';
 import { redisKeys } from './keys.js';
 
 /** Redis operations for spacing locks and concurrency admission. */
@@ -21,17 +20,6 @@ export type AdmissionStore = {
    * @returns `'OK'` if lock acquired, `null` if already locked
    */
   lockQueueForTimeMs(queueKey: string, durationMs: number): Promise<string | null>;
-  /**
-   * Claim a concurrency slot: SADD the track set and persist the key on the
-   * message hash so cleanup/retry can SREM without re-deriving it.
-   *
-   * @param concurrencyRateLimitKey - Opaque rate-limit set key
-   * @param messageId - The message ULID
-   */
-  claimConcurrencyRateLimit(
-    concurrencyRateLimitKey: string,
-    messageId: string,
-  ): Promise<void>;
   /**
    * How many messages are currently tracked in a concurrency set.
    *
@@ -68,13 +56,6 @@ export function createAdmissionStore(
   return {
     lockQueueForTimeMs(queueKey, durationMs) {
       return client.set(queueKey, 'locked', 'PX', durationMs, 'NX');
-    },
-
-    async claimConcurrencyRateLimit(concurrencyRateLimitKey, messageId) {
-      const multi = client.multi();
-      multi.sadd(concurrencyRateLimitKey, messageId);
-      multi.hset(redisKeys.message(messageId), { concurrencyRateLimitKey });
-      assertExecSucceeded(await multi.exec(), 'claimConcurrencyRateLimit');
     },
 
     getConcurrencyRateLimitCount(concurrencyRateLimitKey) {

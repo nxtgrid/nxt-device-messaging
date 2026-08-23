@@ -1,13 +1,9 @@
 /**
- * @fileoverview CALIN API V2 HTTP client (Unit 9.2).
+ * @fileoverview CALIN API V2 HTTP client.
  *
- * Port of legacy `adapters/calin-api-v2/lib/repo.ts` with native `fetch` instead
- * of axios, and JWT `exp` decoded without `jsonwebtoken`. Login credentials and
+ * Native `fetch`; JWT `exp` decoded without `jsonwebtoken`. Login credentials and
  * base URL come from secrets (`CALIN_API_V2_*`); the client caches a Bearer
  * token and refreshes on expiry or HTTP 401.
- *
- * Note: `meter-installs` in nxt-backend also imported the legacy module — that
- * coupling stays out of scope here (plan coupling note).
  */
 
 import { logger } from '../../../log.js';
@@ -110,7 +106,7 @@ type UnexpectedCodeProbe = {
   readonly reason?: unknown;
 };
 
-/** Login request timeout (legacy `CUSTOM_LOGIN_TIMEOUT_MS`). */
+/** Login request timeout. */
 const CUSTOM_LOGIN_TIMEOUT_MS = 5_000;
 
 /** Attempts for login and for each authenticated request wave. */

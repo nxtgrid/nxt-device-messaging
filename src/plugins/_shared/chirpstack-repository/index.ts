@@ -1,17 +1,16 @@
 /**
- * @fileoverview Shared ChirpStack gRPC device client (Unit 10.2).
+ * @fileoverview Shared ChirpStack gRPC device client.
  *
- * Port of legacy `lib/chirpstack-repository/index.ts`. Secrets load here via
- * {@link loadChirpstackSecrets} (`CHIRPSTACK_*`) — not in manufacturer plugins.
- * First consumer is `calin-chirpstack`; other LoRaWAN brand plugins may reuse this.
+ * Secrets load here via {@link loadChirpstackSecrets} (`CHIRPSTACK_*`) — not in
+ * manufacturer plugins. First consumer is `calin-chirpstack`; other LoRaWAN
+ * brand plugins may reuse this.
  *
  * Uses `@chirpstack/chirpstack-api` + `@grpc/grpc-js` (not HTTP/`fetch`).
  * Default imports are required for ESM↔CJS interop (named imports are undefined).
- * Legacy used insecure credentials; same until TLS is an explicit follow-up.
+ * Credentials are insecure until TLS is an explicit follow-up.
  *
- * `registerDevice` / `setApplicationKeyForDevice` travel with the port (ledger +
- * meter-installs coupling note). Messaging paths use `enqueueDeviceRequest` and
- * `getDeviceQueue`.
+ * `registerDevice` / `setApplicationKeyForDevice` are provisioning helpers.
+ * Messaging paths use `enqueueDeviceRequest` and `getDeviceQueue`.
  */
 
 import { Metadata, credentials, type CallOptions } from '@grpc/grpc-js';
@@ -86,7 +85,7 @@ export function createChirpstackClient() {
       const device = new devicePb.Device();
       device.setDevEui(devEui);
       device.setName(deviceName);
-      // @TODO :: This is meter / deployment specific (legacy note).
+      // @TODO :: This is meter / deployment specific.
       device.setApplicationId(secrets.applicationId);
       device.setDeviceProfileId(secrets.profileId);
 

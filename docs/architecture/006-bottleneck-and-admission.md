@@ -19,6 +19,10 @@ renamed `bottleneckKey` → `initialQueueKey`. Boot-time `bottleneckKind` regist
 > (`PushPlugin` | `PullPlugin`). `deliveryPattern: 'PUSH' | 'PULL'` in §3 is the two
 > confirmation patterns; `'NONE'` means there is no confirmation path because there is no
 > send. The D4 `nxt-sts` / `kind: none` row is historical — that queue key is no longer built.
+>
+> **Amendment (2026-08-23):** `custom` admission (`canDistribute` / `onClaim` /
+> `onRelease`) is dropped. The two named strategies cover the topologies we have;
+> a third case should be a named strategy with a claim that matches the others.
 
 **Read this when:** touching `initialQueueKey`, `buildInitialQueueKey`, distribute/admission,
 initial queue keys, `messageFullCleanup` queue lists, plugin SPI (Unit 6), or LoRaWAN/DCU
@@ -87,29 +91,22 @@ The SPI name is **`initialQueueKey`** (agnostic): it is the Redis sorted set we 
 before distribute. The physical “bottleneck / admission node” story lives in the key
 segments and in `admission`, not in the method name.
 
-### 2. Admission is declared with named strategies (+ custom escape hatch)
+### 2. Admission is declared with named strategies
 
-Plugins do **not** reimplement `canDistribute` / `onClaim` for the two known topologies.
+Plugins do **not** reimplement admission for the two known topologies.
 They select a **named strategy**; core executes shared primitives. Knobs are plugin tuning
 defaults, overridable via ADR-002 config.
 
 ```ts
 type Admission =
   | { strategy: 'spacing'; minIntervalMs: number }
-  | { strategy: 'concurrency'; maxInFlight: number }
-  | {
-      strategy: 'custom';
-      canDistribute: (ctx: DistributeCtx) => Promise<boolean>;
-      onClaim?: (ctx: DistributeCtx & { messageId: string }) => Promise<void>;
-      onRelease?: (ctx: DistributeCtx & { messageId: string }) => Promise<void>;
-    };
+  | { strategy: 'concurrency'; maxInFlight: number };
 ```
 
 | Strategy | Maps to today’s behaviour | When to use |
 |---|---|---|
 | `spacing` | `lockQueueForTimeMs` on the initial queue before pick | Network flood control (LoRaWAN-like) |
 | `concurrency` | SCARD/SADD via `buildConcurrencyRateLimitKey(queueKey)`; validate+clean when at cap; claim stores key on message; release via `messageFullCleanup` / `enterRetry` | DCU / API concurrency (CALIN API-like) |
-| `custom` | Plugin-supplied hooks | Third case that doesn’t fit the two primitives |
 
 **Distributor rule:** resolve **plugin** for an active queue → run that plugin’s admission →
 then shared `pickNextAndMoveToNs`. **No** `if (kind === 'network')` in core.
@@ -118,7 +115,7 @@ then shared `pickNextAndMoveToNs`. **No** `if (kind === 'network')` in core.
 partition. Core derives
 `queue:{pluginId}:{kind}:{id}` → `rate_limit:{pluginId}:{kind}:{id}` via
 `buildConcurrencyRateLimitKey` — plugins do **not** supply a key builder. A different grain
-than the queue partition is `custom` admission.
+than the queue partition would be a new named strategy.
 
 ### 3. `deliveryPattern` stays separate
 
@@ -182,9 +179,10 @@ option.
    set (success cleanup, retry, final fail).
 
 **Concurrency release — settled.** At concurrency **claim**, Redis stores
-`concurrencyRateLimitKey` on the message hash (`claimConcurrencyRateLimit` = SADD + HSET).
-Cleanup and `enterRetry` SREM that field (legacy-shaped) — no key threading. The field is
-**stripped** before adopter-facing emit / command GET (`omitInternalFields`).
+`concurrencyRateLimitKey` on the message hash. The claim is inside the fetch-next Lua
+(SCARD cap, then ZPOPMIN + SADD + HSET in one script) so two distribute passes cannot
+overshoot `maxInFlight`. Cleanup and `enterRetry` SREM that field — no key threading.
+The field is **stripped** before adopter-facing emit / command GET (`omitInternalFields`).
 
 **Queue list — resolved 2026-08-21 (C2.3, ADR-008 §7).** Criterion 1's flat array won, but it
 is *derived*, not written: `StageMoves.purge` builds it from `enumerateStageKeys` plus the
@@ -201,10 +199,10 @@ end-to-end exit-path suite (parked as *Thorough cleanup suite*).
 concurrency claim/store refined later):**
 `OutgoingService.distributeToNetworkServers` on
 `createOutgoingService({ registry, delivery, baseService })`
-runs named strategies (`spacing` / `concurrency` / `custom`); resolve plugin via D1-C.
+runs named strategies (`spacing` / `concurrency`); resolve plugin via D1-C.
 Concurrency rate-limit keys are derived by core (`buildConcurrencyRateLimitKey`) — no
-SPI `rateLimitKey`. On concurrency claim: SADD the track set and HSET
-`concurrencyRateLimitKey` on the message (`claimConcurrencyRateLimit`). After pick:
+SPI `rateLimitKey`. On concurrency claim the fetch-next Lua SADDs the track set and HSETs
+`concurrencyRateLimitKey` on the message (same script as the SCARD cap). After pick:
 fire-and-forget `sendOne` + PUSH|PULL post-send moves. Send-fail / success / timeout
 cleanup does **not** pass a key — `messageFullCleanup` and `enterRetry` read and
 SREM the stored field. Enqueue fire-and-forget kick when `engineEnabled` is true
@@ -246,7 +244,10 @@ Wire parent field is **`device.relayNode`** (D6, 2026-08-04) — generic I/O par
 - **Boot-time `bottleneckKind` registry (session 18 D1-B)** — solved lookup with extra SPI and
   global kind uniqueness; superseded by embedding `pluginId` in the key.
 - **Every plugin must hand-write `canDistribute` / `onClaim`** — duplicates the two known
-  primitives; named strategies are the default, `custom` is the escape hatch.
+  primitives; named strategies are the default.
+- **`custom` admission** (`canDistribute` / `onClaim` / `onRelease`) — unused after named
+  strategies and the Lua concurrency claim; a third topology should be a named strategy
+  with a claim that matches the others.
 - **SPI `rateLimitKey` / `trackKey` on concurrency admission** — the initial-queue key already
   identifies the admission node; `buildConcurrencyRateLimitKey` derives the Redis key.
 - **Infer admission or PUSH/PULL from the human `kind` segment** — same smell as legacy.

@@ -39,7 +39,7 @@ const eventWebhookSchema = z.object({
 
 /**
  * Plugin entry as known to the core before plugin-contributed schemas are composed
- * (ADR-002 §3). Settings/tuning stay opaque here; Phase 2 tightens them per plugin.
+ * (ADR-002 §3). Settings/tuning stay opaque here; each plugin validates at construct.
  */
 const pluginEntrySchema = z.object({
   id: z.string().min(1),
@@ -65,7 +65,7 @@ export const deviceMessagingConfigSchema = z.object({
 
 export type DeviceMessagingConfig = z.infer<typeof deviceMessagingConfigSchema>;
 
-/** Shared delivery-engine knobs (`config.delivery`) — retry / TTL only after D5. */
+/** Shared delivery-engine knobs (`config.delivery`) — retry / TTL only. */
 export type DeliveryConfig = DeviceMessagingConfig['delivery'];
 
 /** Process logging knobs (`config.logging`). */

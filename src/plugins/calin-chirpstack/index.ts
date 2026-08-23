@@ -1,9 +1,7 @@
 /**
- * @fileoverview `calin-chirpstack` plugin factory (Unit 10 — Phase 2).
+ * @fileoverview `calin-chirpstack` plugin factory.
  *
- * PUSH adapter: CALIN meter framing over ChirpStack (legacy folder
- * `adapters/calin-lorawan/`). Units 10.1–10.5: SPI, shared gRPC client,
- * encode/decode/correlate, outgoing, incoming.
+ * PUSH adapter: CALIN meter framing over ChirpStack.
  *
  * ChirpStack gRPC secrets stay vendor-scoped (`CHIRPSTACK_*`) in
  * `_shared/chirpstack-repository/` — loaded when that client is created.
@@ -13,6 +11,8 @@
  * shared client is constructed.
  */
 
+import { isNil } from 'ramda';
+
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { EnqueueableCommandType } from '../../lib/device-message/types.js';
 import { createChirpstackClient } from '../_shared/chirpstack-repository/index.js';
@@ -21,7 +21,6 @@ import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
   InitialQueueKeyInput,
-  PluginTuning,
   PushPlugin,
 } from '../plugin.interface.js';
 import { createCalinChirpstackIncoming } from './incoming.js';
@@ -36,7 +35,7 @@ export const CALIN_CHIRPSTACK_ID = 'calin-chirpstack' as const;
 const CALIN_CHIRPSTACK_NODE_KIND = 'network' as const;
 
 /**
- * Outbound command types this plugin implements (legacy encode maps).
+ * Outbound command types this plugin implements.
  * Token mint is out of band (`nxt-sts`); this plugin only delivers tokens.
  */
 const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
@@ -45,7 +44,7 @@ const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
   'READ_POWER',
   'READ_CURRENT',
   'READ_POWER_LIMIT',
-  // 'READ_VERSION' — not in legacy LoRaWAN encode map
+  // 'READ_VERSION' — not implemented on this plugin
   'READ_DATE',
   'READ_TIME',
   'TURN_ON',
@@ -59,17 +58,6 @@ const CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES = [
   'DELIVER_PREEXISTING_TOKEN',
 ] as const satisfies readonly EnqueueableCommandType[];
 
-/**
- * Default stage timeouts / poll delay (legacy delivery defaults).
- * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
- */
-const CALIN_CHIRPSTACK_DEFAULT_TUNING: PluginTuning = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-};
-
 /** Flood lock — one claim per network (or unassigned) every 2s (ADR-006). */
 const CALIN_CHIRPSTACK_ADMISSION: Admission = {
   strategy: 'spacing',
@@ -79,17 +67,16 @@ const CALIN_CHIRPSTACK_ADMISSION: Admission = {
 /**
  * Build the `calin-chirpstack` {@link PushPlugin}.
  *
- * Creates the shared ChirpStack gRPC client (secrets from env). Outgoing and
- * incoming are fully wired (Units 10.4–10.5).
+ * Creates the shared ChirpStack gRPC client (secrets from env).
  *
  * @param entry - Config `plugins[]` entry for this id
  */
 export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugin {
   const client = createChirpstackClient();
-  const tuning = mergePluginTuning(CALIN_CHIRPSTACK_DEFAULT_TUNING, entry);
+  const tuning = mergePluginTuning(entry);
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
-    const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
+    const networkPart = isNil(input.networkId) ? 'unassigned' : String(input.networkId);
     return buildInitialQueueKey(
       CALIN_CHIRPSTACK_ID,
       CALIN_CHIRPSTACK_NODE_KIND,

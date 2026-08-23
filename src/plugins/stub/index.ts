@@ -1,10 +1,11 @@
 /**
- * @fileoverview No-op stub plugins for the walking-skeleton Intermezzo (I1).
+ * @fileoverview No-op stub plugins.
  *
  * Two fixed ids so config can enable PUSH and/or PULL without vendor I/O.
- * Real CALIN / ChirpStack plugins land in Phase 2; do not reuse those ids here.
+ * Do not reuse these ids for vendor plugins.
  */
 
+import { isNil } from 'ramda';
 import { ulid } from 'ulid';
 
 import type { DeviceMessagingConfig } from '../../config/schema.js';
@@ -18,7 +19,10 @@ import type {
   PluginId,
 } from '../../lib/device-message/types.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
-import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
+import {
+  DEFAULT_PLUGIN_TUNING,
+  mergePluginTuning,
+} from '../_shared/merge-plugin-tuning.js';
 import type {
   Admission,
   InitialQueueKeyInput,
@@ -44,17 +48,6 @@ export const STUB_PUSH_NODE_KIND = 'network' as const;
 /** Human label in PULL stub initial-queue keys (`queue:stub-pull:relayNode:…`). */
 export const STUB_PULL_NODE_KIND = 'relayNode' as const;
 
-/**
- * Default stage timeouts / poll delay for stubs (legacy delivery defaults).
- * Config `plugins[].tuning` overrides via {@link mergePluginTuning}.
- */
-export const STUB_DEFAULT_TUNING: PluginTuning = {
-  nsInFlightTimeoutMs: 20_000,
-  relayNodeInFlightTimeoutMs: 900_000,
-  deviceInFlightTimeoutMs: 12_000,
-  initialPollDelayMs: 10_000,
-};
-
 const STUB_PUSH_ADMISSION: Admission = {
   strategy: 'spacing',
   minIntervalMs: 2000,
@@ -71,7 +64,7 @@ type StubSharedOptions = {
   readonly admission: Admission;
   /** Defaults to all enqueueable command types. */
   readonly supportedCommandTypes?: readonly EnqueueableCommandType[];
-  /** Defaults to {@link STUB_DEFAULT_TUNING}. */
+  /** Defaults to {@link DEFAULT_PLUGIN_TUNING}. */
   readonly tuning?: PluginTuning;
 };
 
@@ -113,7 +106,7 @@ function stubPushInitialQueueKey(
   nodeKind: string,
   input: InitialQueueKeyInput,
 ): string {
-  const networkPart = input.networkId == null ? 'unassigned' : String(input.networkId);
+  const networkPart = isNil(input.networkId) ? 'unassigned' : String(input.networkId);
   return buildInitialQueueKey(id, nodeKind, networkPart);
 }
 
@@ -123,7 +116,7 @@ function stubPullInitialQueueKey(
   input: InitialQueueKeyInput,
 ): string {
   const relayNodeId = input.device.relayNode?.id;
-  const relayPart = relayNodeId == null ? 'unassigned' : String(relayNodeId);
+  const relayPart = isNil(relayNodeId) ? 'unassigned' : String(relayNodeId);
   return buildInitialQueueKey(id, nodeKind, relayPart);
 }
 
@@ -133,7 +126,7 @@ function buildStubPush(options: StubPushOptions): PushPlugin {
     nodeKind,
     admission,
     supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
-    tuning = STUB_DEFAULT_TUNING,
+    tuning = DEFAULT_PLUGIN_TUNING,
   } = options;
 
   return {
@@ -169,7 +162,7 @@ function buildStubPull(options: StubPullOptions): PullPlugin {
     nodeKind,
     admission,
     supportedCommandTypes = ENQUEUEABLE_COMMAND_TYPES,
-    tuning = STUB_DEFAULT_TUNING,
+    tuning = DEFAULT_PLUGIN_TUNING,
   } = options;
 
   return {
@@ -214,7 +207,7 @@ export function createStubPushPlugin(entry: PluginConfigEntry): PushPlugin {
     deliveryPattern: 'PUSH',
     nodeKind: STUB_PUSH_NODE_KIND,
     admission: STUB_PUSH_ADMISSION,
-    tuning: mergePluginTuning(STUB_DEFAULT_TUNING, entry),
+    tuning: mergePluginTuning(entry),
   });
 }
 
@@ -225,6 +218,6 @@ export function createStubPullPlugin(entry: PluginConfigEntry): PullPlugin {
     deliveryPattern: 'PULL',
     nodeKind: STUB_PULL_NODE_KIND,
     admission: STUB_PULL_ADMISSION,
-    tuning: mergePluginTuning(STUB_DEFAULT_TUNING, entry),
+    tuning: mergePluginTuning(entry),
   });
 }

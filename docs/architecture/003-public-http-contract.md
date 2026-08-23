@@ -334,4 +334,3 @@ integration guide (Phase 4) narrates webhook verification and the event set for 
 - **`nxt-backend` ADR-010** — extraction rationale; decision 2 inventory superseded here.
 - **`nxt-backend` ADR-005 §11** — integrable extracted service (HTTP in, callbacks out).
 - **`nxt-backend` ADR-011** — estate `command_type` vocabulary.
-- **`docs/plans/001-extraction.md`** — Phase 3 implements this contract.
