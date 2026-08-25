@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28
 **Status:** Accepted — amended 2026-08-25 (`@nxtgrid/device-messaging-contract` wire package;
-not a plugin SDK)
+not a plugin SDK; npm version independent of GHCR tags)
 
 > Closes Decision 7. Unblocks Decision 9 (Docker / CI / OSS hygiene) and Phase 0 scaffold.
 > Complements ADR-001: that ADR left the build tool open once NestJS/`emitDecoratorMetadata`
@@ -94,10 +94,16 @@ plus inferred types — not an in-process engine, not the plugin SPI.
   own the wire in Zod).
 - **Build:** the same **tsup** as the app (`pnpm build:contract`), `zod` external, ESM only,
   no sourcemap in `dist`. The server image and the app CI `pnpm build` path do not emit this
-  package. `prepack` on the package runs that emit. Version tracks the service (`0.1.1` with
-  the app). Publish to **npmjs** as a public scoped package (`publishConfig.access: public`).
-  Release-workflow npm publish (same `v*.*.*` tags as GHCR) waits on an `NPM_TOKEN` secret
-  and the `@nxtgrid` org on npmjs.
+  package. `prepack` on the package runs that emit. Publish to **npmjs** as a public scoped
+  package (`publishConfig.access: public`).
+- **Versioning is independent of the GHCR image.** Bump `packages/contract` when the exported
+  wire (schemas / types) changes — breaking shape → major, additive field/route → minor,
+  docs-only → patch. A Valkey retry fix or a plugin change is not a contract release. The
+  two version numbers may match (e.g. both `0.1.2` on a first public cut) or diverge; matching
+  is not a rule. `.github/workflows/release.yml` stays **GHCR-only** (`v*.*.*` tags). npm
+  publish is **manual** from `main` (`pnpm --filter @nxtgrid/device-messaging-contract publish`).
+  A later `NPM_TOKEN` job (`workflow_dispatch` or `contract-v*` tags) is optional; do not hitch
+  it to every app tag.
 - **Not a plugin SDK.** Hardware plugins stay first-party in this repository (ADR-001). A
   third-party plugin SDK remains a trigger, not this package.
 
