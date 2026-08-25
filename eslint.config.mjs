@@ -53,6 +53,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'packages/contract/dist/**',
       'coverage/**',
       'node_modules/**',
       'eslint.config.mjs',

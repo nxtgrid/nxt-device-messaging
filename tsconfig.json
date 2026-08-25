@@ -16,8 +16,8 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "packages/contract/src/**/*.ts",
+    "packages/contract/**/*.ts",
     "*.config.ts"
   ],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "packages/contract/dist", "node_modules"]
 }

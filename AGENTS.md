@@ -35,12 +35,14 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | `src/lib/redis-repository/` | Message, stage, and admission stores |
 | `src/config/` | JSON artifact + env |
 | `src/metrics/` | Prometheus `/metrics` |
+| `packages/contract/` | Adopter wire contract (`@nxt/device-messaging-contract`) |
 | `src/main.ts` | Composition root |
 
 ## Commands
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` → `pnpm dev`
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
+- **Contract package:** `pnpm build:contract` (emit for npm publish; not the server image)
 - **Smoke:** `src/http/smoke/` (httpYac); opt-in `pnpm test:integration` (Valkey; `RUN_REDIS_SMOKE=1`)
 
 ## Workflow

@@ -21,6 +21,7 @@
     "prepare": "husky",
     "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsup",
+    "build:contract": "tsup --config packages/contract/tsup.config.ts",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
