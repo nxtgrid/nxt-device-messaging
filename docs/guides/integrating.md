@@ -31,6 +31,10 @@ request fails clearly — the process does not crash.
 
 Vendor callbacks (ChirpStack, ...) hit `POST /ingress/:pluginId`. That's not your app.
 
+`POST /plugin/provisioning` is synchronous and optional. You own install/uninstall
+sequences; each call runs one allowlisted vendor operation. Plugins without the facet
+(today `calin-api-v1`) return 400. Details: [ADR-003 §8](../architecture/003-public-http-contract.md).
+
 ## Delivery events
 
 Set `eventWebhook.url` in the config artifact. We POST JSON there when something

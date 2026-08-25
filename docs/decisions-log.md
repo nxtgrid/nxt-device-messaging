@@ -14,7 +14,8 @@ Extraction-era journal: [`docs/archive/decisions-log-extraction.md`](archive/dec
 ## State of the service
 
 Standalone command-delivery service: enqueue / get / cancel, PUSH ingress, token mint,
-outbound webhook, metrics, first-party plugins (CALIN V1/V2, ChirpStack, nxt-sts, stubs).
+optional plugin provisioning (`POST /plugin/provisioning`, ADR-003 §8), outbound webhook,
+metrics, first-party plugins (CALIN V1/V2, ChirpStack, nxt-sts, stubs).
 Message lifecycle is a stage table (ADR-008). One replica (ADR-007). Core-owned
 `PluginTuning` defaults (ADR-002).
 
