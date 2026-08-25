@@ -1,7 +1,7 @@
 /**
  * @fileoverview Adopter-facing HTTP and webhook wire types.
  *
- * Allowlist for a future publishable contract package. Engine-only types
+ * Allowlist for a future `@nxt/device-messaging-types` package. Engine-only types
  * (`DeviceMessage`, `FailureContext`, `ParsedIncomingEvent`, Redis records)
  * are not exported. Ingress path params are vendor→service, not this barrel.
  */
