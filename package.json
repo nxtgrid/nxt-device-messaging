@@ -1,6 +1,6 @@
 {
   "name": "nxt-device-messaging",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Reliable, prioritized, retrying command delivery to addressable field devices",
   "license": "MPL-2.0",
   "authors": [
@@ -21,6 +21,7 @@
     "prepare": "husky",
     "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "build": "tsup",
+    "build:contract": "tsup --config packages/contract/tsup.config.ts",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

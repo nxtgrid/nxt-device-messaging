@@ -35,12 +35,14 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | `src/lib/redis-repository/` | Message, stage, and admission stores |
 | `src/config/` | JSON artifact + env |
 | `src/metrics/` | Prometheus `/metrics` |
+| `packages/contract/` | Adopter wire contract (`@nxtgrid/device-messaging-contract`) |
 | `src/main.ts` | Composition root |
 
 ## Commands
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` → `pnpm dev`
 - **Check:** `pnpm lint` / `typecheck` / `test` / `build`
+- **Contract package:** `pnpm build:contract` (emit for npm publish; not the server image)
 - **Smoke:** `src/http/smoke/` (httpYac); opt-in `pnpm test:integration` (Valkey; `RUN_REDIS_SMOKE=1`)
 
 ## Workflow
@@ -80,7 +82,7 @@ stop if the ADR does not apply. Cap at 2–3 before proposing an approach.
 | 001 | Fastify + Zod runtime; no DI container; plugins are plain objects |
 | 002 | Configuration mechanism — JSON artifact + env secrets, per-plugin schemas |
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
-| 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
+| 004 | Tooling — pnpm, Node 24, ESM, tsup; `@nxtgrid/device-messaging-contract` |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |

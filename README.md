@@ -68,6 +68,7 @@ curl -sS -X POST http://127.0.0.1:3100/message/enqueue \
 ```
 
 Browse the contract at [`http://127.0.0.1:3100/swagger`](http://127.0.0.1:3100/swagger).
+TypeScript/Zod: `@nxtgrid/device-messaging-contract`.
 How to consume enqueue + webhooks: [integrating](docs/guides/integrating.md).
 
 Config loads `DEVICE_MESSAGING_CONFIG_JSON` → `_URL` → `_PATH` → bundled

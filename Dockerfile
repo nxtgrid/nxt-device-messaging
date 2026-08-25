@@ -11,6 +11,7 @@ WORKDIR /app
 FROM base AS build
 ENV HUSKY=0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/contract/package.json ./packages/contract/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
