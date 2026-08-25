@@ -88,6 +88,20 @@ export type PluginToken = {
 };
 
 /**
+ * Sync vendor operation (not queued). Optional; omit when the plugin has no
+ * network-server admin surface. HTTP: `POST /plugin/provisioning`.
+ */
+export type PluginProvisioningInput = {
+  readonly operation: string;
+  readonly payload: unknown;
+};
+
+/** Plugin-owned allowlisted operations; engine only routes `pluginId`. */
+export type PluginProvisioning = {
+  execute(input: PluginProvisioningInput): Promise<unknown>;
+};
+
+/**
  * Send + error mapping shared by every plugin, including token-only
  * (`sendOne` throws to document the refusal).
  */
@@ -117,6 +131,12 @@ type PluginBase = {
 
   /** Optional STS / vendor token capability (required on {@link TokenOnlyPlugin}). */
   token?: PluginToken;
+
+  /**
+   * Optional sync vendor operations (NS register / allowlisted HTTP).
+   * Absent → `ProvisioningNotSupportedError` on the provisioning route.
+   */
+  provisioning?: PluginProvisioning;
 };
 
 /**

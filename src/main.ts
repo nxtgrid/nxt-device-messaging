@@ -9,6 +9,7 @@ import { createStageMoves } from './engine/lifecycle/moves.js';
 import { createLifecycleRunner } from './engine/lifecycle/runner.js';
 import { createOutgoingService } from './engine/outgoing.js';
 import { startEngineTimers } from './engine/timers.js';
+import { createProvisioningService } from './engine/provisioning.js';
 import { createTokenService } from './engine/token.js';
 import { createWebhookService } from './engine/webhook/service.js';
 import { createWebhookStore } from './engine/webhook/store.js';
@@ -115,11 +116,15 @@ const lifecycleRunner = createLifecycleRunner({
 const tokenService = createTokenService({
   registry: pluginRegistry,
 });
+const provisioningService = createProvisioningService({
+  registry: pluginRegistry,
+});
 
 const app = await buildApp({
   outgoingService,
   incomingService,
   tokenService,
+  provisioningService,
   registry: pluginRegistry,
   apiKey: process.env.DEVICE_MESSAGING_API_KEY,
   metrics,

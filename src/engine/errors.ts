@@ -33,6 +33,34 @@ export class TokenNotSupportedError extends Error {
 }
 
 /**
+ * Thrown when a plugin is enabled but does not expose `provisioning.execute`.
+ * HTTP maps this to 400.
+ */
+export class ProvisioningNotSupportedError extends Error {
+  readonly pluginId: PluginId;
+
+  constructor(pluginId: PluginId) {
+    super(`Plugin does not support provisioning: ${ pluginId }`);
+    this.name = 'ProvisioningNotSupportedError';
+    this.pluginId = pluginId;
+  }
+}
+
+/**
+ * Thrown when the operation name or payload is not valid for the plugin.
+ * HTTP maps this to 400.
+ */
+export class InvalidProvisioningError extends Error {
+  readonly pluginId: PluginId;
+
+  constructor(pluginId: PluginId, detail: string) {
+    super(`Plugin ${ pluginId }: ${ detail }`);
+    this.name = 'InvalidProvisioningError';
+    this.pluginId = pluginId;
+  }
+}
+
+/**
  * Thrown when the plugin is enabled but does not accept `commandType`.
  * HTTP maps this to 400 (ADR-003 §4).
  */

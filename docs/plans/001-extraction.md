@@ -305,10 +305,16 @@ Two files in this ledger have consumers **outside** device-messages that stay in
 - `adapters/calin-api-v2/lib/repo.ts` — `meter-installs/adapters/calin-api-v2/_install.service.ts`
   uses `sendCalinApiV2Request`, `CalinApiV2Error`, and two response types.
 
-Extracting them leaves nxt-backend's **hardware provisioning** without its vendor clients. Hardware
-provisioning is **out of scope here** and no decision has been made about it. This is a finding for
-nxt-backend's Metering import to resolve — do not expand scope to cover it. It does **not** block any
-unit in this plan; the files port normally.
+Extracting them leaves nxt-backend's **hardware provisioning** without those in-process
+clients. **Settled 2026-08-24 (ADR-003 §8):** this service exposes `POST /plugin/provisioning`
+— an optional sync plugin facet so Metering can reuse the existing vendor clients.
+`calin-chirpstack` allowlists `registerDevice` / `setApplicationKey`; `calin-api-v2`
+allowlists four uninstall `sendRequest` paths; `calin-api-v1` has no facet. Metering still
+owns the install/uninstall sequences. This is not a generic vendor proxy, not a queued
+command, and not a shared npm package.
+
+nxt-backend `meter-installs` still imports the frozen `legacy/` clients. Switching those
+callers onto this route is Metering import work, not this plan.
 
 The type imports in `meter-installs.service.ts` / `meter-uninstalls.service.ts`
 (`DeviceManufacturerEnum`, `DeviceProtocolEnum`, `NetworkServerImplementation`) are already resolved:

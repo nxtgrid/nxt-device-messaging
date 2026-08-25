@@ -7,7 +7,8 @@ service-owned `CommandType` vocabulary + plugin `supportedCommandTypes` subset);
 amended 2026-08-04 (D6: `device.relayNode` replaces `device.gateway`);
 amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed);
 amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys locked;
-HMAC deferred then landed in 3.1E)
+HMAC deferred then landed in 3.1E);
+amended 2026-08-24 (`POST /plugin/provisioning` — optional plugin facet, `pluginId` in body)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -51,6 +52,7 @@ because the logic was missing — both single and batch cancel already exist in 
 | `POST /message/cancel` | Cancel one (`{ correlationId }`) |
 | `POST /messages/cancel` | Cancel many (`{ correlationIds: string[] }`) |
 | `POST /token/generate` | Mint one token synchronously |
+| `POST /plugin/provisioning` | Run one plugin-owned vendor admin operation (sync; optional facet) |
 | `POST /ingress/:pluginId` | Vendor → service webhook (raw body) |
 
 Cancel uses POST (not DELETE) so single and batch share one verb family and carry ids in the
@@ -85,8 +87,8 @@ on `nxt-backend`.
 ### 3. Caller selects the plugin via `pluginId`
 
 `device.manufacturer` + `device.protocol` are dropped from the public contract. The caller
-passes a required `pluginId`. The service routes enqueue, token generation, and ingress by
-that id. `device` on the wire is identity only (`type`, `externalReference`, optional
+passes a required `pluginId`. The service routes enqueue, token generation, provisioning,
+and ingress by that id. `device` on the wire is identity only (`type`, `externalReference`, optional
 `relayNode` — generic I/O parent for gateway / DCU / mesh hop; see D6).
 
 Bundled plugin ids (kebab-case, manufacturer + network server where both matter):
@@ -130,8 +132,8 @@ currency top-up would add a new value rather than overloading the name.
 
 ### 5. Inbound auth on the command API: static API key (opt-in)
 
-Command routes (`POST /message/*`, `GET /message/*`, `POST /messages/*`, `POST /token/*`)
-authenticate with a static Bearer key when configured:
+Command routes (`POST /message/*`, `GET /message/*`, `POST /messages/*`, `POST /token/*`,
+`POST /plugin/*`) authenticate with a static Bearer key when configured:
 
 - **Key set:** require `Authorization: Bearer <key>` validated against
   `DEVICE_MESSAGING_API_KEY`.
@@ -279,6 +281,19 @@ webhook secret authenticates callbacks *from* this service to the consumer.
 
 The same Zod schemas validate requests/responses and produce the OpenAPI document. The
 integration guide (Phase 4) narrates webhook verification and the event set for consumers.
+
+### 8. Optional provisioning facet (amendment 2026-08-24)
+
+Hardware install/uninstall workflows stay with the caller (Metering). This service does
+not own those sequences. Plugins that already talk to a vendor may expose a **sync**
+`provisioning.execute({ operation, payload })` facet so callers reuse that client
+without duplicating login/retry/gRPC setup.
+
+`POST /plugin/provisioning` takes `pluginId` in the body (same pattern as enqueue and
+token generate). The engine only looks up the plugin; each plugin allowlists its
+operations. Plugins without the facet return 400 (`ProvisioningNotSupportedError`).
+`calin-api-v1` does not implement the facet. This is not a generic vendor HTTP proxy
+and not a queued command.
 
 ---
 

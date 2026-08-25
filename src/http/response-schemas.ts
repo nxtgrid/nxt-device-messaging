@@ -22,3 +22,8 @@ export const errorBodySchema = z.object({
 export const generateTokenResponseSchema = z.object({
   token: z.string(),
 }).strict();
+
+/** `POST /plugin/provisioning` success body. `result` is plugin-specific. */
+export const pluginProvisioningResponseSchema = z.object({
+  result: z.unknown(),
+}).strict();

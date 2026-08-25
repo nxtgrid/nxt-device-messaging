@@ -15,6 +15,7 @@ import {
   deviceMessageResponseSchema,
   failureReasonSchema,
   generateTokenSchema,
+  pluginProvisioningRequestSchema,
   messageResponseSchema,
   messageResponseStatusSchema,
   phaseSchema,
@@ -49,6 +50,9 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 
 /** Plugin `token.generate` args — wire body without routing. */
 export type GenerateTokenInput = DistributiveOmit<GenerateTokenRequest, 'pluginId'>;
+
+/** `POST /plugin/provisioning` body. */
+export type PluginProvisioningRequest = z.infer<typeof pluginProvisioningRequestSchema>;
 
 export type PhaseEnum = z.infer<typeof phaseSchema>;
 export type DeviceMessageDevice = CreateDeviceMessage['device'];

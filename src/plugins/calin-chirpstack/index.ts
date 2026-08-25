@@ -12,7 +12,6 @@
  */
 
 import { isNil } from 'ramda';
-
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type { EnqueueableCommandType } from '../../lib/device-message/types.js';
 import { createChirpstackClient } from '../_shared/chirpstack-repository/index.js';
@@ -25,6 +24,7 @@ import type {
 } from '../plugin.interface.js';
 import { createCalinChirpstackIncoming } from './incoming.js';
 import { createCalinChirpstackOutgoing } from './outgoing.js';
+import { createCalinChirpstackProvisioning } from './provisioning.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -93,5 +93,6 @@ export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugi
     initialQueueKey,
     outgoing: createCalinChirpstackOutgoing({ client }),
     incoming: createCalinChirpstackIncoming(),
+    provisioning: createCalinChirpstackProvisioning({ client }),
   };
 }

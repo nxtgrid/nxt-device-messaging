@@ -29,9 +29,9 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | Path | Role |
 |---|---|
 | `src/engine/lifecycle/` | Stage table, moves, actions, one 1000 ms runner |
-| `src/engine/` | Outgoing, incoming, token, webhook, timers, composition peers |
+| `src/engine/` | Outgoing, incoming, token, provisioning, webhook, timers, composition peers |
 | `src/plugins/` | SPI (`PushPlugin \| PullPlugin \| TokenOnlyPlugin`) + first-party plugins |
-| `src/http/` | Command / ingress / token routes, OpenAPI |
+| `src/http/` | Command / ingress / token / provisioning routes, OpenAPI |
 | `src/lib/redis-repository/` | Message, stage, and admission stores |
 | `src/config/` | JSON artifact + env |
 | `src/metrics/` | Prometheus `/metrics` |
