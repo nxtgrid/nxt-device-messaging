@@ -29,6 +29,9 @@ you created.
 `calin-chirpstack`, `nxt-sts`, or a stub). The plugin must be in `plugins[]` or the
 request fails clearly — the process does not crash.
 
+TypeScript/Zod shapes for the table above (and the webhook body) are
+`@nxtgrid/device-messaging-contract`. Peer `zod`. Not an HTTP client.
+
 Vendor callbacks (ChirpStack, ...) hit `POST /ingress/:pluginId`. That's not your app.
 
 `POST /plugin/provisioning` is synchronous and optional. You own install/uninstall

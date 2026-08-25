@@ -1,10 +1,38 @@
 {
-  "name": "@nxt/device-messaging-contract",
+  "name": "@nxtgrid/device-messaging-contract",
   "version": "0.1.1",
   "description": "Adopter-facing HTTP and webhook wire contract for nxt-device-messaging",
   "license": "MPL-2.0",
   "type": "module",
-  "private": true,
+  "authors": [
+    {
+      "name": "Bobby Bol",
+      "email": "studio.innua@gmail.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nxtgrid/nxt-device-messaging.git",
+    "directory": "packages/contract"
+  },
+  "homepage": "https://github.com/nxtgrid/nxt-device-messaging/tree/main/packages/contract",
+  "bugs": {
+    "url": "https://github.com/nxtgrid/nxt-device-messaging/issues"
+  },
+  "keywords": [
+    "nxt-device-messaging",
+    "zod",
+    "webhook"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "pnpm --workspace-root run build:contract"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,7 +41,8 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "peerDependencies": {
     "zod": "^4.4.3"

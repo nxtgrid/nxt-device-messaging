@@ -1,7 +1,7 @@
 /**
  * @fileoverview Adopter-facing HTTP and webhook wire contract.
  *
- * Route-level allowlist for `@nxt/device-messaging-contract`. Engine-only types
+ * Route-level allowlist for `@nxtgrid/device-messaging-contract`. Engine-only types
  * (`DeviceMessage`, `FailureContext`, `ParsedIncomingEvent`, Redis records)
  * and ingress path params are not exported.
  */

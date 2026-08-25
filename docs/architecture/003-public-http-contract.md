@@ -9,7 +9,7 @@ amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed
 amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys locked;
 HMAC deferred then landed in 3.1E);
 amended 2026-08-24 (`POST /plugin/provisioning` — optional plugin facet, `pluginId` in body);
-amended 2026-08-25 (`@nxt/device-messaging-contract` — TS/Zod artifact, ADR-004 §6)
+amended 2026-08-25 (`@nxtgrid/device-messaging-contract` — TS/Zod artifact, ADR-004 §6)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -299,7 +299,7 @@ and not a queued command.
 ### 9. TypeScript/Zod artifact (amendment 2026-08-25)
 
 This ADR and OpenAPI remain the normative HTTP contract. TypeScript adopters also get
-`@nxt/device-messaging-contract`: route-level Zod schemas and inferred types (tooling:
+`@nxtgrid/device-messaging-contract`: route-level Zod schemas and inferred types (tooling:
 ADR-004 §6). Ingress is not in that package.
 
 ---
@@ -351,7 +351,7 @@ ADR-004 §6). Ingress is not in that package.
 
 ## Related
 
-- **ADR-004 §6** — `@nxt/device-messaging-contract` (schemas + types; not a plugin SDK).
+- **ADR-004 §6** — `@nxtgrid/device-messaging-contract` (schemas + types; not a plugin SDK).
 - **ADR-002** — `eventWebhook.url` in artifact; secrets in env; plugin enablement.
 - **`nxt-backend` ADR-010** — extraction rationale; decision 2 inventory superseded here.
 - **`nxt-backend` ADR-005 §11** — integrable extracted service (HTTP in, callbacks out).

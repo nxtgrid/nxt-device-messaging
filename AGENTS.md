@@ -35,7 +35,7 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | `src/lib/redis-repository/` | Message, stage, and admission stores |
 | `src/config/` | JSON artifact + env |
 | `src/metrics/` | Prometheus `/metrics` |
-| `packages/contract/` | Adopter wire contract (`@nxt/device-messaging-contract`) |
+| `packages/contract/` | Adopter wire contract (`@nxtgrid/device-messaging-contract`) |
 | `src/main.ts` | Composition root |
 
 ## Commands
@@ -82,7 +82,7 @@ stop if the ADR does not apply. Cap at 2–3 before proposing an approach.
 | 001 | Fastify + Zod runtime; no DI container; plugins are plain objects |
 | 002 | Configuration mechanism — JSON artifact + env secrets, per-plugin schemas |
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
-| 004 | Tooling — pnpm, Node 24, ESM, tsup; `@nxt/device-messaging-contract` |
+| 004 | Tooling — pnpm, Node 24, ESM, tsup; `@nxtgrid/device-messaging-contract` |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
