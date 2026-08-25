@@ -291,3 +291,28 @@ export const generateTokenSchema = z.discriminatedUnion('type', [
     type: z.literal('CLEAR_CREDIT'),
   }).strict(),
 ]);
+
+/**
+ * `POST /plugin/provisioning` body (ADR-003).
+ * `operation` and `payload` are plugin-owned; core only routes `pluginId`.
+ */
+export const pluginProvisioningRequestSchema = z.object({
+  pluginId: z.string().min(1).meta({
+    description: 'Enabled plugin id',
+    examples: [ 'calin-chirpstack' ],
+  }),
+  operation: z.string().min(1).meta({
+    description: 'Plugin-owned operation name',
+    examples: [ 'registerDevice' ],
+  }),
+  payload: z.unknown().meta({
+    description: 'Operation payload; shape is plugin-specific',
+    examples: [ { devEui: '0000000000000001', deviceName: 'METER-1001' } ],
+  }),
+}).strict().meta({
+  examples: [ {
+    pluginId: 'calin-chirpstack',
+    operation: 'registerDevice',
+    payload: { devEui: '0000000000000001', deviceName: 'METER-1001' },
+  } ],
+});

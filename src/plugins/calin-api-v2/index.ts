@@ -24,6 +24,7 @@ import { createCalinApiV2Incoming } from './incoming.js';
 import { createCalinApiV2Client } from './lib/repo.js';
 import { loadCalinApiV2Secrets } from './lib/secrets.js';
 import { createCalinApiV2Outgoing } from './outgoing.js';
+import { createCalinApiV2Provisioning } from './provisioning.js';
 import { createCalinApiV2Token } from './token.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
@@ -81,6 +82,7 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): PullPlugin {
   const outgoing = createCalinApiV2Outgoing({ secrets, client });
   const incoming = createCalinApiV2Incoming({ secrets, client });
   const token = createCalinApiV2Token({ secrets, client });
+  const provisioning = createCalinApiV2Provisioning({ client });
 
   const tuning = mergePluginTuning(entry);
 
@@ -109,5 +111,6 @@ export function createCalinApiV2Plugin(entry: PluginConfigEntry): PullPlugin {
     outgoing,
     incoming,
     token,
+    provisioning,
   };
 }

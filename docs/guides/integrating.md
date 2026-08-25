@@ -20,6 +20,7 @@ the internet without one of those.
 | See where it is | `GET /message/:correlationId` |
 | Drop it before it leaves | `POST /message/cancel` or `POST /messages/cancel` |
 | Mint a token now | `POST /token/generate` |
+| Provision / deprovision on the network server | `POST /plugin/provisioning` |
 
 `correlationId` is **your** id. Keep it. That's how you match later events to the job
 you created.

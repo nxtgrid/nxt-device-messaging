@@ -6,6 +6,7 @@ import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { createInMemoryIncomingService } from '../../helpers/in-memory-incoming.js';
 import { createInMemoryOutgoingService } from '../../helpers/in-memory-outgoing.js';
+import { createInMemoryProvisioningService } from '../../helpers/in-memory-provisioning.js';
 import { createInMemoryTokenService } from '../../helpers/in-memory-token.js';
 import { noopMetrics } from '../../helpers/noop-metrics.js';
 
@@ -33,6 +34,7 @@ describe('OpenAPI / Swagger UI', () => {
       metrics: noopMetrics,
       outgoingService: createInMemoryOutgoingService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       tokenService: createInMemoryTokenService({ knownPluginIds: [ STUB_PUSH_ID ] }),
+      provisioningService: createInMemoryProvisioningService({ knownPluginIds: [ STUB_PUSH_ID ] }),
       incomingService: createInMemoryIncomingService(),
       registry: createPluginRegistry([ { id: STUB_PUSH_ID } ]),
     });
@@ -49,6 +51,7 @@ describe('OpenAPI / Swagger UI', () => {
     expect(paths['/message/cancel'].post).toBeDefined();
     expect(paths['/messages/cancel'].post).toBeDefined();
     expect(paths['/token/generate'].post).toBeDefined();
+    expect(paths['/plugin/provisioning'].post).toBeDefined();
     expect(paths['/ingress/{pluginId}'].post).toBeDefined();
     expect(paths['/ingress/{pluginId}'].post.tags).toContain('ingress');
     expect(

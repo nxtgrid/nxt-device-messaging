@@ -16,6 +16,10 @@ import {
 } from './http/message-routes.js';
 import { registerOpenApi } from './http/openapi.js';
 import {
+  provisioningRoutes,
+  type ProvisioningRoutesOpts,
+} from './http/provisioning-routes.js';
+import {
   tokenRoutes,
   type TokenRoutesOpts,
 } from './http/token-routes.js';
@@ -32,6 +36,7 @@ export type BuildAppOptions = {
   readonly apiKey?: string;
   readonly outgoingService?: MessageRoutesOpts['outgoingService'];
   readonly tokenService?: TokenRoutesOpts['tokenService'];
+  readonly provisioningService?: ProvisioningRoutesOpts['provisioningService'];
   readonly incomingService?: IngressRoutesOpts['incomingService'];
   readonly registry?: IngressRoutesOpts['registry'];
 };
@@ -77,6 +82,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   if (options.tokenService) {
     await app.register(tokenRoutes, {
       tokenService: options.tokenService,
+      apiKey: options.apiKey,
+    });
+  }
+
+  if (options.provisioningService) {
+    await app.register(provisioningRoutes, {
+      provisioningService: options.provisioningService,
       apiKey: options.apiKey,
     });
   }
