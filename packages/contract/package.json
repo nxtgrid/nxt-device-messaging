@@ -1,6 +1,6 @@
 {
   "name": "@nxtgrid/device-messaging-contract",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Adopter-facing HTTP and webhook wire contract for nxt-device-messaging",
   "license": "MPL-2.0",
   "type": "module",
