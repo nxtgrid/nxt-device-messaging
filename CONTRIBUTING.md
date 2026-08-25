@@ -63,9 +63,11 @@ Bump versions **before** tagging or publishing, in a PR merged to `main`. Publis
 value (`0.1.2` → `v0.1.2`). The Docker/GHCR tag comes from the git tag
 (`vX.Y.Z`), not from `package.json`.
 
-**Contract / npm** — change `packages/contract/package.json` `"version"` only
-when the exported wire changed. That number does not have to equal the app
-version. Skip this bump when the release is image-only.
+**Contract / npm** — bump `packages/contract/package.json` when that package
+changes: breaking wire → major, additive field/route → minor, docs/JSDoc that
+ship in the npm tarball → patch. That number does not have to equal the app
+version. Skip this bump when the release is image-only (no contract package
+changes).
 
 ### 2. Merge to `main`
 

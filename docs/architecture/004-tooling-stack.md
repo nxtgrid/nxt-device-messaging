@@ -8,10 +8,6 @@ not a plugin SDK; npm version independent of GHCR tags)
 > Complements ADR-001: that ADR left the build tool open once NestJS/`emitDecoratorMetadata`
 > were dropped; this ADR fills that gap and the rest of the toolchain.
 
-> Closes Decision 7. Unblocks Decision 9 (Docker / CI / OSS hygiene) and Phase 0 scaffold.
-> Complements ADR-001: that ADR left the build tool open once NestJS/`emitDecoratorMetadata`
-> were dropped; this ADR fills that gap and the rest of the toolchain.
-
 ---
 
 ## Context
