@@ -1,7 +1,12 @@
 # ADR-004: Tooling Stack
 
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Accepted — amended 2026-08-25 (`@nxt/device-messaging-contract` wire package;
+not a plugin SDK)
+
+> Closes Decision 7. Unblocks Decision 9 (Docker / CI / OSS hygiene) and Phase 0 scaffold.
+> Complements ADR-001: that ADR left the build tool open once NestJS/`emitDecoratorMetadata`
+> were dropped; this ADR fills that gap and the rest of the toolchain.
 
 > Closes Decision 7. Unblocks Decision 9 (Docker / CI / OSS hygiene) and Phase 0 scaffold.
 > Complements ADR-001: that ADR left the build tool open once NestJS/`emitDecoratorMetadata`
@@ -32,8 +37,11 @@ tool, test runner, and linter before any domain code lands. Constraints already 
 
 ### 2. ESM throughout
 
-`"type": "module"`. One module system for app, tests, and config. No CJS dual-publish — this is
-an application, not a library.
+`"type": "module"`. One module system for app, tests, config, and the contract package.
+No CJS dual-publish.
+
+The **service** is an application. `@nxt/device-messaging-contract` (decision 6) is a small
+ESM library in the same repo; it does not change that.
 
 ### 3. tsup for production builds; tsx for local TypeScript execution
 
@@ -72,6 +80,24 @@ semi, indent, spacing, brace-style, comma-dangle, unused-vars `_` pattern, pragm
 Formatting is therefore ESLint core stylistic rules, as in the house config today — not a second
 tool.
 
+### 6. Adopter wire package `@nxt/device-messaging-contract` (amendment 2026-08-25)
+
+TypeScript/Zod adopters get a **route-level** allowlist of HTTP and outbound-webhook schemas
+plus inferred types — not an in-process engine, not the plugin SPI.
+
+- **Name / path:** `@nxt/device-messaging-contract` in `packages/contract/`. Allowlist lives
+  in that package’s barrel (`src/index.ts`). Ingress (`pluginIdParamsSchema`) is vendor→service
+  and is not exported.
+- **Zod is a peer.** Schemas are runtime (`.parse()`). Types are `z.infer`. No custom `.d.ts`
+  emitter; no inverted “TypeScript first, then Zod” source of truth (ADR-001 / ADR-003 still
+  own the wire in Zod).
+- **Build:** the same **tsup** as the app (`pnpm build:contract`), `zod` external, ESM only,
+  no sourcemap in `dist`. The server image and the app CI `pnpm build` path do not emit this
+  package; emit is for npm publish (`prepack` / a release workflow). Still `"private": true`
+  until that publish slice.
+- **Not a plugin SDK.** Hardware plugins stay first-party in this repository (ADR-001). A
+  third-party plugin SDK remains a trigger, not this package.
+
 ## Consequences
 
 ### Positive
@@ -102,13 +128,14 @@ tool.
 
 - ESLint removes the core stylistic rules we rely on — then either adopt `@stylistic` or a
   different single lint surface.
-- The service grows a publishable plugin SDK package that needs a different build graph.
+- The service grows a **plugin SDK** package (SPI for third-party hardware). That is not
+  `@nxt/device-messaging-contract`.
 - Node LTS major advances — bump `engines` and the Docker base together.
 
 ## Related
 
 - **ADR-001** — Fastify + Zod; build tool left open; no Nx.
 - **ADR-002** — config; boot via `runtime.ts`; tests use `loadConfig` / injected fixtures.
-- **ADR-003** — HTTP contract; no tooling collision.
+- **ADR-003** — HTTP/webhook contract; the npm package is that contract’s TS/Zod artifact.
 - **`nxt-backend` ADR-006** — estate monorepo toolchain this repo deliberately does not inherit.
 - **ADR-005** — Dockerfile, compose, CI/GHCR, metrics, health (closed Decision 9).

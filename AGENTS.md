@@ -82,7 +82,7 @@ stop if the ADR does not apply. Cap at 2–3 before proposing an approach.
 | 001 | Fastify + Zod runtime; no DI container; plugins are plain objects |
 | 002 | Configuration mechanism — JSON artifact + env secrets, per-plugin schemas |
 | 003 | Public HTTP contract — command API, ingress, outbound webhook |
-| 004 | Tooling — pnpm, Node 24, ESM, tsup, tsx, Vitest, ESLint (house teamRules) |
+| 004 | Tooling — pnpm, Node 24, ESM, tsup; `@nxt/device-messaging-contract` |
 | 005 | Deployment & OSS hygiene — Docker, Valkey compose, CI/GHCR, metrics, health |
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
