@@ -22,6 +22,12 @@ import { createMetrics } from './metrics/index.js';
 /** Default listen port (ADR-005 §3); overridable via `PORT`. */
 const DEFAULT_PORT = 3100;
 
+/**
+ * How long shutdown waits for in-flight `sendOne`s (ADR-008 §8).
+ * Sized for a typical 30 s termination grace — not the 120 s client safety deadline.
+ */
+const SHUTDOWN_SEND_DRAIN_BUDGET_MS = 20_000;
+
 function resolvePort(): number {
   const raw = process.env.PORT;
   if (raw === undefined || raw === '') {
@@ -147,7 +153,7 @@ logger.info({
   plugins: pluginRegistry.getAll().map(plugin => plugin.id),
 }, 'listening');
 
-/** Stop timers → close HTTP → quit Redis. Does not await in-flight ticks (v1). */
+/** Stop timers → drain in-flight sends (bounded) → close HTTP → quit Redis. */
 let isShuttingDown = false;
 
 async function shutdown(signal: string): Promise<void> {
@@ -155,10 +161,16 @@ async function shutdown(signal: string): Promise<void> {
     return;
   }
   isShuttingDown = true;
-  logger.info({ signal }, 'shutdown — stopping timers, Fastify, Redis');
+  logger.info({ signal, budgetMs: SHUTDOWN_SEND_DRAIN_BUDGET_MS }, 'shutdown');
 
   engineTimers.stop();
   webhookTimers?.stop();
+
+  const abandoned = await outgoingService.drainInFlightSends(SHUTDOWN_SEND_DRAIN_BUDGET_MS);
+
+  if (abandoned > 0) {
+    logger.warn({ abandoned }, 'shutdown — abandoned in-flight sends');
+  }
 
   try {
     await app.close();

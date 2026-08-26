@@ -6,7 +6,7 @@
  * how the same command reached hardware twice (**A3**). Under ADR-007 there is exactly one
  * writer, and that process knows which sends it still holds, so the `ns` action can ask.
  *
- * The same list is the seam graceful shutdown never had: send-and-transition
+ * The same list is the seam graceful shutdown uses: send-and-transition
  * promises used to be anonymous, so there was nothing to await before closing Redis.
  *
  * In-memory on purpose. A process death loses the set, the deadline fires after restart, and
@@ -35,7 +35,8 @@ export type InFlightSends = {
   /** How many sends are outstanding right now. */
   size(): number;
   /**
-   * Wait for the outstanding sends, up to a budget.
+   * Wait until the set is empty, or `budgetMs` elapses.
+   * A send tracked while this is waiting is included if time remains.
    *
    * @param budgetMs - How long to wait before abandoning the rest
    * @returns The number still outstanding when the budget ran out (`0` when all settled)
@@ -69,17 +70,22 @@ export function createInFlightSends(): InFlightSends {
   }
 
   async function drain(budgetMs: number): Promise<number> {
-    if (sends.size === 0) return 0;
+    const deadline = Date.now() + budgetMs;
 
-    const expired = new Promise<void>(resolve => {
-      // `unref` so a drain never holds the process open past its own budget.
-      setTimeout(resolve, budgetMs).unref();
-    });
-    // Swallow rejections: drain only waits, it must not throw.
-    await Promise.race([
-      Promise.all([ ...sends.values() ].map(pending => pending.catch(() => undefined))),
-      expired,
-    ]);
+    while (sends.size > 0) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+
+      const expired = new Promise<void>(resolve => {
+        // `unref` so a drain never holds the process open past its own budget.
+        setTimeout(resolve, remainingMs).unref();
+      });
+      // Swallow rejections: drain only waits, it must not throw.
+      await Promise.race([
+        Promise.all([ ...sends.values() ].map(pending => pending.catch(() => undefined))),
+        expired,
+      ]);
+    }
 
     return sends.size;
   }

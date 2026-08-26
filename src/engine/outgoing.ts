@@ -65,11 +65,10 @@ export type OutgoingService = {
    */
   distributeToNetworkServers(): Promise<void>;
   /**
-   * Wait for sends already handed to a plugin, up to a budget (ADR-008 §8).
+   * Wait until in-flight sends settle, or `budgetMs` elapses (ADR-008 §8).
    *
-   * Shutdown's order is: stop the timers so nothing new is picked, drain here, *then* close
-   * Redis — a send landing mid-drain still has to write its external id and move stage.
-   * Wiring that into `SIGTERM` is Shutdown v2; this only exposes the seam.
+   * Shutdown: stop the timers so nothing new is picked, drain here, *then* close Redis —
+   * a send landing mid-drain still has to write its external id and move stage.
    *
    * @param budgetMs - How long to wait before abandoning the rest
    * @returns The number still outstanding when the budget ran out
