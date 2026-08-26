@@ -153,7 +153,7 @@ logger.info({
   plugins: pluginRegistry.getAll().map(plugin => plugin.id),
 }, 'listening');
 
-/** Stop timers → drain in-flight sends (bounded) → close HTTP → quit Redis. */
+/** Stop timers → stop enqueue-kick → drain in-flight sends (bounded) → close HTTP → quit Redis. */
 let isShuttingDown = false;
 
 async function shutdown(signal: string): Promise<void> {
@@ -165,6 +165,7 @@ async function shutdown(signal: string): Promise<void> {
 
   engineTimers.stop();
   webhookTimers?.stop();
+  outgoingService.stopEnqueueKick();
 
   const abandoned = await outgoingService.drainInFlightSends(SHUTDOWN_SEND_DRAIN_BUDGET_MS);
 

@@ -11,9 +11,11 @@
 > **Amendment (2026-08-12):** Lean process shutdown on `SIGTERM`/`SIGINT` — stop engine +
 > webhook timers, `app.close()`, Redis `quit()`. Does not await in-flight ticks (v1).
 >
-> **Amendment (2026-08-26):** Shutdown v2 — after stopping timers, await in-flight
-> `sendOne`s up to 20 s (`drainInFlightSends`), then close Fastify and Redis. Does not
-> await webhook `drainChain` (events already in Redis survive restart).
+> **Amendment (2026-08-26):** Shutdown v2 — after stopping timers, stop the enqueue
+> distribute kick (`stopEnqueueKick`; HTTP still accepts, work stays `QUEUED` for the
+> next boot), await in-flight `sendOne`s up to 20 s (`drainInFlightSends`), then close
+> Fastify and Redis. Does not await webhook `drainChain` (events already in Redis
+> survive restart).
 >
 > **Amendment (2026-08-14):** Logging is **pretty stdout by default**; JSON is opt-in via
 > `logging.stdout` in the config artifact. Extra sinks (Loki, Datadog) are deferred. See §7.

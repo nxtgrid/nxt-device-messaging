@@ -39,7 +39,7 @@ item lands, strike it here.
 
 | Item | Revisit when | Detail |
 | --- | --- | --- |
-| ~~**Shutdown v2**~~ — landed 2026-08-26. `SIGTERM`/`SIGINT` stop timers, drain in-flight sends for 20 s, then close Fastify/Redis. ADR-005 amendment; ADR-008 §8. | — | — |
+| ~~**Shutdown v2**~~ — landed 2026-08-26. `SIGTERM`/`SIGINT` stop timers, stop enqueue-kick, drain in-flight sends for 20 s, then close Fastify/Redis. ADR-005 amendment; ADR-008 §8. | — | — |
 | **Webhook drain on shutdown** — `stop()` clears the interval; does not await `drainChain`. Pending events in Redis survive restart. | In-flight webhook POSTs at SIGTERM matter | leftover of Shutdown v2; ADR-003 |
 | **Webhook drain concurrency** — drain is serialized in-process | Serialized drain lags under event volume | ADR-003 |
 | **ChirpStack ingress enqueue-then-ack** — vendor HTTP posts once and does not retry; v1 awaits `handle` before 204 for local Redis durability only | Designing durable raw-event enqueue → 204 → async process | — |
