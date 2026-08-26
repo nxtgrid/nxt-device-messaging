@@ -12,6 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import { createInFlightSends } from '#src/engine/in-flight-sends.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { QUEUE_NS_KEY, STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
@@ -51,16 +52,17 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const inFlightSends = createInFlightSends();
     const messageStore = createMessageStore({ client: redis });
     const stageStore = createStageStore({ client: redis });
+    const moves = createStageMoves({ delivery, metrics, stageStore });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics, messageStore, stageStore }),
+      baseService: createBaseService({ delivery, metrics, messageStore, moves }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redis }),
       messageStore,
-      stageStore,
+      moves,
     });
 
     const correlationId = `distribute-push-${ Date.now() }`;
@@ -113,16 +115,17 @@ describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () =>
     const inFlightSends = createInFlightSends();
     const messageStore = createMessageStore({ client: redis });
     const stageStore = createStageStore({ client: redis });
+    const moves = createStageMoves({ delivery, metrics, stageStore });
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics, messageStore, stageStore }),
+      baseService: createBaseService({ delivery, metrics, messageStore, moves }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redis }),
       messageStore,
-      stageStore,
+      moves,
     });
 
     const correlationId = `distribute-pull-${ Date.now() }`;

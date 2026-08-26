@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
+import type { StageMoves } from '#src/engine/lifecycle/moves.js';
 import type { MessageStore } from '#src/lib/redis-repository/message-store.js';
-import type { StageStore } from '#src/lib/redis-repository/stage-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../../helpers/noop-metrics.js';
 
@@ -13,7 +13,7 @@ const unused = (): never => {
   throw new Error('unused');
 };
 
-/** Emit-only specs do not hit Redis; the stores are required on the factory. */
+/** Emit-only specs do not hit Redis; the message store and moves are required on the factory. */
 const unusedMessageStore: MessageStore = {
   enqueueDeviceMessage: unused,
   getMessageById: async () => null,
@@ -22,18 +22,15 @@ const unusedMessageStore: MessageStore = {
   getMessageIdFromDeliveryQueueId: async () => undefined,
 };
 
-const unusedStageStore: StageStore = {
-  moveMessageBetweenQueues: unused,
-  fetchNextMessageInQueueAndMove: unused,
-  getExpiredMessagesInQueue: unused,
-  removeMessageFromQueue: unused,
-  requeueMessage: unused,
-  messageFullCleanup: unused,
-  fetchQueuesWithMessages: unused,
-  zscore: unused,
-  hmget: unused,
-  zaddXx: unused,
-  multi: unused,
+const unusedMoves: StageMoves = {
+  pickIntoNs: unused,
+  advance: unused,
+  enterRetry: unused,
+  reschedule: unused,
+  purge: unused,
+  listReadyQueues: unused,
+  claimFromQueue: unused,
+  requeue: unused,
 };
 
 describe('createBaseService emitDeliveryEvent', () => {
@@ -43,7 +40,7 @@ describe('createBaseService emitDeliveryEvent', () => {
       delivery,
       webhook: { storeAndEmit },
       messageStore: unusedMessageStore,
-      stageStore: unusedStageStore,
+      moves: unusedMoves,
       metrics: noopMetrics,
     });
 
@@ -62,7 +59,7 @@ describe('createBaseService emitDeliveryEvent', () => {
     const baseService = createBaseService({
       delivery,
       messageStore: unusedMessageStore,
-      stageStore: unusedStageStore,
+      moves: unusedMoves,
       metrics: noopMetrics,
     });
 

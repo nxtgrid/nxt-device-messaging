@@ -14,6 +14,7 @@ import { deviceMessagingConfigSchema } from '#src/config/schema.js';
 import { createBaseService } from '#src/engine/base.js';
 import { createInFlightSends } from '#src/engine/in-flight-sends.js';
 import { createIncomingService } from '#src/engine/incoming.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { STAGES } from '#src/engine/lifecycle/stages.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
@@ -46,7 +47,8 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
     const metrics = noopMetrics;
     const messageStore = createMessageStore({ client: redis });
     const stageStore = createStageStore({ client: redis });
-    const baseService = createBaseService({ delivery, metrics, messageStore, stageStore });
+    const moves = createStageMoves({ delivery, metrics, stageStore });
+    const baseService = createBaseService({ delivery, metrics, messageStore, moves });
     const inFlightSends = createInFlightSends();
     const outgoingService = createOutgoingService({
       registry,
@@ -57,13 +59,12 @@ describe.skipIf(!shouldRun)('incoming PUSH ingress', () => {
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redis }),
       messageStore,
-      stageStore,
+      moves,
     });
     const incomingService = createIncomingService({
-      delivery,
       baseService,
       messageStore,
-      stageStore,
+      moves,
       metrics,
     });
     const app = await buildApp({ metrics, incomingService, registry });

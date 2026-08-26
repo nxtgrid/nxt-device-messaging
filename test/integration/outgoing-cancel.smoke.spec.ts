@@ -16,6 +16,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { createBaseService } from '#src/engine/base.js';
 import { createInFlightSends } from '#src/engine/in-flight-sends.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { createOutgoingService } from '#src/engine/outgoing.js';
 import { createAdmissionStore } from '#src/lib/redis-repository/admission-store.js';
 import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
@@ -50,17 +51,18 @@ describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
     const inFlightSends = createInFlightSends();
     const messageStore = createMessageStore({ client: redis });
     const stageStore = createStageStore({ client: redis });
+    const moves = createStageMoves({ delivery, metrics, stageStore });
     // Keep QUEUED for cancel — kick would race distribute into SENT_TO_NS.
     const outgoingService = createOutgoingService({
       registry,
       delivery,
-      baseService: createBaseService({ delivery, metrics, messageStore, stageStore }),
+      baseService: createBaseService({ delivery, metrics, messageStore, moves }),
       inFlightSends,
       metrics,
       engineEnabled: false,
       admissionStore: createAdmissionStore({ client: redis }),
       messageStore,
-      stageStore,
+      moves,
     });
 
     const correlationId = `cancel-smoke-${ Date.now() }`;

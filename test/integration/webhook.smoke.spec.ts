@@ -14,6 +14,7 @@ import {
   parseWebhookStoredRecord,
 } from '#src/engine/webhook/store.js';
 import { webhookRedisKeys } from '#src/engine/webhook/keys.js';
+import { createStageMoves } from '#src/engine/lifecycle/moves.js';
 import { createMessageStore } from '#src/lib/redis-repository/message-store.js';
 import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
@@ -62,7 +63,11 @@ describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
       delivery,
       webhook: webhookService,
       messageStore: createMessageStore({ client: redis }),
-      stageStore: createStageStore({ client: redis }),
+      moves: createStageMoves({
+        delivery,
+        metrics,
+        stageStore: createStageStore({ client: redis }),
+      }),
       metrics,
     });
 

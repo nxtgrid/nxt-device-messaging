@@ -64,12 +64,17 @@ export function createEngineHarness(
   const inFlightSends = options.inFlightSends ?? createInFlightSends();
   const messageStore = createMessageStore({ client: redis });
   const stageStore = createStageStore({ client: redis });
+  const moves = createStageMoves({
+    delivery: options.delivery,
+    metrics,
+    stageStore,
+  });
 
   const baseService = createBaseService({
     delivery: options.delivery,
     webhook: options.webhook,
     messageStore,
-    stageStore,
+    moves,
     metrics,
   });
   const outgoing = createOutgoingService({
@@ -81,19 +86,13 @@ export function createEngineHarness(
     engineEnabled: options.engineEnabled ?? false,
     admissionStore: createAdmissionStore({ client: redis }),
     messageStore,
-    stageStore,
+    moves,
   });
   const incoming = createIncomingService({
-    delivery: options.delivery,
     baseService,
     messageStore,
-    stageStore,
+    moves,
     metrics,
-  });
-  const moves = createStageMoves({
-    delivery: options.delivery,
-    metrics,
-    stageStore,
   });
   const actions = createStageActions({
     baseService,

@@ -62,12 +62,17 @@ const webhookService = config.eventWebhook
 const admissionStore = createAdmissionStore({ client: redis });
 const messageStore = createMessageStore({ client: redis });
 const stageStore = createStageStore({ client: redis });
+const stageMoves = createStageMoves({
+  delivery: config.delivery,
+  metrics,
+  stageStore,
+});
 
 const baseService = createBaseService({
   delivery: config.delivery,
   webhook: webhookService,
   messageStore,
-  stageStore,
+  moves: stageMoves,
   metrics,
 });
 /** One per process: the sender registers here, the `ns` stage row consults it (ADR-008 §8). */
@@ -81,23 +86,17 @@ const outgoingService = createOutgoingService({
   engineEnabled: config.engine.enabled,
   admissionStore,
   messageStore,
-  stageStore,
+  moves: stageMoves,
   metrics,
 });
 const incomingService = createIncomingService({
-  delivery: config.delivery,
   baseService,
   messageStore,
-  stageStore,
+  moves: stageMoves,
   metrics,
 });
 
 /** The stage table's runtime half: what to do per stage, and the loop that drives it. */
-const stageMoves = createStageMoves({
-  delivery: config.delivery,
-  metrics,
-  stageStore,
-});
 const stageActions = createStageActions({
   baseService,
   incomingService,
