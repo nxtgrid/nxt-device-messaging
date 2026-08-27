@@ -67,7 +67,7 @@ export type OutgoingService = {
   /**
    * Wait until in-flight sends settle, or `budgetMs` elapses (ADR-008 §8).
    *
-   * Shutdown: stop the timers so nothing new is picked, drain here, *then* close Redis —
+   * Shutdown: stop scheduling ticks, stop the enqueue kick, drain here, *then* close Redis —
    * a send landing mid-drain still has to write its external id and move stage.
    *
    * @param budgetMs - How long to wait before abandoning the rest
@@ -126,7 +126,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
   } = options;
 
   /** Boot gate (`engineEnabled`); shutdown clears this so enqueue no longer kicks. */
-  let kickDistribute = engineEnabled;
+  let canKickDistribute = engineEnabled;
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -369,7 +369,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       );
 
       // Fire-and-forget: try a distribute tick after enqueue.
-      if (kickDistribute) {
+      if (canKickDistribute) {
         void distributeToNetworkServers().catch(err => {
           logger.error({ module: 'outgoing', err }, 'distribute after enqueue failed');
         });
@@ -410,7 +410,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     },
 
     stopEnqueueKick(): void {
-      kickDistribute = false;
+      canKickDistribute = false;
     },
   };
 }

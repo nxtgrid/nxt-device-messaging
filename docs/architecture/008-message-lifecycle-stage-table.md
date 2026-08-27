@@ -9,8 +9,8 @@
 > closes four correctness gaps, because each of those gaps is a rule that had no single home.
 >
 > **Amendment (2026-08-26):** `SIGTERM`/`SIGINT` stop the enqueue distribute kick, then drain
-> the in-flight set (20 s). See ADR-005. Awaiting the webhook `drainChain` stays parked
-> (`docs/decisions-log.md`).
+> tracked `sendOne`s (20 s). Does not await in-flight ticks. See ADR-005. Awaiting the webhook
+> `drainChain` stays parked (`docs/decisions-log.md`).
 
 **Read this when:** touching delivery stages, timeouts, polling, retry, cleanup, or the engine
 tick; adding a plugin whose delivery flow does not fit PUSH or PULL; or wondering why a
@@ -210,11 +210,16 @@ is rejected below. This unparks the fetch-deadline half of the *Plugin HTTP hygi
 `docs/decisions-log.md`; the redaction and status-mapping halves stay parked.
 
 **The set is also the seam graceful shutdown needs.** Distribute tracks each `sendOne` on the
-in-flight set. Shutdown is: stop the timers so no new send starts, stop kicking distribute after
-enqueue (the command is still stored; the next boot's tick picks it up), await the outstanding
-sends against a budget (`drainInFlightSends`), **then** close Redis and Fastify — in that order,
-because a send landing during the drain still has to write its external id and move stage, and
-closing Redis first would recreate the very failure this decision removes.
+in-flight set. Shutdown is: clear the engine interval so no further ticks are scheduled, stop
+kicking distribute after enqueue (the command is still stored; the next boot's tick picks it up),
+await tracked `sendOne`s against a budget (`drainInFlightSends`), **then** close Redis and Fastify
+— in that order, because a send landing during the drain still has to write its external id and
+move stage, and closing Redis first would recreate the very failure this decision removes.
+
+An already-running tick is not awaited: a PULL `fetchStatus` can last up to the 120 s client
+deadline and would blow a typical 30 s grace. A `distributeToNetworkServers` that has started
+but not yet `track()`ed is the same at-least-once residue as a process death — not a second
+shutdown mechanism.
 
 The budget is an ops number, not the 120 s above: a typical Kubernetes termination grace of 30 s
 means draining for something like 15–20 s and then abandoning the rest, which is the residue
