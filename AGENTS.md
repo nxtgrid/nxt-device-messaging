@@ -38,6 +38,16 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | `packages/contract/` | Adopter wire contract (`@nxtgrid/device-messaging-contract`) |
 | `src/main.ts` | Composition root |
 
+### Start here
+
+| Question | Start |
+| --- | --- |
+| What happens to an enqueue? | `src/main.ts`, then `src/engine/outgoing.ts` |
+| Where can a message wait? | `src/engine/lifecycle/stages.ts` |
+| What happens when a wait runs out? | `src/engine/lifecycle/actions.ts` and `runner.ts` |
+| How do I add a plugin? | `src/plugins/plugin.interface.ts`, `catalog.ts`, `src/plugins/calin-api-v1/index.ts` |
+| Where are the HTTP/webhook Zod schemas? | `src/lib/device-message/schemas.ts` (`packages/contract` re-exports; do not edit the barrel to change the wire) |
+
 ## Commands
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` → `pnpm dev`

@@ -16,7 +16,6 @@ import type {
 import type { AdmissionStore } from '../lib/redis-repository/admission-store.js';
 import { redisKeys } from '../lib/redis-repository/keys.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
-import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import {
@@ -32,7 +31,7 @@ import {
   UnsupportedCommandTypeError,
 } from './errors.js';
 import type { InFlightSends } from './in-flight-sends.js';
-import { createStageMoves } from './lifecycle/moves.js';
+import type { StageMoves } from './lifecycle/moves.js';
 import { QUEUE_NS_KEY, QUEUE_RETRY_KEY } from './lifecycle/stages.js';
 
 /**
@@ -66,16 +65,21 @@ export type OutgoingService = {
    */
   distributeToNetworkServers(): Promise<void>;
   /**
-   * Wait for sends already handed to a plugin, up to a budget (ADR-008 §8).
+   * Wait until in-flight sends settle, or `budgetMs` elapses (ADR-008 §8).
    *
-   * Shutdown's order is: stop the timers so nothing new is picked, drain here, *then* close
-   * Redis — a send landing mid-drain still has to write its external id and move stage.
-   * Wiring that into `SIGTERM` is Shutdown v2; this only exposes the seam.
+   * Shutdown: stop scheduling ticks, stop the enqueue kick, drain here, *then* close Redis —
+   * a send landing mid-drain still has to write its external id and move stage.
    *
    * @param budgetMs - How long to wait before abandoning the rest
    * @returns The number still outstanding when the budget ran out
    */
   drainInFlightSends(budgetMs: number): Promise<number>;
+  /**
+   * Stop kicking distribute after enqueue. Enqueue still stores; the next process
+   * tick picks `QUEUED` work up. Shutdown calls this before drain so a request that
+   * lands after the in-flight set goes quiet cannot start a send on this process.
+   */
+  stopEnqueueKick(): void;
 };
 
 /** Dependencies for {@link createOutgoingService}. */
@@ -93,19 +97,20 @@ export type CreateOutgoingServiceOptions = {
    * When true, fire-and-forget {@link OutgoingService.distributeToNetworkServers}
    * after a successful enqueue. Production passes `config.engine.enabled` so a
    * service with the engine off stores commands but does not distribute them —
-   * no tick would follow up (ADR-008 §13 / B3).
+   * no tick would follow up (ADR-008 §13 / B3). Shutdown clears the kick via
+   * {@link OutgoingService.stopEnqueueKick} without changing this boot flag.
    */
   readonly engineEnabled: boolean;
   readonly admissionStore: AdmissionStore;
   readonly messageStore: MessageStore;
-  readonly stageStore: StageStore;
+  readonly moves: StageMoves;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Redis-backed outgoing using plugin `initialQueueKey` for the initial queue.
  *
- * @param options - Registry, delivery, baseService, in-flight set, engine gate, stores, metrics
+ * @param options - Registry, delivery, baseService, in-flight set, engine gate, stores, moves, metrics
  */
 export function createOutgoingService(options: CreateOutgoingServiceOptions): OutgoingService {
   const {
@@ -116,10 +121,12 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
     engineEnabled,
     admissionStore,
     messageStore,
-    stageStore,
+    moves,
     metrics,
   } = options;
-  const moves = createStageMoves({ delivery, metrics, stageStore });
+
+  /** Boot gate (`engineEnabled`); shutdown clears this so enqueue no longer kicks. */
+  let canKickDistribute = engineEnabled;
 
   /**
    * Whether this queue may yield a message under the plugin's admission strategy.
@@ -362,7 +369,7 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
       );
 
       // Fire-and-forget: try a distribute tick after enqueue.
-      if (engineEnabled) {
+      if (canKickDistribute) {
         void distributeToNetworkServers().catch(err => {
           logger.error({ module: 'outgoing', err }, 'distribute after enqueue failed');
         });
@@ -400,6 +407,10 @@ export function createOutgoingService(options: CreateOutgoingServiceOptions): Ou
 
     drainInFlightSends(budgetMs: number): Promise<number> {
       return inFlightSends.drain(budgetMs);
+    },
+
+    stopEnqueueKick(): void {
+      canKickDistribute = false;
     },
   };
 }

@@ -16,10 +16,9 @@ import type {
   FailureReason,
 } from '../lib/device-message/types.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
-import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type { DeliveryPlugin } from '../plugins/plugin.interface.js';
-import { createStageMoves } from './lifecycle/moves.js';
+import type { StageMoves } from './lifecycle/moves.js';
 import type { StageOutcome } from './lifecycle/types.js';
 import type { WebhookService } from './webhook/service.js';
 
@@ -58,18 +57,17 @@ export type CreateBaseServiceOptions = {
    */
   readonly webhook?: Pick<WebhookService, 'storeAndEmit'>;
   readonly messageStore: MessageStore;
-  readonly stageStore: StageStore;
+  readonly moves: StageMoves;
   readonly metrics: MetricsRecorder;
 };
 
 /**
  * Factory for shared delivery-outcome helpers (no runtime import).
  *
- * @param options - Delivery knobs, optional webhook messenger, stores, metrics
+ * @param options - Delivery knobs, optional webhook messenger, message store, moves, metrics
  */
 export function createBaseService(options: CreateBaseServiceOptions): BaseService {
-  const { delivery, webhook, messageStore, stageStore, metrics } = options;
-  const moves = createStageMoves({ delivery, metrics, stageStore });
+  const { delivery, webhook, messageStore, moves, metrics } = options;
 
   async function emitDeliveryEvent(message: Partial<DeviceMessage>): Promise<void> {
     if (!webhook) return;

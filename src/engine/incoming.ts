@@ -7,14 +7,12 @@
 
 import { isNotNil } from 'ramda';
 
-import type { DeliveryConfig } from '../config/schema.js';
 import type {
   DeviceMessage,
   FailureReason,
   ParsedIncomingEvent,
 } from '../lib/device-message/types.js';
 import type { MessageStore } from '../lib/redis-repository/message-store.js';
-import type { StageStore } from '../lib/redis-repository/stage-store.js';
 import { logger } from '../log.js';
 import type { MetricsRecorder } from '../metrics/index.js';
 import type {
@@ -23,7 +21,7 @@ import type {
   PushPlugin,
 } from '../plugins/plugin.interface.js';
 import type { BaseService } from './base.js';
-import { createStageMoves } from './lifecycle/moves.js';
+import type { StageMoves } from './lifecycle/moves.js';
 import { STAGES } from './lifecycle/stages.js';
 import type { StageOutcome } from './lifecycle/types.js';
 
@@ -62,11 +60,10 @@ export type IncomingService = {
 
 /** Dependencies for {@link createIncomingService}. */
 export type CreateIncomingServiceOptions = {
-  readonly delivery: DeliveryConfig;
   /** Shared retry/requeue helpers — constructed at the composition root with peers. */
   readonly baseService: BaseService;
   readonly messageStore: MessageStore;
-  readonly stageStore: StageStore;
+  readonly moves: StageMoves;
   readonly metrics: MetricsRecorder;
 };
 
@@ -76,11 +73,10 @@ export type CreateIncomingServiceOptions = {
  * Polling is not here: the `awaitingTask` stage action drives it (ADR-008 §3), and calls
  * back into {@link IncomingService.processEvent} with whatever the vendor returned.
  *
- * @param options - Delivery knobs, peer {@link BaseService}, stores, metrics
+ * @param options - Peer {@link BaseService}, message store, moves, metrics
  */
 export function createIncomingService(options: CreateIncomingServiceOptions): IncomingService {
-  const { delivery, baseService, messageStore, stageStore, metrics } = options;
-  const moves = createStageMoves({ delivery, metrics, stageStore });
+  const { baseService, messageStore, moves, metrics } = options;
 
   /**
    * Process a parsed incoming event from PUSH ingress or the `awaitingTask` poll.

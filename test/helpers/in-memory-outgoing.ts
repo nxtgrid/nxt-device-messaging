@@ -89,5 +89,9 @@ export function createInMemoryOutgoingService(
     async drainInFlightSends(_budgetMs: number): Promise<number> {
       return 0;
     },
+
+    stopEnqueueKick(): void {
+      // no-op — HTTP unit tests do not exercise shutdown
+    },
   };
 }

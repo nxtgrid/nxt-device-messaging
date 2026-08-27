@@ -73,4 +73,27 @@ describe('createInFlightSends', () => {
 
     await expect(inFlight.drain(60_000)).resolves.toBe(0);
   });
+
+  it('keeps waiting for a send tracked after the current snapshot', async () => {
+    const inFlight = createInFlightSends();
+    const first = deferred<string>();
+    const late = deferred<string>();
+
+    void inFlight.track('msg-6', first.promise);
+    const drained = inFlight.drain(1_000);
+    void inFlight.track('msg-7', late.promise);
+    first.resolve('ext-6');
+
+    const stillWaiting = await Promise.race([
+      drained.then(() => false),
+      new Promise<boolean>(resolve => {
+        setTimeout(() => resolve(true), 30);
+      }),
+    ]);
+    expect(stillWaiting).toBe(true);
+    expect(inFlight.size()).toBe(1);
+
+    late.resolve('ext-7');
+    await expect(drained).resolves.toBe(0);
+  });
 });
