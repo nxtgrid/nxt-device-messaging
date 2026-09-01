@@ -1,4 +1,4 @@
-# nxt-device-messaging
+# NXT Device Messaging
 
 **Reliable, prioritized, retrying command delivery to addressable field devices.**
 
