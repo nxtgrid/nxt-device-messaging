@@ -11,7 +11,7 @@ pnpm test
 pnpm build
 ```
 
-Local run: see the [README](README.md) quick start (Valkey + `pnpm dev`).
+Local run: see [Run it locally](README.md#run-it-locally) in the README (Valkey + `pnpm dev`).
 
 Pre-commit already lints staged `.ts` and typechecks. Don't skip hooks to land a green PR.
 

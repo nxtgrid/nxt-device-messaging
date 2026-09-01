@@ -2,42 +2,83 @@
 
 **Reliable, prioritized, retrying command delivery to addressable field devices.**
 
-Give it a command for a device; it takes responsibility for getting it there. The service
-queues the command, dispatches it through whichever network server that device speaks to,
-tracks it through each delivery stage, retries with exponential backoff when a stage fails,
-and reports the outcome over a signed webhook.
+Give it a command for a device; it takes responsibility for getting it there. The service queues the command, dispatches it through whichever network server that device speaks to, tracks it through each delivery stage, retries with exponential backoff when a stage fails, and reports the outcome over a signed webhook.
 
-Hardware integrations are **plugins** (CALIN HTTP V1/V2, CALIN over ChirpStack, nxt-sts
-tokens, plus stubs for local work). Two delivery patterns: *push* (the network server
-calls back) and *pull* (we poll a vendor API).
+Your billing or operations app should not have to speak ChirpStack, a CALIN HTTP API, or STS token formatting, and it should not have to implement radio-aware retries itself.
+You POST a job, keep the `correlationId` you chose, and this service owns delivery until it can tell you the result.
 
-Redis (or Valkey) is the only infrastructure dependency. There is no relational database.
+Hardware is plugged in as **plugins**.
+First-party today: CALIN over HTTP (V1 and V2), CALIN over ChirpStack (LoRaWAN), nxt-sts for STS token minting, and stub plugins so you can exercise the API without a vendor.
+Each delivery plugin is one of two patterns:
 
-**Run one replica.** Timers and the correlator are in-process (see
-[ADR-007](docs/architecture/007-single-replica-deployment.md)).
+- **PUSH** — we send the command; the network server calls us back (typical of LoRaWAN).
+- **PULL** — we create a task on a vendor HTTP API and poll it for status.
+
+Redis (or Valkey) is the only other process you need. There is no relational database.
+Jobs, retries, and in-flight state live there, so a restart does not drop the queue.
 
 ## What this is not
 
-Not a notification, SMS, or chat system. A "message" here is a command or read addressed
-to a physical device — read a meter's voltage, deliver a credit token, set a power limit.
+Not a notification, SMS, or chat system.
+A "message" here is a command or read addressed to a physical device — read a meter's voltage, deliver a credit token, set a power limit.
+
+## How it fits together
+
+You talk to this service. This service talks to the field. Those are two different conversations.
+
+Your app uses HTTP: enqueue a command, look it up, cancel it, or mint a token.
+When something worth telling you happens (first send, success, failure, or the device spoke first), we POST a signed JSON event to a URL you configure.
+How to implement that: [integrating](docs/guides/integrating.md).
+Live shapes: `/swagger` on a running instance.
+TypeScript/Zod types: [`@nxtgrid/device-messaging-contract`](packages/contract/README.md).
+
+On the other side, a plugin speaks the vendor or radio protocol.
+You never receive ChirpStack (or other network-server) callbacks in your app — those hit `POST /ingress/:pluginId` here, and we turn them into the same webhook events.
+
+```mermaid
+flowchart TB
+  app[Your app]
+  svc[This service]
+  redis[(Redis / Valkey)]
+  plugin[Plugin]
+  ns[Network server]
+  devices[Field devices]
+
+  app -->|"POST /message/enqueue"| svc
+  svc -->|"signed webhook"| app
+  svc --- redis
+
+  svc --> plugin
+  plugin --> svc
+  plugin --> ns
+  ns --> plugin
+  ns --> devices
+  devices --> ns
+```
+
+A command goes down that stack and the outcome comes back up the same path: service ↔ plugin ↔ network server ↔ field devices.
+Redis sits next to the service; it is storage, not a hop on the radio path.
+The plugin is on every send and every result. The network server is what actually reaches the devices.
+
+Minting an STS token (`POST /token/generate`, or the `nxt-sts` plugin) is separate from delivering one.
+Mint is synchronous: you get a 20-digit string back on the HTTP response, nothing is queued, and there is no delivery webhook.
+Putting that token onto a meter is still an enqueue (`DELIVER_PREEXISTING_TOKEN`, or a plugin that mints then delivers).
 
 ## Status
 
 The command API, ingress, outbound webhook, metrics, and first-party plugins are in place.
-Pin image tags. Read [integrating](docs/guides/integrating.md) before wiring a consumer.
+Pin image tags when you deploy.
+Design rationale lives in [`docs/architecture/`](docs/architecture/).
+Parked work: [`docs/decisions-log.md`](docs/decisions-log.md).
 
-Normative decisions: [`docs/architecture/`](docs/architecture/). Parked work:
-[`docs/decisions-log.md`](docs/decisions-log.md).
+## Run it locally
 
-## Prerequisites
+This path uses the **stub** plugins: no vendor credentials, no radio.
+You will see a command accepted and moved off the queue. You will not reach a real meter.
 
-- **Node.js 24.x**
-- **pnpm 11** (via [Corepack](https://nodejs.org/api/corepack.html): `corepack enable`)
-- **Docker** (for Valkey locally, or full compose)
+You need **Node.js 24.x**, **pnpm 11** (via [Corepack](https://nodejs.org/api/corepack.html): `corepack enable`), and **Docker** to run Valkey.
 
-## Quick start (local)
-
-Valkey must be reachable. Fastest: compose **only** Valkey, run the app on the host.
+Fastest path: compose **only** Valkey, run this service on the host.
 
 ```bash
 corepack enable
@@ -47,8 +88,11 @@ docker compose up -d valkey
 pnpm dev
 ```
 
-Listens on **`PORT`** (default **3100**). `.env` loads via `--env-file` on `pnpm dev` /
-`pnpm start`.
+Listens on **`PORT`** (default **3100**). `.env` loads via `--env-file` on `pnpm dev` / `pnpm start`.
+
+Confirm it is up, then enqueue a dummy read.
+`correlationId` is yours — use it to look the job up afterwards.
+`pluginId` must match a plugin in the config (here the stub).
 
 ```bash
 curl -sS http://127.0.0.1:3100/healthz
@@ -67,17 +111,75 @@ curl -sS -X POST http://127.0.0.1:3100/message/enqueue \
   }'
 ```
 
-Browse the contract at [`http://127.0.0.1:3100/swagger`](http://127.0.0.1:3100/swagger).
-TypeScript/Zod: `@nxtgrid/device-messaging-contract`.
-How to consume enqueue + webhooks: [integrating](docs/guides/integrating.md).
+Wait a second (the engine ticks once a second), then:
 
-Config loads `DEVICE_MESSAGING_CONFIG_JSON` → `_URL` → `_PATH` → bundled
-`config.default.json`. `.env.example` points `_PATH` at `config.example.json` (stub
-plugins). Keep `DEVICE_MESSAGING_API_KEY` in sync with `apiKey` in
-[`src/http/smoke/.httpyac.cjs`](src/http/smoke/.httpyac.cjs) if you use httpYac
-([`src/http/smoke/`](src/http/smoke/)).
+```bash
+curl -sS http://127.0.0.1:3100/message/demo-1
+```
+
+You should see the job in flight (`deliveryStatus` has moved off `QUEUED`).
+The stub does not talk to a real network, so you will not get a terminal success this way.
+After a **real** successful delivery the record is removed, so that GET then 404s — poll while the job is in flight, or listen for the [webhook](docs/guides/integrating.md) if you configured one.
+
+Browse the contract at [`http://127.0.0.1:3100/swagger`](http://127.0.0.1:3100/swagger).
+
+`.env.example` points `DEVICE_MESSAGING_CONFIG_PATH` at [`config.example.json`](config.example.json) (both stubs enabled).
+That example includes a placeholder `eventWebhook.url`; you will see failed outbound POSTs in the logs.
+They do not stop delivery.
+Delete the whole `eventWebhook` object from a copied config if you want a quiet local run.
 
 Stop Valkey when done: `docker compose stop valkey`.
+
+## Production
+
+Run the published container next to Valkey (or Redis). This process does not keep durable state of its own.
+
+1. **One replica.** Do not run two copies against the same Redis.
+   Delivery timers and the LoRaWAN up/ack correlator are in-process; a second replica would compete on the same jobs and could split ChirpStack acknowledgements ([ADR-007](docs/architecture/007-single-replica-deployment.md)).
+2. **Valkey (or Redis)** must be reachable and durable. This process is otherwise stateless.
+3. Pull a **pinned** GHCR tag (`linux/amd64` and `linux/arm64`):
+
+   `ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z`
+
+4. Set a **non-empty** `DEVICE_MESSAGING_API_KEY` in any deployment that can be reached, **or** keep the service on a private network / behind a reverse proxy that authenticates callers.
+5. Supply a JSON config artifact (see [Configuration](#configuration)). Empty `plugins[]` (the bundled default) means nothing can be enqueued.
+6. Enable the plugin(s) you need and set that plugin's env from `.env.example`.
+7. For **ChirpStack**, point the network server at `POST /ingress/calin-chirpstack` on this service.
+
+### Compose (app + Valkey)
+
+[`docker-compose.yml`](docker-compose.yml) runs this service and Valkey on one network.
+From this repo, copy `.env.example` to `.env`, then **uncomment the config volume** in the compose file.
+`.env` points `DEVICE_MESSAGING_CONFIG_PATH` at a host path; inside the container that file is missing unless you mount it.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Compose sets `REDIS_HOST=valkey`.
+For a released image, replace `build: .` with `image: ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z`.
+Persist Valkey (the compose file already has a volume).
+
+### Image only
+
+```bash
+docker build -t nxt-device-messaging .
+docker run --rm -p 3100:3100 \
+  -e REDIS_HOST=host.docker.internal \
+  -e DEVICE_MESSAGING_API_KEY=... \
+  -e DEVICE_MESSAGING_CONFIG_PATH=/app/config.json \
+  -v /path/to/config.json:/app/config.json:ro \
+  nxt-device-messaging
+```
+
+`REDIS_HOST` must reach Valkey.
+Inline config (`DEVICE_MESSAGING_CONFIG_JSON`) or a URL (`_URL`) work instead of a bind-mount.
+
+### Health checks: image vs PaaS
+
+- **Container image:** Docker `HEALTHCHECK` probes `GET /healthz` on `PORT` (default 3100). Disable with `docker run --no-healthcheck` if the platform probes instead.
+- **PaaS / "deploy from GitHub"** (e.g. DigitalOcean App Platform): the image `HEALTHCHECK` is ignored. Point the **platform** health check at `/healthz` (or TCP on 3100).
 
 ## Observability
 
@@ -86,16 +188,95 @@ Stop Valkey when done: `docker compose stop valkey`.
 | `GET /healthz` | none | Liveness (`{"ok":true}`). Process is up; not a Redis readiness check. |
 | `GET /metrics` | none | Prometheus text. Queue depths, terminals, retries, webhook results. |
 
-Logs are **pretty** on stdout by default. Set `"logging": { "stdout": "json" }` in the
-config artifact when an aggregator tails the process.
+Logs are **pretty** on stdout by default.
+Set `"logging": { "stdout": "json" }` in the config artifact when an aggregator tails the process.
 
-### Health checks: image vs PaaS
+## Configuration
 
-- **Container image:** Docker `HEALTHCHECK` probes `GET /healthz` on `PORT` (default 3100).
-  Disable with `docker run --no-healthcheck` if the platform probes instead.
-- **PaaS / "deploy from GitHub"** (e.g. DigitalOcean App Platform): the image
-  `HEALTHCHECK` is ignored. Point the **platform** health check at `/healthz` (or TCP
-  on 3100).
+A deployment is described in two places:
+
+- A **JSON file** (or inline JSON / URL) for which plugins run, webhook URL, retries, and timeouts. This is not where passwords go.
+- **Environment variables** for secrets, the Redis connection, the listen port, and *which* artifact to load.
+
+Load order: `DEVICE_MESSAGING_CONFIG_JSON` (inline string) → `_URL` (fetch) → `_PATH` (file) → bundled [`config.default.json`](config.default.json).
+The bundled default has the engine on and **no plugins**, so enqueue will fail until you enable at least one.
+Start from [`config.example.json`](config.example.json) (stubs) and swap in the plugin ids you need.
+Secret names are listed in [`.env.example`](.env.example).
+
+If a plugin is in `plugins[]` but its env is missing, **boot fails** with the key named.
+If a request names a plugin you did not enable, that request fails and the process stays up.
+
+The engine wakes once a second, so timeouts and backoffs are most useful as whole seconds.
+Sub-second values are still only observed on the next tick.
+
+What you cannot set in the JSON: how hard a plugin may hit its network (admission is declared in plugin code), and how many replicas to run (must stay 1).
+First-party plugins do not read `plugins[].settings`; vendor credentials are environment variables.
+
+### JSON artifact
+
+`$schemaVersion` must be `"1"`. Every other object below is optional; omitted keys take the defaults shown.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `engine.enabled` | `true` | `false` = ingest / inspect only (no delivery ticks) |
+| `logging.stdout` | `pretty` | `json` for log aggregators |
+| `delivery.maxRetries` | `11` | Retries after the first send (total attempts = this + 1) |
+| `delivery.retryBaseDelayMs` | `2000` | First retry delay |
+| `delivery.retryBackoffMultiplier` | `2` | Exponential backoff |
+| `delivery.retryMaxDelayMs` | `3600000` (1 h) | Retry delay cap |
+| `delivery.messageTtlSeconds` | `604800` (7 d) | Redis TTL for the message record |
+| `eventWebhook` | omitted | Omit the object: no outbound POSTs |
+| `eventWebhook.url` | (required if the object is present) | Your webhook URL |
+| `eventWebhook.maxAttempts` | `6` | Webhook POST attempts |
+| `eventWebhook.baseDelayMs` | `2000` | First webhook retry delay |
+| `eventWebhook.backoffMultiplier` | `2` | Exponential backoff |
+| `eventWebhook.maxDelayMs` | `60000` | Webhook retry delay cap |
+| `eventWebhook.requestTimeoutMs` | `10000` | Per-POST deadline |
+| `eventWebhook.deadLetterTtlSeconds` | `604800` (7 d) | How long failed webhook events stay in Redis |
+| `plugins` | `[]` | `{ "id": "…", "tuning": { … } }` per enabled plugin |
+
+### Plugin tuning
+
+Same four keys for every **delivery** plugin (PUSH / PULL), including the stubs.
+`nxt-sts` has no `tuning`. Omit a key — or the whole `tuning` object — to use the default.
+
+| `plugins[].tuning` | Default | When it matters |
+|---|---|---|
+| `nsInFlightTimeoutMs` | `20000` | Waiting on the network server after send |
+| `relayNodeInFlightTimeoutMs` | `900000` | PUSH mid-stage (relay) |
+| `deviceInFlightTimeoutMs` | `12000` | Waiting on the meter |
+| `initialPollDelayMs` | `10000` | PULL: delay before the first status poll |
+
+### Plugins
+
+Put the `id` in `plugins[]` and send that same id as `pluginId` on enqueue.
+Env is required only for ids you enable. Full key names: [`.env.example`](.env.example).
+
+| `id` | Pattern | Env | Notes |
+|---|---|---|---|
+| `stub-push` | PUSH | none | Local / tests only |
+| `stub-pull` | PULL | none | Local / tests only |
+| `calin-api-v1` | PULL | `CALIN_API_V1_*` | No `POST /plugin/provisioning` |
+| `calin-api-v2` | PULL | `CALIN_API_V2_*` | Includes provisioning |
+| `calin-chirpstack` | PUSH | `CHIRPSTACK_*` | Point ChirpStack at `/ingress/calin-chirpstack` |
+| `nxt-sts` | token-only | `NXT_STS_URL` | Mint only, no enqueue. Compose sidecar: `http://nxt-sts:8080` |
+
+### Environment (ops)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` | `3100` | HTTP listen port |
+| `REDIS_HOST` | `127.0.0.1` | Valkey / Redis hostname |
+| `REDIS_PORT` | `6379` | |
+| `REDIS_DB` | `0` | Logical database index |
+| `REDIS_USERNAME` | unset | Optional ACL user |
+| `REDIS_PASSWORD` | unset | |
+| `REDIS_TLS` | unset | `true` or `1` to enable TLS |
+| `DEVICE_MESSAGING_API_KEY` | unset | Bearer for command / token routes. Empty = open (local only) |
+| `DEVICE_MESSAGING_WEBHOOK_SECRET` | unset | HMAC for outbound events. Unset → unsigned POSTs (boot warns if a URL is set) |
+| `DEVICE_MESSAGING_CONFIG_JSON` | unset | Inline JSON string (highest precedence) |
+| `DEVICE_MESSAGING_CONFIG_URL` | unset | Fetch the artifact |
+| `DEVICE_MESSAGING_CONFIG_PATH` | unset | Path to a JSON file |
 
 ## Scripts
 
@@ -104,66 +285,10 @@ config artifact when an aggregator tails the process.
 | `pnpm dev` | `tsx watch` with `.env` loaded if present |
 | `pnpm build` | Production bundle to `dist/` via tsup |
 | `pnpm start` | Run `dist/main.js` with `.env` loaded if present |
-| `pnpm lint` | ESLint |
-| `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test` | Vitest (unit) |
 | `pnpm test:integration` | Redis smoke (needs Valkey; sets `RUN_REDIS_SMOKE=1`) |
-| `pnpm test:watch` | Vitest watch |
 
-Pre-commit: lint-staged on staged `.ts`, then `pnpm typecheck`.
-
-## Docker
-
-### Valkey only (for `pnpm dev`)
-
-```bash
-docker compose up -d valkey
-```
-
-Publishes `${REDIS_PUBLISH_PORT:-6379}` → container `6379`. Match `REDIS_HOST` /
-`REDIS_PORT` in `.env` (defaults `127.0.0.1` / `6379`).
-
-### Compose (app + Valkey)
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Compose sets `REDIS_HOST=valkey` so the app talks to Valkey on the compose network.
-
-### Image only
-
-```bash
-docker build -t nxt-device-messaging .
-docker run --rm -p 3100:3100 \
-  -e REDIS_HOST=host.docker.internal \
-  nxt-device-messaging
-```
-
-`REDIS_HOST` must reach Valkey. Prefer a version tag from GHCR over `:latest`:
-
-`ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z`
-
-Tagged releases publish a multi-arch image (`linux/amd64` and `linux/arm64`) to
-GHCR as that tag and `:latest`. Apple Silicon and x86 hosts pick the matching
-arch.
-
-## Configuration (summary)
-
-| Surface | Examples |
-|---|---|
-| JSON artifact | `engine`, `logging`, `delivery`, `eventWebhook`, `plugins` — `config.example.json` |
-| Env (secrets / connection) | `REDIS_*`, `DEVICE_MESSAGING_API_KEY`, `DEVICE_MESSAGING_WEBHOOK_SECRET` |
-| Env (ops) | `PORT` (default `3100`) |
-| Env (config source) | `DEVICE_MESSAGING_CONFIG_JSON` / `_URL` / `_PATH` |
-
-Plugin secrets (`CALIN_API_V1_*`, `CHIRPSTACK_*`, …) are only required when that plugin
-is in `plugins[]`. Full rules: [ADR-002](docs/architecture/002-configuration-mechanism.md).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Checks and release process: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
