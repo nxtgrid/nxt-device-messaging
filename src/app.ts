@@ -24,6 +24,7 @@ import {
   type TokenRoutesOpts,
 } from './http/token-routes.js';
 import { registerValidationErrorHandler } from './http/validation-errors.js';
+import { logger } from './log.js';
 import type { Metrics } from './metrics/index.js';
 
 /**
@@ -69,6 +70,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       },
     },
   }, async () => {
+    // TEMPORARY: diagnose App Platform bindables; remove after wiring is confirmed.
+    logger.info({
+      module: 'healthz',
+      redisHost: process.env.REDIS_HOST ?? null,
+      redisPort: process.env.REDIS_PORT ?? null,
+      nxtStsUrl: process.env.NXT_STS_URL ?? null,
+    }, 'health check');
     return { ok: true as const };
   });
 

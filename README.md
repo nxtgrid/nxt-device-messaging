@@ -134,6 +134,8 @@ Stop Valkey when done: `docker compose stop valkey`.
 
 Run the published container next to Valkey (or Redis). This process does not keep durable state of its own.
 
+Platform runbooks (Git autodeploy, same-app Valkey / STS / webhook): [`docs/deployment/`](docs/deployment/).
+
 1. **One replica.** Do not run two copies against the same Redis.
    Delivery timers and the LoRaWAN up/ack correlator are in-process; a second replica would compete on the same jobs and could split ChirpStack acknowledgements ([ADR-007](docs/architecture/007-single-replica-deployment.md)).
 2. **Valkey (or Redis)** must be reachable and durable. This process is otherwise stateless.
@@ -178,8 +180,8 @@ Inline config (`DEVICE_MESSAGING_CONFIG_JSON`) or a URL (`_URL`) work instead of
 
 ### Health checks: image vs PaaS
 
-- **Container image:** Docker `HEALTHCHECK` probes `GET /healthz` on `PORT` (default 3100). Disable with `docker run --no-healthcheck` if the platform probes instead.
-- **PaaS / "deploy from GitHub"** (e.g. DigitalOcean App Platform): the image `HEALTHCHECK` is ignored. Point the **platform** health check at `/healthz` (or TCP on 3100).
+- **Container image:** Docker `HEALTHCHECK` probes `GET /healthz` on `PORT` (default 3100). Disable with `docker run --no-healthcheck` if the host probes instead.
+- **PaaS** (DigitalOcean App Platform, etc.) **ignores** the image `HEALTHCHECK`. Set the platform HTTP probe in the [deployment guides](docs/deployment/).
 
 ## Observability
 

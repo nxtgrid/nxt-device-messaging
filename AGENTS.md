@@ -108,6 +108,7 @@ index table above.
 | `docs/decisions-log.md` | Parked / open / deferred-with-criteria | The task is follow-ups or “is this parked?” |
 | `docs/plans/002-architecture-review.md` | Finished follow-up plan | Only if the task cites it |
 | `docs/architecture/` | ADRs | The index above says so |
+| `docs/deployment/` | Platform runbooks (App Platform, …) | Deploy / env / same-app wiring |
 | `docs/archive/` | Named-era journals | The task cites a file there. Not otherwise. |
 
 Do not append a diary to `docs/decisions-log.md`. New architecture → ADR. Plan work → that
