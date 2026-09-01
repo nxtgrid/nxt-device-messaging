@@ -41,12 +41,13 @@ If a Valkey/Redis resource is already in this app, **bind it to this component**
 | `REDIS_PORT` | `${valkey.PORT}` |
 | `REDIS_USERNAME` | `${valkey.USERNAME}` if the cluster has one |
 | `REDIS_PASSWORD` | `${valkey.PASSWORD}` |
+| `REDIS_TLS` | `true` |
 
-That hostname is the in-app hop. If you are on a VPC and `HOSTNAME` is still the public endpoint, use `${valkey.DATABASE_PRIVATE_URL}` (or the cluster's private hostname) instead.
+DigitalOcean Valkey/Redis **always** needs TLS. Without `REDIS_TLS=true` the client connects, the socket drops, and you get `connected` logs about every 2 seconds (ioredis reconnect cap), then `MaxRetriesPerRequestError` on shutdown `quit()`.
+
+`${valkey.HOSTNAME}` is the **public** cluster DNS. There is no `PRIVATE_HOSTNAME` bindable. The `private-` prefix (and `${valkey.DATABASE_PRIVATE_URL}`) only work if this App Platform app and the database are on the **same VPC** — that is not automatic and is still awkward to arrange. If they are not, use `${valkey.HOSTNAME}` as-is. If they are, you can set `REDIS_HOST=private-${valkey.HOSTNAME}` (or paste the private host in full). `${valkey.DATABASE_PRIVATE_URL}` is a full `rediss://…` string; this process does not parse it.
 
 If **another process in the app already uses that instance** (for example an in-process engine on logical DB `0`), set `REDIS_DB` to a free index so keys do not collide.
-
-DigitalOcean managed Valkey often requires TLS. If connect fails, set `REDIS_TLS=true`.
 
 Do not put this database's password in **app-wide** env if other components should not see it.
 
