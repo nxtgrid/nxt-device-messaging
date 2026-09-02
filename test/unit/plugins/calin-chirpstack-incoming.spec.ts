@@ -59,6 +59,17 @@ describe('createCalinChirpstackIncoming', () => {
     });
   });
 
+  it('handleDown accepts numeric downlinkId (ChirpStack HTTP JSON)', () => {
+    expect(incoming.handle?.({
+      downlinkId: 3461958127,
+      queueItemId: 'q-1',
+      deviceInfo: { devEui: DEV_EUI },
+    }, meta('txack'))).toMatchObject({
+      deliveryQueueId: 'q-1',
+      deliveryStatus: 'SENT_TO_DEVICE',
+    });
+  });
+
   it('handleJoin emits unsolicited JOIN_NETWORK', () => {
     expect(incoming.handle?.({
       deduplicationId: 'd-join',

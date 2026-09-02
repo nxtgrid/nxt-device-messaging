@@ -37,7 +37,8 @@ export type LorawanCalinJoinEvent = {
 export type LorawanCalinDownEvent = {
   // Identifiers
   queueItemId?: string;
-  downlinkId: string;
+  /** Proto `uint32`; HTTP JSON is a number, not a string. */
+  downlinkId: string | number;
 
   // Device
   deviceInfo: {

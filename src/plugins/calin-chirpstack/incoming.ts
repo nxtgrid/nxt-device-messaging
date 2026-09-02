@@ -106,6 +106,15 @@ export function createCalinChirpstackIncoming(
        * for RX1). Leaves the NS wait; does not mean the meter heard it.
        */
       case 'txack':
+        // Temporary: confirm ChirpStack JSON type of downlinkId in production.
+        logger.info(
+          {
+            module: 'calin-chirpstack.incoming',
+            downlinkIdType: typeof event.downlinkId,
+            event,
+          },
+          'txack ingress',
+        );
         if (!isTxackPayload(event)) return null;
         return handleDown(event, meterExternalReference);
 
@@ -142,9 +151,9 @@ export function createCalinChirpstackIncoming(
   return { handle, verifySignature };
 }
 
-/** `txack` — `downlinkId` required; `queueItemId` optional. */
+/** `txack` — `downlinkId` required (ChirpStack JSON is a number; tests may use a string). */
 function isTxackPayload(event: Record<string, unknown>): event is LorawanCalinDownEvent {
-  return typeof event.downlinkId === 'string';
+  return typeof event.downlinkId === 'string' || typeof event.downlinkId === 'number';
 }
 
 /** `ack` — ids + boolean `acknowledged` (missing would look like nack). */
