@@ -18,6 +18,8 @@
  * incoming order.
  */
 
+import { createHash, timingSafeEqual } from 'node:crypto';
+
 import type {
   DeviceMessageDevice,
   ParsedIncomingEvent,
@@ -44,29 +46,40 @@ const DEV_EUI_LENGTH = 16;
  */
 const METER_REFERENCE_OFFSET = 5;
 
+/** Optional inject for tests; production reads env in the plugin factory. */
+export type CalinChirpstackIncomingOptions = {
+  readonly ingressApiKey?: string;
+};
+
 /**
  * Build the PUSH incoming facet.
  *
- * @returns Incoming SPI with `handle` and a temporary always-pass `verifySignature`
+ * `verifySignature` checks ChirpStack's `X-API-KEY` when
+ * {@link CalinChirpstackIncomingOptions.ingressApiKey} is set. Unset → always
+ * true (local). Ingress maps Fastify headers to lowercase keys.
+ *
+ * @param options - Optional ingress API key
+ * @returns Incoming SPI with `handle` and `verifySignature`
  */
-export function createCalinChirpstackIncoming(): PushPlugin['incoming'] {
-  /**
-   * TEMPORARY: log a redacted `X-API-KEY` and accept every request.
-   * Replace the `return true` with a real compare when the ChirpStack header
-   * is confirmed. Ingress already maps Fastify headers to lowercase keys.
-   */
+export function createCalinChirpstackIncoming(
+  options: CalinChirpstackIncomingOptions = {},
+): PushPlugin['incoming'] {
+  const expectedKey = options.ingressApiKey;
+
   const verifySignature = (
     _rawBody: Buffer,
     headers: Record<string, string>,
   ): boolean => {
-    logger.info(
-      {
-        module: 'calin-chirpstack.incoming',
-        xApiKey: redactApiKey(headers['x-api-key']),
-      },
-      'chirpstack x-api-key probe',
+    if (expectedKey === undefined) return true;
+
+    const received = headers['x-api-key'];
+    if (secretEquals(expectedKey, received)) return true;
+
+    logger.warn(
+      { module: 'calin-chirpstack.incoming', headerPresent: received !== undefined },
+      'ingress api key rejected',
     );
-    return true;
+    return false;
   };
 
   const handle = (
@@ -238,22 +251,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Length + prefix/suffix only. Short keys are fully masked.
+ * Constant-time compare of expected secret vs received header (SHA-256 then
+ * `timingSafeEqual`). Missing header is treated as empty.
  *
- * @param value - Raw `X-API-KEY` or undefined when the header is absent
+ * @param expected - Configured ingress API key
+ * @param received - `X-API-KEY` header or undefined
  */
-function redactApiKey(value: string | undefined): {
-  readonly present: boolean;
-  readonly length?: number;
-  readonly preview?: string;
-} {
-  if (value === undefined) return { present: false };
-  if (value.length <= 8) {
-    return { present: true, length: value.length, preview: '*'.repeat(value.length) };
-  }
-  return {
-    present: true,
-    length: value.length,
-    preview: `${ value.slice(0, 4) }…${ value.slice(-4) }`,
-  };
+function secretEquals(expected: string, received: string | undefined): boolean {
+  const left = createHash('sha256').update(expected).digest();
+  const right = createHash('sha256').update(received ?? '').digest();
+  return timingSafeEqual(left, right);
 }

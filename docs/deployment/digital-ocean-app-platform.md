@@ -4,7 +4,7 @@ Add a **web service** from this GitHub repo, branch **`main`**, autodeploy on pu
 
 HTTP port **3100** (the process listens on `PORT`; set the component port to 3100 so they match). Instance count **1**.
 
-Command routes need a non-empty `DEVICE_MESSAGING_API_KEY` if this component has a public URL. Ingress (`POST /ingress/:pluginId`) is unauthenticated; only expose it if a vendor must reach it.
+Command routes need a non-empty `DEVICE_MESSAGING_API_KEY` if this component has a public URL. Ingress (`POST /ingress/:pluginId`) has no Bearer key. For `calin-chirpstack`, set `CALIN_CHIRPSTACK_INGRESS_API_KEY` to the same `X-API-KEY` as that ChirpStack HTTP integration (unset = open, local only).
 
 ## Health check
 

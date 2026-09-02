@@ -9,7 +9,8 @@ amended 2026-08-08 (`calin-chirpstack` ingress `?event=` routing — fail closed
 amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys locked;
 HMAC deferred then landed in 3.1E);
 amended 2026-08-24 (`POST /plugin/provisioning` — optional plugin facet, `pluginId` in body);
-amended 2026-08-25 (`@nxtgrid/device-messaging-contract` — TS/Zod artifact, ADR-004 §6)
+amended 2026-08-25 (`@nxtgrid/device-messaging-contract` — TS/Zod artifact, ADR-004 §6);
+amended 2026-09-02 (`calin-chirpstack` ingress may require `X-API-KEY` via `CALIN_CHIRPSTACK_INGRESS_API_KEY`)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -142,8 +143,11 @@ Command routes (`POST /message/*`, `GET /message/*`, `POST /messages/*`, `POST /
   operator choice such as private network or reverse-proxy auth). Does not fail boot or
   skip route registration.
 
-`POST /ingress/:pluginId` does **not** use that key. Each plugin may declare
+`POST /ingress/:pluginId` does **not** use `DEVICE_MESSAGING_API_KEY`. Each plugin may declare
 `verifySignature`; opt-out is allowed (ChirpStack HTTP integrations typically have no HMAC).
+`calin-chirpstack` optionally checks `X-API-KEY` against plugin-scoped
+`CALIN_CHIRPSTACK_INGRESS_API_KEY` (unset/empty → open, same pattern as the command key).
+That is this plugin's HTTP integration secret, not vendor-scoped `CHIRPSTACK_API_TOKEN` (gRPC).
 The inherited Nest `AuthenticationGuard` on `/chirpstack/calin` is not a vendor signature
 scheme and is not carried over as the ingress model.
 

@@ -260,7 +260,7 @@ Env is required only for ids you enable. Full key names: [`.env.example`](.env.e
 | `stub-pull` | PULL | none | Local / tests only |
 | `calin-api-v1` | PULL | `CALIN_API_V1_*` | No `POST /plugin/provisioning` |
 | `calin-api-v2` | PULL | `CALIN_API_V2_*` | Includes provisioning |
-| `calin-chirpstack` | PUSH | `CHIRPSTACK_*` | Point ChirpStack at `/ingress/calin-chirpstack` |
+| `calin-chirpstack` | PUSH | `CHIRPSTACK_*`, optional `CALIN_CHIRPSTACK_INGRESS_API_KEY` | Point ChirpStack at `/ingress/calin-chirpstack` (`X-API-KEY` when that env is set) |
 | `nxt-sts` | token-only | `NXT_STS_URL` | Mint only, no enqueue. Compose sidecar: `http://nxt-sts:8080` |
 
 ### Environment (ops)

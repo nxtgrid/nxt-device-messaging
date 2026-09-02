@@ -177,10 +177,21 @@ describe('createCalinChirpstackIncoming', () => {
     }, meta('up'))).toBeNull();
   });
 
-  it('verifySignature always returns true (temporary header probe)', () => {
+  it('verifySignature is open when no ingress key is configured', () => {
     expect(incoming.verifySignature?.(Buffer.from('{}'), {})).toBe(true);
     expect(incoming.verifySignature?.(Buffer.from('{}'), {
-      'x-api-key': 'abcdefghijklmnop',
+      'x-api-key': 'anything',
     })).toBe(true);
+  });
+
+  it('verifySignature requires X-API-KEY when an ingress key is set', () => {
+    const guarded = createCalinChirpstackIncoming({ ingressApiKey: 'secret-key' });
+    expect(guarded.verifySignature?.(Buffer.from('{}'), {
+      'x-api-key': 'secret-key',
+    })).toBe(true);
+    expect(guarded.verifySignature?.(Buffer.from('{}'), {
+      'x-api-key': 'wrong-key',
+    })).toBe(false);
+    expect(guarded.verifySignature?.(Buffer.from('{}'), {})).toBe(false);
   });
 });

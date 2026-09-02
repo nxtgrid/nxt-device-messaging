@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CALIN_CHIRPSTACK_ID,
+  CALIN_CHIRPSTACK_INGRESS_API_KEY_ENV,
   createCalinChirpstackPlugin,
 } from '#src/plugins/calin-chirpstack/index.js';
 import {
@@ -136,6 +137,18 @@ describe('createCalinChirpstackPlugin', () => {
     expect(plugin.incoming.handle).toBeTypeOf('function');
     expect(plugin.incoming.fetchStatus).toBeUndefined();
     expect(plugin.incoming.handle?.({})).toBeNull();
+  });
+
+  it('gates ingress on CALIN_CHIRPSTACK_INGRESS_API_KEY when set', () => {
+    stubValidChirpstackEnv();
+    vi.stubEnv(CALIN_CHIRPSTACK_INGRESS_API_KEY_ENV, 'from-env');
+    const plugin = createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID });
+    expect(plugin.incoming.verifySignature?.(Buffer.from('{}'), {
+      'x-api-key': 'from-env',
+    })).toBe(true);
+    expect(plugin.incoming.verifySignature?.(Buffer.from('{}'), {
+      'x-api-key': 'nope',
+    })).toBe(false);
   });
 
   it('registers via PLUGIN_CATALOG when env is present', () => {

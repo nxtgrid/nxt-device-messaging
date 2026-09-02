@@ -7,8 +7,9 @@
  * `_shared/chirpstack-repository/` — loaded when that client is created.
  *
  * Enable: add `{ "id": "calin-chirpstack" }` to config `plugins[]` and set
- * `CHIRPSTACK_*` env (see `.env.example`). Missing secrets fail when the
- * shared client is constructed.
+ * `CHIRPSTACK_*` env (see `.env.example`). Missing gRPC secrets fail when the
+ * shared client is constructed. Optional `CALIN_CHIRPSTACK_INGRESS_API_KEY`
+ * (plugin-scoped, not `CHIRPSTACK_*`) gates HTTP ingress when set.
  */
 
 import { isNil } from 'ramda';
@@ -30,6 +31,9 @@ type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
 /** Config / registry id. */
 export const CALIN_CHIRPSTACK_ID = 'calin-chirpstack' as const;
+
+/** HTTP-integration `X-API-KEY` for this plugin's ingress (not the gRPC token). */
+export const CALIN_CHIRPSTACK_INGRESS_API_KEY_ENV = 'CALIN_CHIRPSTACK_INGRESS_API_KEY';
 
 /** Admission-node label in initial-queue keys (`queue:calin-chirpstack:network:…`). */
 const CALIN_CHIRPSTACK_NODE_KIND = 'network' as const;
@@ -92,7 +96,20 @@ export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugi
     tuning,
     initialQueueKey,
     outgoing: createCalinChirpstackOutgoing({ client }),
-    incoming: createCalinChirpstackIncoming(),
+    incoming: createCalinChirpstackIncoming({
+      ingressApiKey: loadIngressApiKey(),
+    }),
     provisioning: createCalinChirpstackProvisioning({ client }),
   };
+}
+
+/**
+ * Optional `X-API-KEY` ChirpStack should send to `/ingress/calin-chirpstack`.
+ * Blank / unset → ingress stays open (local).
+ */
+function loadIngressApiKey(): string | undefined {
+  const raw = process.env[CALIN_CHIRPSTACK_INGRESS_API_KEY_ENV];
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  return trimmed === '' ? undefined : trimmed;
 }
