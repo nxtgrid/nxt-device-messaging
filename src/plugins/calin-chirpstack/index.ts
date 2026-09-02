@@ -91,6 +91,7 @@ export function createCalinChirpstackPlugin(entry: PluginConfigEntry): PushPlugi
   return {
     id: CALIN_CHIRPSTACK_ID,
     deliveryPattern: 'PUSH',
+    relayNodeNoun: 'gateway',
     supportedCommandTypes: CALIN_CHIRPSTACK_SUPPORTED_COMMAND_TYPES,
     admission: CALIN_CHIRPSTACK_ADMISSION,
     tuning,

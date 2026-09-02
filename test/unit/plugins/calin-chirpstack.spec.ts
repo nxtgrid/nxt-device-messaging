@@ -74,6 +74,7 @@ describe('createCalinChirpstackPlugin', () => {
     const plugin = createCalinChirpstackPlugin({ id: CALIN_CHIRPSTACK_ID });
     expect(plugin.id).toBe(CALIN_CHIRPSTACK_ID);
     expect(plugin.deliveryPattern).toBe('PUSH');
+    expect(plugin.relayNodeNoun).toBe('gateway');
     expect(plugin.supportedCommandTypes).toContain('READ_CREDIT');
     expect(plugin.supportedCommandTypes).toContain('READ_TIME');
     expect(plugin.supportedCommandTypes).toContain('SET_TIME');

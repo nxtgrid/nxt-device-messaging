@@ -22,7 +22,8 @@ import type { StageActions } from './types.js';
 /** Why a message failed, per stage. Prose the adopter sees on the webhook. */
 const TIMEOUT_REASONS = {
   ns: 'Timed out waiting for Network Server to accept message',
-  relayNode: 'Timed out waiting for relay node to transmit message to device',
+  relayNode: (noun = 'relay node') =>
+    `Timed out waiting for ${ noun } to transmit message to device`,
   device: 'Timed out waiting for device response after transmission',
   awaitingTask: 'Timed out waiting for remote task completion',
 } as const;
@@ -120,7 +121,7 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
       return baseService.retryOrFail(
         message.id,
         queueKey,
-        { reason: TIMEOUT_REASONS.relayNode },
+        { reason: TIMEOUT_REASONS.relayNode(plugin.relayNodeNoun) },
         plugin,
       );
     },

@@ -162,6 +162,13 @@ type DeliveryPluginBase = PluginBase & {
 
   /** Stage timeouts / initial poll delay. */
   readonly tuning: PluginTuning;
+
+  /**
+   * Prose name of the mid-hop I/O parent in the relay-node timeout reason
+   * (webhook `failureHistory[].reason`). Wire field stays `relayNode`.
+   * Omit → `'relay node'`. PUSH-only in practice; PULL never hits that stage.
+   */
+  readonly relayNodeNoun?: string;
 };
 
 /**
