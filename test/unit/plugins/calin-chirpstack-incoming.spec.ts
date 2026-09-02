@@ -176,4 +176,11 @@ describe('createCalinChirpstackIncoming', () => {
       data: 'aCM2MwNwBGjAATTIFg==',
     }, meta('up'))).toBeNull();
   });
+
+  it('verifySignature always returns true (temporary header probe)', () => {
+    expect(incoming.verifySignature?.(Buffer.from('{}'), {})).toBe(true);
+    expect(incoming.verifySignature?.(Buffer.from('{}'), {
+      'x-api-key': 'abcdefghijklmnop',
+    })).toBe(true);
+  });
 });

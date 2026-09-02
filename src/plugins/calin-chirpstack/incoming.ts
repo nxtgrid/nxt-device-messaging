@@ -23,6 +23,7 @@ import type {
   ParsedIncomingEvent,
   RelayNodeInfo,
 } from '../../lib/device-message/types.js';
+import { logger } from '../../log.js';
 import type { IncomingHandleMeta, PushPlugin } from '../plugin.interface.js';
 import { selectGatewayWithBestSignal } from './lib/connectivity-helpers.js';
 import { eventCorrelator } from './lib/correlate-request-response.js';
@@ -46,9 +47,28 @@ const METER_REFERENCE_OFFSET = 5;
 /**
  * Build the PUSH incoming facet.
  *
- * @returns Incoming SPI with `handle` for ChirpStack webhook payloads
+ * @returns Incoming SPI with `handle` and a temporary always-pass `verifySignature`
  */
 export function createCalinChirpstackIncoming(): PushPlugin['incoming'] {
+  /**
+   * TEMPORARY: log a redacted `X-API-KEY` and accept every request.
+   * Replace the `return true` with a real compare when the ChirpStack header
+   * is confirmed. Ingress already maps Fastify headers to lowercase keys.
+   */
+  const verifySignature = (
+    _rawBody: Buffer,
+    headers: Record<string, string>,
+  ): boolean => {
+    logger.info(
+      {
+        module: 'calin-chirpstack.incoming',
+        xApiKey: redactApiKey(headers['x-api-key']),
+      },
+      'chirpstack x-api-key probe',
+    );
+    return true;
+  };
+
   const handle = (
     event: unknown,
     meta?: IncomingHandleMeta,
@@ -104,7 +124,7 @@ export function createCalinChirpstackIncoming(): PushPlugin['incoming'] {
     }
   };
 
-  return { handle };
+  return { handle, verifySignature };
 }
 
 /** `txack` — `downlinkId` required; `queueItemId` optional. */
@@ -215,4 +235,25 @@ function createDevice(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Length + prefix/suffix only. Short keys are fully masked.
+ *
+ * @param value - Raw `X-API-KEY` or undefined when the header is absent
+ */
+function redactApiKey(value: string | undefined): {
+  readonly present: boolean;
+  readonly length?: number;
+  readonly preview?: string;
+} {
+  if (value === undefined) return { present: false };
+  if (value.length <= 8) {
+    return { present: true, length: value.length, preview: '*'.repeat(value.length) };
+  }
+  return {
+    present: true,
+    length: value.length,
+    preview: `${ value.slice(0, 4) }…${ value.slice(-4) }`,
+  };
 }
