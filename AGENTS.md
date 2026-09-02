@@ -51,9 +51,9 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 ## Commands
 
 - **Dev:** `pnpm install` → `cp .env.example .env` → `docker compose up -d valkey` → `pnpm dev`
-- **Check:** `pnpm lint` / `typecheck` / `test` / `build`
+- **Check:** `pnpm lint` / `typecheck` / `test` / `build` (`pnpm test:all` when Valkey is up)
 - **Contract package:** `pnpm build:contract` (emit for npm publish; not the server image)
-- **Smoke:** `src/http/smoke/` (httpYac); opt-in `pnpm test:integration` (Valkey; `RUN_REDIS_SMOKE=1`)
+- **Smoke:** `src/http/smoke/` (httpYac); `pnpm test:integration` (Valkey)
 
 ## Workflow
 

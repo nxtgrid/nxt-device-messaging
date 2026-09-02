@@ -4,7 +4,7 @@
  * Opt-in (needs Valkey), same gate as `redis.smoke.spec.ts`:
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/outgoing-cancel.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/outgoing-cancel.smoke.spec.ts
  *
  * Future (not this file): thorough `messageFullCleanup` coverage. A single enqueue into
  * an empty DB creates four Redis entries — `device_message:{id}`, correlation index,
@@ -27,10 +27,9 @@ import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 import { purgeMessageReferences } from '../helpers/redis-references.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const goSlow = false;
 
-describe.skipIf(!shouldRun)('outgoing enqueue → cancel → get', () => {
+describe('outgoing enqueue → cancel → get', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 

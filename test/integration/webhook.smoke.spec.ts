@@ -2,7 +2,7 @@
  * Opt-in smoke: base emit → Redis webhook keys → drain POST (needs Valkey).
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/webhook.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/webhook.smoke.spec.ts
  */
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,7 +20,6 @@ import { createStageStore } from '#src/lib/redis-repository/stage-store.js';
 import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { noopMetrics } from '../helpers/noop-metrics.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const WEBHOOK_CONFIG = {
@@ -33,7 +32,7 @@ const WEBHOOK_CONFIG = {
   deadLetterTtlSeconds: 604_800,
 } as const;
 
-describe.skipIf(!shouldRun)('webhook emit → Redis → POST', () => {
+describe('webhook emit → Redis → POST', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
 
   afterEach(() => {

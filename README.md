@@ -287,8 +287,10 @@ Env is required only for ids you enable. Full key names: [`.env.example`](.env.e
 | `pnpm dev` | `tsx watch` with `.env` loaded if present |
 | `pnpm build` | Production bundle to `dist/` via tsup |
 | `pnpm start` | Run `dist/main.js` with `.env` loaded if present |
-| `pnpm test` | Vitest (unit) |
-| `pnpm test:integration` | Redis smoke (needs Valkey; sets `RUN_REDIS_SMOKE=1`) |
+| `pnpm test` / `pnpm test:unit` | Vitest unit tests (`test/unit`) |
+| `pnpm test:integration` | Redis / HTTP smokes (`test/integration`; needs Valkey) |
+| `pnpm test:all` | Unit then integration |
+| `pnpm test:watch` | Unit tests in watch mode |
 
 Checks and release process: [CONTRIBUTING.md](CONTRIBUTING.md).
 

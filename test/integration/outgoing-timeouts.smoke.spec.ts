@@ -6,7 +6,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/outgoing-timeouts.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/outgoing-timeouts.smoke.spec.ts
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
@@ -33,7 +33,6 @@ import {
 } from '../helpers/redis-references.js';
 import { waitForDeliveryStatus } from '../helpers/wait-for.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const baseDelivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const PLUGIN_ID = 'smoke-timeout-push';
@@ -115,7 +114,7 @@ async function sendAndExpireStage(
   return enqueued;
 }
 
-describe.skipIf(!shouldRun)('outgoing stage timeouts', () => {
+describe('outgoing stage timeouts', () => {
   afterEach(async () => {
     for (const { id, correlationId } of trash) {
       await purgeMessageReferences(id, { correlationId });

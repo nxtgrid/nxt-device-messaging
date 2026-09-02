@@ -1,18 +1,16 @@
 /**
  * Redis repository smoke test (Unit 2 / I3 camelCase).
  *
- * Opt-in so default `pnpm test` / CI does not require Valkey:
+ * Needs Valkey (`pnpm test:integration`, or this file directly):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/redis.smoke.spec.ts
+ *   pnpm exec vitest run --config vitest.integration.config.ts test/integration/redis.smoke.spec.ts
  *
  * Exercises: module load (REDIS_* options + Lua defineCommand), PING, enqueue → get → cleanup.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
-
-describe.skipIf(!shouldRun)('redis repository smoke', () => {
+describe('redis repository smoke', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 

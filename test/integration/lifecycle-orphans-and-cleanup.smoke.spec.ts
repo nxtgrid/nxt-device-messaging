@@ -11,7 +11,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/lifecycle-orphans-and-cleanup.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/lifecycle-orphans-and-cleanup.smoke.spec.ts
  */
 import { ulid } from 'ulid';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -37,7 +37,6 @@ import {
 import { createWebhookRecorder, type WebhookRecorder } from '../helpers/webhook-recorder.js';
 import { waitForDeliveryStatus, waitForMessageGone } from '../helpers/wait-for.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const baseDelivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const PUSH_PLUGIN_ID = 'smoke-cleanup-push';
@@ -146,7 +145,7 @@ function trackedOrphanId(): string {
   return orphanId;
 }
 
-describe.skipIf(!shouldRun)('lifecycle orphans and cleanup', () => {
+describe('lifecycle orphans and cleanup', () => {
   afterEach(async () => {
     for (const { id, correlationId } of trash) {
       await purgeMessageReferences(id, { correlationId });

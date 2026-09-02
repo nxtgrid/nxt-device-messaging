@@ -5,7 +5,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/incoming-poll.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/incoming-poll.smoke.spec.ts
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -19,8 +19,6 @@ import { createEngineHarness } from '../helpers/engine-harness.js';
 import { createSinglePluginRegistry } from '../helpers/programmable-plugin.js';
 import { purgeMessageReferences } from '../helpers/redis-references.js';
 import { waitForPostSend } from '../helpers/wait-for-post-send.js';
-
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 
 const delivery = deviceMessagingConfigSchema.parse({
   $schemaVersion: '1',
@@ -49,7 +47,7 @@ function createPullRegistryWithSuccessFetch(): PluginRegistry {
   return createSinglePluginRegistry(plugin);
 }
 
-describe.skipIf(!shouldRun)('incoming awaiting-task poll via runner.tick', () => {
+describe('incoming awaiting-task poll via runner.tick', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 

@@ -5,7 +5,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/outgoing-distribute.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/outgoing-distribute.smoke.spec.ts
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -30,10 +30,9 @@ import {
   waitForPostSend,
 } from '../helpers/wait-for-post-send.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
-describe.skipIf(!shouldRun)('outgoing enqueue → distribute → sendOne', () => {
+describe('outgoing enqueue → distribute → sendOne', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 

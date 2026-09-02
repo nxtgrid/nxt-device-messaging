@@ -5,7 +5,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/outgoing-resolution.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/outgoing-resolution.smoke.spec.ts
  */
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -17,10 +17,9 @@ import { STUB_PUSH_ID } from '#src/plugins/stub/index.js';
 import { createEngineHarness } from '../helpers/engine-harness.js';
 import { purgeMessageReferences } from '../helpers/redis-references.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const delivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
-describe.skipIf(!shouldRun)('outgoing retry requeue via runner.tick', () => {
+describe('outgoing retry requeue via runner.tick', () => {
   let redis: typeof import('../../src/lib/redis-repository/client.js').redis;
   let redisKeys: typeof import('../../src/lib/redis-repository/keys.js').redisKeys;
 

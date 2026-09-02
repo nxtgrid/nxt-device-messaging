@@ -6,7 +6,7 @@
  * Opt-in (needs Valkey):
  *
  *   docker compose up -d valkey
- *   RUN_REDIS_SMOKE=1 pnpm exec vitest run test/integration/incoming-poll-outcomes.smoke.spec.ts
+ *   pnpm exec vitest run test/integration/incoming-poll-outcomes.smoke.spec.ts
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
@@ -37,7 +37,6 @@ import {
 import { createWebhookRecorder, type WebhookRecorder } from '../helpers/webhook-recorder.js';
 import { waitForDeliveryStatus } from '../helpers/wait-for.js';
 
-const shouldRun = process.env.RUN_REDIS_SMOKE === '1';
 const baseDelivery = deviceMessagingConfigSchema.parse({ $schemaVersion: '1' }).delivery;
 
 const PLUGIN_ID = 'smoke-poll-pull';
@@ -119,7 +118,7 @@ async function enqueueAndAwaitTask(
   return enqueued;
 }
 
-describe.skipIf(!shouldRun)('incoming poll outcomes', () => {
+describe('incoming poll outcomes', () => {
   afterEach(async () => {
     for (const { id, correlationId } of trash) {
       await purgeMessageReferences(id, { correlationId });

@@ -15,7 +15,7 @@ Local run: see [Run it locally](README.md#run-it-locally) in the README (Valkey 
 
 Pre-commit already lints staged `.ts` and typechecks. Don't skip hooks to land a green PR.
 
-Opt-in Redis smoke (Valkey must be up): `pnpm test:integration`.
+Redis / HTTP smokes (Valkey must be up): `pnpm test:integration`. Both: `pnpm test:all`.
 
 ## Pull requests
 
