@@ -198,11 +198,37 @@ describe('createCalinApiV1Incoming', () => {
     });
   });
 
-  it('maps transport errors to DELIVERY_FAILED', async () => {
+  it('returns null on transport errors so the poll continues', async () => {
     const incoming = createCalinApiV1Incoming({
       secrets: adminSecrets,
       client: mockClient(vi.fn().mockRejectedValue(
         new CalinApiV1Error('[CALIN API-V1] is down', { code: 'ECONNRESET' }),
+      )),
+    });
+
+    await expect(
+      incoming.fetchStatus!(baseMessage({ commandType: 'READ_VERSION' })),
+    ).resolves.toBeNull();
+  });
+
+  it('returns null when sendRequest throws without a numeric status', async () => {
+    const incoming = createCalinApiV1Incoming({
+      secrets: adminSecrets,
+      client: mockClient(vi.fn().mockRejectedValue(
+        new CalinApiV1Error('[CALIN API-V1] is down'),
+      )),
+    });
+
+    await expect(
+      incoming.fetchStatus!(baseMessage({ commandType: 'READ_VERSION' })),
+    ).resolves.toBeNull();
+  });
+
+  it('maps HTTP errors (numeric status) to DELIVERY_FAILED', async () => {
+    const incoming = createCalinApiV1Incoming({
+      secrets: adminSecrets,
+      client: mockClient(vi.fn().mockRejectedValue(
+        new CalinApiV1Error('[CALIN API-V1] is down: backend gone', { code: 503 }),
       )),
     });
 
@@ -214,8 +240,8 @@ describe('createCalinApiV1Incoming', () => {
       device: { type: 'ELECTRICITY_METER', externalReference: 'm-1' },
       deliveryStatus: 'DELIVERY_FAILED',
       failureContext: {
-        reason: 'Could not check task status because [CALIN API-V1] is down',
-        errorCode: 'ECONNRESET',
+        reason: 'Could not check task status because [CALIN API-V1] is down: backend gone',
+        errorCode: 503,
       },
     });
   });

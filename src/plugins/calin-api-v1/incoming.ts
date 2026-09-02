@@ -216,6 +216,18 @@ export function createCalinApiV1Incoming(
     catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);
       const errCode = err instanceof CalinApiV1Error ? err.code ?? undefined : undefined;
+      // String / missing codes are transport (ECONNREFUSED, reset, timeout).
+      // A numeric code means CALIN answered over HTTP — that is a real failure.
+      // Returning null keeps the TaskNo and the poll ladder (ADR-008 awaitingTask).
+      if (typeof errCode !== 'number') {
+        logger.warn({
+          module: 'calin-api-v1.incoming',
+          err,
+          messageId: id,
+          correlationId,
+        }, 'status check failed; will poll again');
+        return null;
+      }
       return {
         ..._base,
         deliveryStatus: 'DELIVERY_FAILED',
