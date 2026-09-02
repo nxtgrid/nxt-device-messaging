@@ -106,15 +106,6 @@ export function createCalinChirpstackIncoming(
        * for RX1). Leaves the NS wait; does not mean the meter heard it.
        */
       case 'txack':
-        // Temporary: confirm ChirpStack JSON type of downlinkId in production.
-        logger.info(
-          {
-            module: 'calin-chirpstack.incoming',
-            downlinkIdType: typeof event.downlinkId,
-            event,
-          },
-          'txack ingress',
-        );
         return handleDown(event as LorawanCalinDownEvent, meterExternalReference);
 
       /**
