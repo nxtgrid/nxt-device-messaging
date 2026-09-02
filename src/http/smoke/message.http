@@ -119,7 +119,7 @@ POST {{baseUrl}}/ingress/calin-chirpstack?event=txack
 Content-Type: application/json
 
 {
-  "downlinkId": "1",
+  "downlinkId": 1,
   "queueItemId": "REPLACE_WITH_DELIVERY_QUEUE_ID",
   "deviceInfo": {
     "devEui": "0000047003333771"

@@ -26,7 +26,7 @@ describe('createCalinChirpstackIncoming', () => {
 
   it('returns null when DevEUI is not 16 hex digits', () => {
     expect(incoming.handle?.({
-      downlinkId: 'dl-1',
+      downlinkId: 1,
       queueItemId: 'q-1',
       deviceInfo: { devEui: '47003333771' },
     }, meta('txack'))).toBeNull();
@@ -34,7 +34,7 @@ describe('createCalinChirpstackIncoming', () => {
 
   it('returns null when ?event= is missing or unhandled', () => {
     const body = {
-      downlinkId: 'dl-1',
+      downlinkId: 1,
       queueItemId: 'q-1',
       deviceInfo: { devEui: DEV_EUI },
     };
@@ -46,7 +46,7 @@ describe('createCalinChirpstackIncoming', () => {
 
   it('handleDown maps txack to SENT_TO_DEVICE', () => {
     expect(incoming.handle?.({
-      downlinkId: 'dl-1',
+      downlinkId: 3461958127,
       queueItemId: 'q-1',
       deviceInfo: { devEui: DEV_EUI },
     }, meta('txack'))).toEqual({
@@ -56,17 +56,6 @@ describe('createCalinChirpstackIncoming', () => {
         type: 'ELECTRICITY_METER',
         externalReference: METER_REF,
       },
-    });
-  });
-
-  it('handleDown accepts numeric downlinkId (ChirpStack HTTP JSON)', () => {
-    expect(incoming.handle?.({
-      downlinkId: 3461958127,
-      queueItemId: 'q-1',
-      deviceInfo: { devEui: DEV_EUI },
-    }, meta('txack'))).toMatchObject({
-      deliveryQueueId: 'q-1',
-      deliveryStatus: 'SENT_TO_DEVICE',
     });
   });
 
@@ -157,35 +146,64 @@ describe('createCalinChirpstackIncoming', () => {
     }, meta('up'))).toBeNull();
   });
 
-  it('returns null for txack without downlinkId', () => {
+  it('handleDown maps txack by queueItemId even without downlinkId', () => {
     expect(incoming.handle?.({
       queueItemId: 'q-1',
       deviceInfo: { devEui: DEV_EUI },
-    }, meta('txack'))).toBeNull();
+    }, meta('txack'))).toMatchObject({
+      deliveryQueueId: 'q-1',
+      deliveryStatus: 'SENT_TO_DEVICE',
+    });
   });
 
-  it('returns null for ack without boolean acknowledged', () => {
+  it('omitted acknowledged is a nack (ChirpStack JSON default)', () => {
+    expect(incoming.handle?.({
+      queueItemId: 'q-omit',
+      deduplicationId: 'd-omit',
+      deviceInfo: { devEui: DEV_EUI },
+    }, meta('ack'))).toMatchObject({
+      deliveryQueueId: 'q-omit',
+      deliveryStatus: 'DELIVERY_FAILED',
+    });
+  });
+
+  it('non-true acknowledged is a nack', () => {
     expect(incoming.handle?.({
       queueItemId: 'q-1',
       deduplicationId: 'd-1',
       deviceInfo: { devEui: DEV_EUI },
-    }, meta('ack'))).toBeNull();
+      acknowledged: 'false',
+    }, meta('ack'))).toMatchObject({
+      deliveryQueueId: 'q-1',
+      deliveryStatus: 'DELIVERY_FAILED',
+    });
   });
 
-  it('returns null for up without data or rxInfo array', () => {
-    const base = {
+  it('returns null for up without data', () => {
+    expect(incoming.handle?.({
       deduplicationId: 'd-1',
       deviceInfo: { devEui: DEV_EUI },
       devAddr: 'addr',
-    };
-    expect(incoming.handle?.({
-      ...base,
       rxInfo: [],
     }, meta('up'))).toBeNull();
+  });
+
+  it('up without rxInfo still decodes', () => {
     expect(incoming.handle?.({
-      ...base,
+      queueItemId: 'q-1',
+      deduplicationId: 'd-1',
+      deviceInfo: { devEui: DEV_EUI },
+      acknowledged: true,
+    }, meta('ack'))).toBeNull();
+
+    expect(incoming.handle?.({
+      deduplicationId: 'd-1',
+      deviceInfo: { devEui: DEV_EUI },
       data: 'aCM2MwNwBGjAATTIFg==',
-    }, meta('up'))).toBeNull();
+    }, meta('up'))).toMatchObject({
+      deliveryQueueId: 'q-1',
+      deliveryStatus: 'DELIVERY_SUCCESSFUL',
+    });
   });
 
   it('verifySignature is open when no ingress key is configured', () => {

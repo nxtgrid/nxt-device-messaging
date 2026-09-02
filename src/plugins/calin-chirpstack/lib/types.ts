@@ -37,8 +37,8 @@ export type LorawanCalinJoinEvent = {
 export type LorawanCalinDownEvent = {
   // Identifiers
   queueItemId?: string;
-  /** Proto `uint32`; HTTP JSON is a number, not a string. */
-  downlinkId: string | number;
+  /** Proto `uint32`; ChirpStack HTTP JSON is a number. */
+  downlinkId: number;
 
   // Device
   deviceInfo: {
@@ -57,8 +57,8 @@ export type LorawanCalinAckEvent = {
     devEui: string;
   };
 
-  // Acknowledgement
-  acknowledged: boolean;
+  // Omitted in some ChirpStack JSON encodings; that means false (nack).
+  acknowledged?: boolean;
 };
 
 /** Data uplink carrying base64 CALIN frame bytes. */

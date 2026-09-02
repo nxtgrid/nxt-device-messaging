@@ -115,8 +115,7 @@ export function createCalinChirpstackIncoming(
           },
           'txack ingress',
         );
-        if (!isTxackPayload(event)) return null;
-        return handleDown(event, meterExternalReference);
+        return handleDown(event as LorawanCalinDownEvent, meterExternalReference);
 
       /**
        * Confirmed-downlink MAC (n)ack. `acknowledged: false` is a missing device
@@ -124,8 +123,7 @@ export function createCalinChirpstackIncoming(
        * via the correlator; a nack does not.
        */
       case 'ack':
-        if (!isAckPayload(event)) return null;
-        return handleAck(event, meterExternalReference);
+        return handleAck(event as LorawanCalinAckEvent, meterExternalReference);
 
       /**
        * Join
@@ -139,8 +137,7 @@ export function createCalinChirpstackIncoming(
        * Meter response data (may race with ack — correlator matches either order)
        */
       case 'up':
-        if (!isUpPayload(event)) return null;
-        return handleUp(event, meterExternalReference);
+        return handleUp(event as LorawanCalinUpEvent, meterExternalReference);
 
       default:
         // Missing event, or status / log / location / integration / unknown
@@ -149,23 +146,6 @@ export function createCalinChirpstackIncoming(
   };
 
   return { handle, verifySignature };
-}
-
-/** `txack` — `downlinkId` required (ChirpStack JSON is a number; tests may use a string). */
-function isTxackPayload(event: Record<string, unknown>): event is LorawanCalinDownEvent {
-  return typeof event.downlinkId === 'string' || typeof event.downlinkId === 'number';
-}
-
-/** `ack` — ids + boolean `acknowledged` (missing would look like nack). */
-function isAckPayload(event: Record<string, unknown>): event is LorawanCalinAckEvent {
-  return typeof event.queueItemId === 'string'
-    && typeof event.deduplicationId === 'string'
-    && typeof event.acknowledged === 'boolean';
-}
-
-/** `up` — `data` string before decode; `rxInfo` array (may be empty). */
-function isUpPayload(event: Record<string, unknown>): event is LorawanCalinUpEvent {
-  return typeof event.data === 'string' && Array.isArray(event.rxInfo);
 }
 
 function handleDown(
@@ -199,20 +179,20 @@ function handleAck(
   event: LorawanCalinAckEvent,
   meterExternalReference: string,
 ): ParsedIncomingEvent | null {
-  // MAC nack / timeout — not a gateway tx-nack.
-  if (!event.acknowledged) {
+  if (!event.queueItemId) return null;
+
+  // MAC nack / timeout — not a gateway tx-nack. Missing `acknowledged` is false.
+  if (event.acknowledged !== true) {
     return {
       deliveryQueueId: event.queueItemId,
       deliveryStatus: 'DELIVERY_FAILED',
       device: createDevice(meterExternalReference),
       failureContext: {
-        reason:
-          'Downlink not acknowledged by device (may be offline, out of range, or missed RX window)',
+        reason: 'Downlink not acknowledged by device (may be offline, out of range, or missed RX window)',
       },
     };
   }
 
-  // Send to correlator
   return eventCorrelator.onAckEvent(event);
 }
 
@@ -220,6 +200,8 @@ function handleUp(
   event: LorawanCalinUpEvent,
   meterExternalReference: string,
 ): ParsedIncomingEvent | null {
+  if (!event.data) return null;
+
   const decoded = decodeResponseData(event.data);
   if (!decoded) return null;
 
@@ -242,7 +224,6 @@ function handleUp(
     };
   }
 
-  // Send to correlator
   return eventCorrelator.onUpEvent(event, decoded, device);
 }
 
