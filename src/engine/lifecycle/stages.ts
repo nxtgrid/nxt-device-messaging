@@ -76,7 +76,8 @@ export const STAGES = {
     name: 'relayNode',
     key: () => 'queue_in_flight_to_relay_node',
     entryStatus: 'DELIVERED_TO_NS',
-    // Rescheduled when the plugin reports the command is still queued remotely.
+    // Rescheduled when the plugin reports the NS still has the item queued
+    // (not the gateway holding the frame).
     entryWaitMs: ({ tuning }) => tuning.relayNodeInFlightTimeoutMs,
     isPerPlugin: false,
   },

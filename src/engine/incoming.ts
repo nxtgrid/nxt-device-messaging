@@ -121,7 +121,8 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return 'orphaned';
     }
 
-    // Relay-node ACK (PUSH): move relay-node → device queue; no adopter event.
+    // PUSH mid-hop (txack): NS handed off to the radio. Leave the NS wait for
+    // the device wait. No adopter event.
     if (deliveryStatus === 'SENT_TO_DEVICE' && plugin.deliveryPattern === 'PUSH') {
       await moves.advance({ messageId, plugin, from: 'relayNode' });
       return 'movedOn';

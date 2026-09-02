@@ -33,7 +33,7 @@ export type LorawanCalinJoinEvent = {
   devAddr: string;
 };
 
-/** Downlink tx-ack — gateway confirmed it radiated the frame. */
+/** Downlink tx-ack — gateway accepted the frame for transmission. */
 export type LorawanCalinDownEvent = {
   // Identifiers
   queueItemId?: string;
@@ -45,7 +45,7 @@ export type LorawanCalinDownEvent = {
   };
 };
 
-/** Confirmed-data uplink ACK from the meter (may race the data uplink). */
+/** Confirmed-downlink MAC (n)ack. May race the data uplink; `acknowledged: false` is not a gateway nack. */
 export type LorawanCalinAckEvent = {
   // Identifiers
   queueItemId: string;

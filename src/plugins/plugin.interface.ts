@@ -74,7 +74,7 @@ export type Admission =
 export type PluginTuning = {
   /** Score timeout on `queue_in_flight_to_ns`. */
   readonly nsInFlightTimeoutMs: number;
-  /** Score timeout on `queue_in_flight_to_relay_node` (PUSH mid stage). */
+  /** Score timeout on `queue_in_flight_to_relay_node` (waiting for NS to hand off to the radio). */
   readonly relayNodeInFlightTimeoutMs: number;
   /** Score timeout on `queue_in_flight_to_device` (end meter). */
   readonly deviceInFlightTimeoutMs: number;
@@ -174,15 +174,16 @@ type DeliveryPluginBase = PluginBase & {
 /**
  * PUSH delivery plugin: webhook ingress after send.
  * `incoming.handle` is required. `outgoing.getRemoteStatus` is optional
- * (relay-node timeout extension). `incoming.fetchStatus` is forbidden.
+ * (extend the NS-queue wait). `incoming.fetchStatus` is forbidden.
  */
 export type PushPlugin = DeliveryPluginBase & {
   readonly deliveryPattern: 'PUSH';
 
   outgoing: PluginOutgoingBase & {
     /**
-     * Remote queue status (PUSH relay-node timeout extension).
-     * Optional — omit when the vendor has no queue to inspect.
+     * Whether the vendor / NS still has this item queued (PUSH relay-node
+     * timeout extension). Not a query of the gateway. Omit when the vendor
+     * has no queue to inspect.
      */
     getRemoteStatus?(
       message: DeviceMessage,

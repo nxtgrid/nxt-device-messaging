@@ -8,14 +8,15 @@
  * other events (`status`, `log`, `location`, `integration`, …) → `null`.
  *
  * The sequence from ChirpStack is:
- * 1) Queueing with gRPC, returns queueItemId
- * 2) txack: Gateway confirms it sent it 'out' (with downlinkId and queueItemId)
- * 3) up: Meter responds with data (with deduplicationId)
- * 4) ack: Meter confirms it received (with queueItemId and deduplicationId)
+ * 1) Enqueue via gRPC — item sits in the NS device queue (our relay-node wait)
+ * 2) txack: gateway accepted the downlink for TX (not proof it already radiated)
+ * 3) up: meter uplink with application payload
+ * 4) ack: LoRaWAN MAC (n)ack of the confirmed downlink (`acknowledged` true/false)
  *
- * In reality, in ChirpStack 3 and 4 happen simultaneously and can be in reverse
- * order, which is why we have the correlator to match them, regardless of
- * incoming order.
+ * 3 and 4 are often the same Class-A uplink, posted as two HTTP events in
+ * either order; the correlator joins a successful ack with its up. A nack
+ * (`acknowledged: false`) is a missing device ACK or Class-B/C timeout, not a
+ * gateway nack, and does not go through the correlator.
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -101,16 +102,17 @@ export function createCalinChirpstackIncoming(
 
     switch (meta?.query.event) {
       /**
-       * Downlink (txack)
-       * Gateway confirmed the message was radiated to the meter
+       * Gateway accepted the downlink for transmission (may still be scheduled
+       * for RX1). Leaves the NS wait; does not mean the meter heard it.
        */
       case 'txack':
         if (!isTxackPayload(event)) return null;
         return handleDown(event, meterExternalReference);
 
       /**
-       * Confirmed-downlink (n)ack
-       * Meter acknowledged it received (and handled) the message
+       * Confirmed-downlink MAC (n)ack. `acknowledged: false` is a missing device
+       * ACK or Class-B/C timeout, not a gateway nack. Success races with `up`
+       * via the correlator; a nack does not.
        */
       case 'ack':
         if (!isAckPayload(event)) return null;
@@ -188,7 +190,7 @@ function handleAck(
   event: LorawanCalinAckEvent,
   meterExternalReference: string,
 ): ParsedIncomingEvent | null {
-  // If ack has failed, we failed to deliver to meter
+  // MAC nack / timeout — not a gateway tx-nack.
   if (!event.acknowledged) {
     return {
       deliveryQueueId: event.queueItemId,

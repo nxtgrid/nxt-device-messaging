@@ -97,8 +97,11 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
     },
 
     /**
-     * A relay node that still holds the command has not failed — it is slow. Plugins that
-     * can answer "do you still have it?" get to say so, and the wait is extended.
+     * Waiting for the network server to hand the command to the radio (PUSH txack).
+     * The NS may sit on the item for a long time; that is not a failure. Plugins
+     * that can inspect the vendor queue (`getRemoteStatus`) say whether it is
+     * still there, and the wait is extended. This is not the gateway holding the
+     * frame.
      */
     async relayNode({ message, plugin, queueKey }) {
       const getRemoteStatus = plugin.deliveryPattern === 'PUSH'

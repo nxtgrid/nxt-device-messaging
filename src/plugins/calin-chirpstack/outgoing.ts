@@ -82,6 +82,10 @@ export function createCalinChirpstackOutgoing(deps: {
     return client.enqueueDeviceRequest(deviceEui, bytes);
   };
 
+  /**
+   * ChirpStack's device queue still contains this `deliveryQueueId`.
+   * That is the NS queue, not the gateway.
+   */
   const getRemoteStatus = async (
     message: DeviceMessage,
   ): Promise<{ deliveryStatus: DeviceMessageDeliveryStatus }> => {
