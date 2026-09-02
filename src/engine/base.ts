@@ -134,6 +134,8 @@ export function createBaseService(options: CreateBaseServiceOptions): BaseServic
       currentRetryCount,
       failureHistory: newFailureHistory,
       plugin,
+      // @TEMPORARY :: This is just for logging further down the line
+      deliveryStatus: message.deliveryStatus,
     });
 
     return entered ? 'movedOn' : 'orphaned';

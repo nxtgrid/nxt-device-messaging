@@ -106,6 +106,8 @@ export type EnterRetryArgs = {
   readonly currentRetryCount: number;
   readonly failureHistory: readonly FailureReason[];
   readonly plugin: DeliveryPlugin;
+  /** Hash status at the time of the claim — for the miss log, not for the write. Only used for logging. */
+  readonly deliveryStatus: DeviceMessageDeliveryStatus;
 };
 
 /** Arguments for {@link StageMoves.purge}. */
@@ -264,13 +266,41 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       currentRetryCount,
       failureHistory,
       plugin,
+      // @TEMPORARY :: Only used for logging
+      deliveryStatus,
     }: EnterRetryArgs): Promise<boolean> {
       const inQueue = await stageStore.zscore(fromKey, messageId);
       if (inQueue === null) {
         metrics.recordStageClaimMiss('retry');
+        // Ingress always claims the device queue. If a nack (or other retry) lands
+        // while the hash is still DELIVERED_TO_NS, ZSCORE misses and this distinct
+        // line fires — grep it to see whether that order ever happens in production.
+        const lookedInDeviceQueue = fromKey === STAGES.device.key();
+        const hashSaysDeviceStage = deliveryStatus === 'SENT_TO_DEVICE';
+        /**
+         * Keep this probe in moves.ts (this is where the claim misses).
+         * If this ever becomes a fix, put it in incoming.ts using the
+         * status→stage lookup that already exists — not a calin-chirpstack branch,
+         * and not a LoRaWAN-only path in the lifecycle table.
+         * A real fix would be general PUSH ingress, not a ChirpStack special case.
+         *
+         * Ingress infers `fromKey` from the event (failure → device queue). That
+         * event may have arrived before the mid-hop we assumed would precede it,
+         * so the member is still in another stage queue and this ZSCORE misses.
+         * A fix would look in every in-flight queue the message could still occupy,
+         * not only the one the event implied.
+         */
         logger.warn(
-          { module: 'lifecycle', messageId, fromKey, pluginId: plugin.id },
-          'enter retry lost the claim; another writer already moved this message',
+          {
+            module: 'lifecycle',
+            messageId,
+            fromKey,
+            pluginId: plugin.id,
+            deliveryStatus,
+          },
+          lookedInDeviceQueue && !hashSaysDeviceStage
+            ? 'enter retry from device queue while message is not in the device stage'
+            : 'enter retry lost the claim; another writer already moved this message',
         );
         return false;
       }
