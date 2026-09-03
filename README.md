@@ -33,6 +33,7 @@ Live shapes: `/swagger` on a running instance.
 TypeScript/Zod types: [`@nxtgrid/device-messaging-contract`](packages/contract/README.md).
 
 On the other side, a plugin speaks the vendor or radio protocol.
+You never speak LoRaWAN from your app — choose the plugin for that meter and enqueue with that `pluginId` ([which plugin](#plugins)).
 You never receive ChirpStack (or other network-server) callbacks in your app — those hit `POST /ingress/:pluginId` here, and we turn them into the same webhook events.
 
 ```mermaid
@@ -146,7 +147,7 @@ Platform runbooks (Git autodeploy, same-app Valkey / STS / webhook): [`docs/depl
 4. Set a **non-empty** `DEVICE_MESSAGING_API_KEY` in any deployment that can be reached, **or** keep the service on a private network / behind a reverse proxy that authenticates callers.
 5. Supply a JSON config artifact (see [Configuration](#configuration)). Empty `plugins[]` (the bundled default) means nothing can be enqueued.
 6. Enable the plugin(s) you need and set that plugin's env from `.env.example`.
-7. For **ChirpStack**, point the network server at `POST /ingress/calin-chirpstack` on this service.
+7. For **ChirpStack**, follow the [`calin-chirpstack` checklist](#calin-chirpstack-chirpstack).
 
 ### Compose (app + Valkey)
 
@@ -202,7 +203,7 @@ A deployment is described in two places:
 
 Load order: `DEVICE_MESSAGING_CONFIG_JSON` (inline string) → `_URL` (fetch) → `_PATH` (file) → bundled [`config.default.json`](config.default.json).
 The bundled default has the engine on and **no plugins**, so enqueue will fail until you enable at least one.
-Start from [`config.example.json`](config.example.json) (stubs) and swap in the plugin ids you need.
+Start from [`config.example.json`](config.example.json) (stubs) for local, or the [production-shaped snippet](#production-shaped-artifact) for a real plugin set.
 Secret names are listed in [`.env.example`](.env.example).
 
 If a plugin is in `plugins[]` but its env is missing, **boot fails** with the key named.
@@ -251,8 +252,20 @@ Same four keys for every **delivery** plugin (PUSH / PULL), including the stubs.
 
 ### Plugins
 
-Put the `id` in `plugins[]` and send that same id as `pluginId` on enqueue.
+Pick the plugin that already speaks the radio or vendor API.
+Put that `id` in `plugins[]` and send the same id as `pluginId` on enqueue
+(`nxt-sts` is mint-only — use `POST /token/generate`).
 Env is required only for ids you enable. Full key names: [`.env.example`](.env.example).
+
+| You have | `pluginId` |
+|---|---|
+| CALIN meters over LoRaWAN, via [ChirpStack](https://www.chirpstack.io/docs/) | `calin-chirpstack` |
+| CALIN meters on CALIN HTTP API V1 | `calin-api-v1` |
+| CALIN meters on CALIN HTTP API V2 | `calin-api-v2` |
+| STS token mint only (no delivery) | `nxt-sts` |
+| Local / tests, no vendor | `stub-push` or `stub-pull` |
+
+The LoRaWAN plugin id is `calin-chirpstack` (manufacturer + network server).
 
 | `id` | Pattern | Env | Notes |
 |---|---|---|---|
@@ -262,6 +275,38 @@ Env is required only for ids you enable. Full key names: [`.env.example`](.env.e
 | `calin-api-v2` | PULL | `CALIN_API_V2_*` | Includes provisioning |
 | `calin-chirpstack` | PUSH | `CHIRPSTACK_*`, optional `CALIN_CHIRPSTACK_INGRESS_API_KEY` | Point ChirpStack at `/ingress/calin-chirpstack` (`X-API-KEY` when that env is set) |
 | `nxt-sts` | token-only | `NXT_STS_URL` | Mint only, no enqueue. Compose sidecar: `http://nxt-sts:8080` |
+
+#### `calin-chirpstack` (ChirpStack)
+
+This service does not run ChirpStack. You do. How to install and operate the network server is [ChirpStack's docs](https://www.chirpstack.io/docs/). This side:
+
+1. Add `{ "id": "calin-chirpstack" }` to `plugins[]`.
+2. Set `CHIRPSTACK_*` from [`.env.example`](.env.example) (`API_URL`, `API_TOKEN`, `APPLICATION_ID`, `PROFILE_ID`, `APP_KEY`).
+3. In ChirpStack, add an [HTTP integration](https://www.chirpstack.io/docs/chirpstack/integrations/http.html) that POSTs to `https://<this-host>/ingress/calin-chirpstack`. If you set `CALIN_CHIRPSTACK_INGRESS_API_KEY`, send the same value as `X-API-KEY`.
+4. Enqueue with `pluginId: "calin-chirpstack"`. Your app never sees LoRaWAN frames or ChirpStack callbacks.
+
+Local `pnpm dev` uses stubs and will not reach a meter. A real round-trip needs your ChirpStack, a gateway, and a device.
+
+#### Production-shaped artifact
+
+`config.example.json` is stubs so `pnpm dev` works. A deployment that talks to CALIN LoRaWAN meters and mints STS tokens looks like this (secrets stay in env):
+
+```json
+{
+  "$schemaVersion": "1",
+  "engine": { "enabled": true },
+  "logging": { "stdout": "json" },
+  "eventWebhook": {
+    "url": "https://your-app.example/hooks/device-messages"
+  },
+  "plugins": [
+    { "id": "calin-chirpstack" },
+    { "id": "nxt-sts" }
+  ]
+}
+```
+
+Set `CHIRPSTACK_*`, `NXT_STS_URL`, `DEVICE_MESSAGING_API_KEY`, and `DEVICE_MESSAGING_WEBHOOK_SECRET` in the environment. Omit `nxt-sts` if you do not mint here. Add `calin-api-v1` / `calin-api-v2` the same way if those meters share the deployment.
 
 ### Environment (ops)
 

@@ -29,8 +29,9 @@ Do not expose those routes to the internet without one of those.
 After a successful delivery the record is removed, so that GET then **404s**.
 The webhook is how you learn the outcome; polling GET until 404 is not a substitute.
 
-`pluginId` chooses the hardware path. It must be listed in the service's `plugins[]` or the request fails clearly — the process does not crash.
-Which ids exist, which env they need, and which are local stubs: the [README plugin table](../../README.md#plugins).
+`pluginId` chooses the hardware path, not a protocol name. You never speak LoRaWAN or ChirpStack from your app.
+It must be listed in the service's `plugins[]` or the request fails clearly — the process does not crash.
+Which plugin to enable: the [README chooser](../../README.md#plugins).
 `nxt-sts` cannot enqueue; it only mints (`POST /token/generate`).
 
 TypeScript/Zod shapes for the table above (and the webhook body) are `@nxtgrid/device-messaging-contract`.
