@@ -22,7 +22,7 @@ import type {
 } from '../plugins/plugin.interface.js';
 import type { BaseService } from './base.js';
 import type { StageMoves } from './lifecycle/moves.js';
-import { STAGES } from './lifecycle/stages.js';
+import { STAGES, stageForStatus, stageKeyFor } from './lifecycle/stages.js';
 import type { StageOutcome } from './lifecycle/types.js';
 
 /**
@@ -48,12 +48,10 @@ export type IncomingService = {
    * member either a new score or a removal.
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Queue the message sits in (the caller's stage)
    * @param plugin - Owning delivery plugin
    */
   processEvent(
     parsedEvent: ParsedIncomingEvent,
-    currentQueueKey: string,
     plugin: DeliveryPlugin,
   ): Promise<StageOutcome>;
 };
@@ -87,12 +85,10 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    * stage on every tick (A2).
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Queue for retry/fail (PUSH handle uses the device queue)
    * @param plugin - Owning delivery plugin (tuning for stage moves)
    */
   async function processEvent(
     parsedEvent: ParsedIncomingEvent,
-    currentQueueKey: string,
     plugin: DeliveryPlugin,
   ): Promise<StageOutcome> {
     const { deliveryQueueId, deliveryStatus, device, commandType, response, unsolicited, failureContext } = parsedEvent;
@@ -130,7 +126,33 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     if (deliveryStatus === 'DELIVERY_FAILED') {
       const context = failureContext ?? { reason: 'Unable to deliver message after negative remote response' };
-      return baseService.retryOrFail(messageId, currentQueueKey, context, plugin);
+      const storedMessage = await messageStore.getMessageById(messageId);
+      if (!storedMessage) {
+        logger.warn({ module: 'incoming', messageId }, 'message not found (already cleaned up?)');
+        return 'orphaned';
+      }
+
+      // Claim the stage the hash is in. A nack can arrive while the member is
+      // still on the relay-node wait.
+      const stage = stageForStatus(storedMessage.deliveryStatus, plugin.deliveryPattern);
+      if (!stage) {
+        logger.warn(
+          {
+            module: 'incoming',
+            messageId,
+            deliveryStatus: storedMessage.deliveryStatus,
+          },
+          'cannot retry; message is not in a stage',
+        );
+        return 'orphaned';
+      }
+
+      return baseService.retryOrFail(
+        messageId,
+        stageKeyFor(STAGES[stage], plugin.id),
+        context,
+        plugin,
+      );
     }
 
     if (deliveryStatus !== 'DELIVERY_SUCCESSFUL') {
@@ -191,7 +213,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await processEvent(parsedEvent, STAGES.device.key(), plugin);
+    await processEvent(parsedEvent, plugin);
   }
 
   return { handle, processEvent };
