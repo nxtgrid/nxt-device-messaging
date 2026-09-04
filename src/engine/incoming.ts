@@ -22,8 +22,36 @@ import type {
 } from '../plugins/plugin.interface.js';
 import type { BaseService } from './base.js';
 import type { StageMoves } from './lifecycle/moves.js';
-import { STAGES } from './lifecycle/stages.js';
+import { STAGES, stageForStatus, stageKeyFor } from './lifecycle/stages.js';
 import type { StageOutcome } from './lifecycle/types.js';
+
+/**
+ * Queue {@link BaseService.retryOrFail} must claim, from the hash's delivery status.
+ *
+ * PUSH ingress used to pass the device queue for every failure. A nack can arrive
+ * while the member is still on the relay-node wait; claiming the wrong set drops
+ * the event. PULL polls already pass the awaiting-task key; deriving it here
+ * matches that key when the hash still says `DELIVERED_TO_NS`.
+ *
+ * @param message - Hash we just loaded
+ * @param plugin - Owning plugin (pattern + id for per-plugin stage keys)
+ * @param fallbackQueueKey - Caller's stage key when the hash is not in a stage
+ */
+function queueKeyForFailedAttempt(
+  message: DeviceMessage,
+  plugin: DeliveryPlugin,
+  fallbackQueueKey: string,
+): string {
+  const { deliveryPattern } = plugin;
+  if (deliveryPattern !== 'PUSH' && deliveryPattern !== 'PULL') {
+    return fallbackQueueKey;
+  }
+
+  const stage = stageForStatus(message.deliveryStatus, deliveryPattern);
+  if (!stage) return fallbackQueueKey;
+
+  return stageKeyFor(STAGES[stage], plugin.id);
+}
 
 /**
  * Incoming operations used by HTTP (and later by the poll loop).
@@ -48,7 +76,7 @@ export type IncomingService = {
    * member either a new score or a removal.
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Queue the message sits in (the caller's stage)
+   * @param currentQueueKey - Fallback queue when the hash is not in a stage
    * @param plugin - Owning delivery plugin
    */
   processEvent(
@@ -87,7 +115,8 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    * stage on every tick (A2).
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Queue for retry/fail (PUSH handle uses the device queue)
+   * @param currentQueueKey - Fallback queue when the hash is not in a stage
+   *   (PUSH handle still passes the device queue as that fallback)
    * @param plugin - Owning delivery plugin (tuning for stage moves)
    */
   async function processEvent(
@@ -130,7 +159,18 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     if (deliveryStatus === 'DELIVERY_FAILED') {
       const context = failureContext ?? { reason: 'Unable to deliver message after negative remote response' };
-      return baseService.retryOrFail(messageId, currentQueueKey, context, plugin);
+      const storedMessage = await messageStore.getMessageById(messageId);
+      if (!storedMessage) {
+        logger.warn({ module: 'incoming', messageId }, 'message not found (already cleaned up?)');
+        return 'orphaned';
+      }
+
+      return baseService.retryOrFail(
+        messageId,
+        queueKeyForFailedAttempt(storedMessage, plugin, currentQueueKey),
+        context,
+        plugin,
+      );
     }
 
     if (deliveryStatus !== 'DELIVERY_SUCCESSFUL') {
