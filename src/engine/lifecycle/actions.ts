@@ -141,7 +141,7 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
      * vendor how the task is doing, and either resolve the message or wait again on the
      * poll ladder.
      */
-    async awaitingTask({ message, plugin, queueKey, messageAgeMs }) {
+    async awaitingTask({ message, plugin, messageAgeMs }) {
       if (messageAgeMs >= PULL_MAX_MESSAGE_AGE_MS) {
         await _failPermanently(message, plugin);
         return 'removed';
@@ -165,7 +165,7 @@ export function createStageActions(options: CreateStageActionsOptions): StageAct
       const parsedEvent = await fetchStatus(message);
       if (!parsedEvent) return 'rescheduled';
 
-      return incomingService.processEvent(parsedEvent, queueKey, plugin);
+      return incomingService.processEvent(parsedEvent, plugin);
     },
 
     /**

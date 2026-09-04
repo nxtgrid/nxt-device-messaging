@@ -26,34 +26,6 @@ import { STAGES, stageForStatus, stageKeyFor } from './lifecycle/stages.js';
 import type { StageOutcome } from './lifecycle/types.js';
 
 /**
- * Queue {@link BaseService.retryOrFail} must claim, from the hash's delivery status.
- *
- * PUSH ingress used to pass the device queue for every failure. A nack can arrive
- * while the member is still on the relay-node wait; claiming the wrong set drops
- * the event. PULL polls already pass the awaiting-task key; deriving it here
- * matches that key when the hash still says `DELIVERED_TO_NS`.
- *
- * @param message - Hash we just loaded
- * @param plugin - Owning plugin (pattern + id for per-plugin stage keys)
- * @param fallbackQueueKey - Caller's stage key when the hash is not in a stage
- */
-function queueKeyForFailedAttempt(
-  message: DeviceMessage,
-  plugin: DeliveryPlugin,
-  fallbackQueueKey: string,
-): string {
-  const { deliveryPattern } = plugin;
-  if (deliveryPattern !== 'PUSH' && deliveryPattern !== 'PULL') {
-    return fallbackQueueKey;
-  }
-
-  const stage = stageForStatus(message.deliveryStatus, deliveryPattern);
-  if (!stage) return fallbackQueueKey;
-
-  return stageKeyFor(STAGES[stage], plugin.id);
-}
-
-/**
  * Incoming operations used by HTTP (and later by the poll loop).
  * Wired at the composition root (`main.ts`); unit tests inject a fake.
  */
@@ -76,12 +48,10 @@ export type IncomingService = {
    * member either a new score or a removal.
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Fallback queue when the hash is not in a stage
    * @param plugin - Owning delivery plugin
    */
   processEvent(
     parsedEvent: ParsedIncomingEvent,
-    currentQueueKey: string,
     plugin: DeliveryPlugin,
   ): Promise<StageOutcome>;
 };
@@ -115,13 +85,10 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
    * stage on every tick (A2).
    *
    * @param parsedEvent - Normalized event from the plugin
-   * @param currentQueueKey - Fallback queue when the hash is not in a stage
-   *   (PUSH handle still passes the device queue as that fallback)
    * @param plugin - Owning delivery plugin (tuning for stage moves)
    */
   async function processEvent(
     parsedEvent: ParsedIncomingEvent,
-    currentQueueKey: string,
     plugin: DeliveryPlugin,
   ): Promise<StageOutcome> {
     const { deliveryQueueId, deliveryStatus, device, commandType, response, unsolicited, failureContext } = parsedEvent;
@@ -165,9 +132,24 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
         return 'orphaned';
       }
 
+      // Claim the stage the hash is in. A nack can arrive while the member is
+      // still on the relay-node wait.
+      const stage = stageForStatus(storedMessage.deliveryStatus, plugin.deliveryPattern);
+      if (!stage) {
+        logger.warn(
+          {
+            module: 'incoming',
+            messageId,
+            deliveryStatus: storedMessage.deliveryStatus,
+          },
+          'cannot retry; message is not in a stage',
+        );
+        return 'orphaned';
+      }
+
       return baseService.retryOrFail(
         messageId,
-        queueKeyForFailedAttempt(storedMessage, plugin, currentQueueKey),
+        stageKeyFor(STAGES[stage], plugin.id),
         context,
         plugin,
       );
@@ -231,7 +213,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
       return;
     }
 
-    await processEvent(parsedEvent, STAGES.device.key(), plugin);
+    await processEvent(parsedEvent, plugin);
   }
 
   return { handle, processEvent };
