@@ -113,7 +113,7 @@ export function createIncomingService(options: CreateIncomingServiceOptions): In
 
     const messageId = await messageStore.getMessageIdFromDeliveryQueueId(deliveryQueueId);
     if (!messageId) {
-      logger.warn({ module: 'incoming', deliveryQueueId, parsedEvent }, 'message not found for deliveryQueueId');
+      logger.debug({ module: 'incoming', deliveryQueueId, parsedEvent }, 'message not found for deliveryQueueId');
       return 'orphaned';
     }
 

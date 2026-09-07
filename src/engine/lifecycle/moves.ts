@@ -245,7 +245,7 @@ export function createStageMoves(options: CreateStageMovesOptions): StageMoves {
       // legitimate (cancel, or a deadline that fired first), it is the rate that matters.
       if (!claimed) {
         metrics.recordStageClaimMiss(from);
-        logger.warn(
+        logger.debug(
           { module: 'lifecycle', messageId, from, to: next, pluginId: plugin.id },
           'stage advance lost the claim; another writer already moved this message',
         );

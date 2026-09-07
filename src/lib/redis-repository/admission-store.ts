@@ -80,7 +80,7 @@ export function createAdmissionStore(
 
       if (deadMembers.length > 0) {
         await client.srem(concurrencyRateLimitKey, ...deadMembers);
-        logger.warn({
+        logger.debug({
           module: 'redis',
           deadCount: deadMembers.length,
           concurrencyRateLimitKey,
