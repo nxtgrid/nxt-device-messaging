@@ -110,6 +110,21 @@ type DownResponseBody = {
 };
 
 /**
+ * Node / undici errnos that mean we never got an HTTP response from CALIN.
+ * `UND_ERR_*` is matched by prefix as well (connect / socket / header timeouts).
+ */
+const TRANSPORT_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+]);
+
+/**
  * Read a Node-style errno from a fetch failure (`cause.code` or top-level `code`).
  */
 function getNetworkErrorCode(err: unknown): string | undefined {
@@ -127,6 +142,41 @@ function getNetworkErrorCode(err: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+function isAbortTimeout(err: unknown): boolean {
+  let current: unknown = err;
+  for (let i = 0; i < 4; i++) {
+    if (typeof current !== 'object' || current === null) return false;
+    const name = (current as { name?: unknown }).name;
+    if (name === 'TimeoutError' || name === 'AbortError') return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+function isTransportCode(code: string): boolean {
+  return TRANSPORT_CODES.has(code) || code.startsWith('UND_ERR_');
+}
+
+/**
+ * String errno for a transport failure, or `undefined` when this is not transport.
+ */
+function transportCodeOf(err: unknown): string | undefined {
+  const code = getNetworkErrorCode(err);
+  if (code !== undefined && isTransportCode(code)) return code;
+  if (isAbortTimeout(err)) return code ?? 'TimeoutError';
+  return undefined;
+}
+
+function messageForTransport(code: string): string {
+  if (code === 'ECONNREFUSED') {
+    return '[CALIN API-V1] could not be reached, connection was refused';
+  }
+  if (code === 'ECONNRESET') {
+    return '[CALIN API-V1] abruptly closed its end of the connection';
+  }
+  return '[CALIN API-V1] could not be reached';
 }
 
 /**
@@ -204,41 +254,21 @@ export function createCalinApiV1Client(deps: { readonly apiBaseUrl: string }) {
         throw err;
       }
 
-      let message: string;
-      let code: number | string | null | undefined;
-      const networkCode = getNetworkErrorCode(err);
-
-      if (networkCode === 'ECONNREFUSED') {
-        logger.error({ module: 'calin-api-v1.repo', path, err }, 'ECONNREFUSED');
-        message = '[CALIN API-V1] could not be reached, connection was refused';
-        code = networkCode;
-      }
-      else if (networkCode === 'ECONNRESET') {
-        logger.error({ module: 'calin-api-v1.repo', path, err }, 'ECONNRESET');
-        message = '[CALIN API-V1] abruptly closed its end of the connection';
-        code = networkCode;
-      }
-      else if (
-        typeof err === 'object'
-        && err !== null
-        && 'cause' in err
-        && (err as { cause?: unknown }).cause
-      ) {
-        logger.error({ module: 'calin-api-v1.repo', path, err }, 'unhandled cause');
-        message = '[CALIN API-V1] is down';
-        code = getNetworkErrorCode((err as { cause: unknown }).cause)
-          ?? getNetworkErrorCode(err);
-      }
-      else if (err instanceof Error && err.message) {
-        logger.error({ module: 'calin-api-v1.repo', path, err }, 'fetch failed');
-        message = '[CALIN API-V1] is down';
-      }
-      else {
-        logger.error({ module: 'calin-api-v1.repo', path, err }, 'fetch failed');
-        message = '[CALIN API-V1] is down';
+      const transportCode = transportCodeOf(err);
+      if (transportCode !== undefined) {
+        logger.warn(
+          { module: 'calin-api-v1.repo', path, code: transportCode },
+          'unreachable',
+        );
+        throw new CalinApiV1Error(messageForTransport(transportCode), {
+          code: transportCode,
+        });
       }
 
-      throw new CalinApiV1Error(message, { code });
+      logger.error({ module: 'calin-api-v1.repo', path, err }, 'fetch failed');
+      throw new CalinApiV1Error('[CALIN API-V1] is down', {
+        code: getNetworkErrorCode(err),
+      });
     }
   };
 

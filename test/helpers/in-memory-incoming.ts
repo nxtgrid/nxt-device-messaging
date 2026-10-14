@@ -36,7 +36,6 @@ export function createInMemoryIncomingService(
     },
     async processEvent(
       _parsedEvent: ParsedIncomingEvent,
-      _queueKey: string,
       _plugin: DeliveryPlugin,
     ): Promise<StageOutcome> {
       // HTTP unit tests do not exercise poll / processEvent.

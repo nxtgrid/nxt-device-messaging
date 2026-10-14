@@ -220,7 +220,7 @@ export function createCalinApiV1Incoming(
       // A numeric code means CALIN answered over HTTP — that is a real failure.
       // Returning null keeps the TaskNo and the poll ladder (ADR-008 awaitingTask).
       if (typeof errCode !== 'number') {
-        logger.warn({
+        logger.debug({
           module: 'calin-api-v1.incoming',
           err,
           messageId: id,

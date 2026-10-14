@@ -135,6 +135,40 @@ describe('createCalinApiV1Client', () => {
     });
   });
 
+  it('maps UND_ERR_CONNECT_TIMEOUT (via cause.code) to CalinApiV1Error', async () => {
+    const timedOut = Object.assign(new Error('fetch failed'), {
+      cause: Object.assign(new Error('Connect Timeout Error'), {
+        code: 'UND_ERR_CONNECT_TIMEOUT',
+      }),
+    });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(timedOut));
+
+    const client = createCalinApiV1Client({ apiBaseUrl: API_BASE });
+    await expect(
+      client.sendRequest('/COMM_RemoteTokenTask', { TaskNo: 't-1' }),
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      message: '[CALIN API-V1] could not be reached',
+      code: 'UND_ERR_CONNECT_TIMEOUT',
+    });
+  });
+
+  it('maps AbortSignal timeout (TimeoutError) to CalinApiV1Error', async () => {
+    const aborted = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(aborted));
+
+    const client = createCalinApiV1Client({ apiBaseUrl: API_BASE });
+    await expect(
+      client.sendRequest('/COMM_RemoteReading', { MeterNo: 'm-1' }),
+    ).rejects.toMatchObject({
+      name: 'CalinApiV1Error',
+      message: '[CALIN API-V1] could not be reached',
+      code: 'TimeoutError',
+    });
+  });
+
   it('maps generic fetch failures to CalinApiV1Error', async () => {
     vi.stubGlobal(
       'fetch',
