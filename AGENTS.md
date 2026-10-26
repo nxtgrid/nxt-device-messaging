@@ -80,6 +80,8 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 - **Never use structured question-picker / multiple-choice UI** (e.g. Cursor's AskQuestion
   tool). Plain text lets the maintainer add nuance, extra context, or instructions.
 - Keep answers concise and direct.
+- **Handoff prompts go in a fenced code block** (` ```text `), so the chat UI shows a copy
+  button. Prompt text only inside the block; explanation goes outside it.
 
 ## Decision records
 
