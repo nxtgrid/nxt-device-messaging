@@ -10,3 +10,4 @@ coverage/
 
 config.testing.json
 src/http/smoke/testing.http
+_notes
