@@ -46,6 +46,7 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | Where can a message wait? | `src/engine/lifecycle/stages.ts` |
 | What happens when a wait runs out? | `src/engine/lifecycle/actions.ts` and `runner.ts` |
 | How do I add a plugin? | `src/plugins/plugin.interface.ts`, `catalog.ts`, `src/plugins/calin-api-v1/index.ts` |
+| Where is the SparkMeter lab? | `docs/guides/sparkmeter-sparknet-http.md` |
 | Where are the HTTP/webhook Zod schemas? | `src/lib/device-message/schemas.ts` (`packages/contract` re-exports; do not edit the barrel to change the wire) |
 
 ## Commands
@@ -109,6 +110,7 @@ index table above.
 | `docs/plans/002-architecture-review.md` | Finished follow-up plan | Only if the task cites it |
 | `docs/architecture/` | ADRs | The index above says so |
 | `docs/deployment/` | Platform runbooks (App Platform, …) | Deploy / env / same-app wiring |
+| `docs/guides/sparkmeter-sparknet-http.md` | Emulator stand-in for sparknet-http | Developing that plugin |
 | `docs/archive/` | Named-era journals | The task cites a file there. Not otherwise. |
 
 Do not append a diary to `docs/decisions-log.md`. New architecture → ADR. Plan work → that
