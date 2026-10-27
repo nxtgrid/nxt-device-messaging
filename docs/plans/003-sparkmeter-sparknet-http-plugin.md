@@ -1,6 +1,6 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-26. Point 1 accepted. Points 2–8 proposed, not accepted.
+**Status:** design in progress — 2026-10-27. Points 1 and 2 accepted. Points 3–8 proposed, not accepted.
 **Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
 **Supersedes nothing.**
 
@@ -116,10 +116,10 @@ otherwise.
 | # | Point | Status |
 |---|---|---|
 | 1 | Transport: HTTP and SSE per meter-driver-spec. gRPC deferred. | ☑ accepted 2026-10-26 |
-| 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☐ proposed |
+| 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
 | 3 | Correlation: one in-flight command per meter, synthetic id `{networkServerRef}:{nodeId}`. | ☐ proposed |
 | 4 | The caller supplies the full configure object in `requestData`. This service keeps no meter state. | ☐ proposed — **under pressure, see below** |
-| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. Reads and top-up stay out. | ☐ proposed |
+| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. Reads and top-up stay out. | ☐ proposed — **unsolicited readings still go out, see below** |
 | 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed |
 | 7 | `externalReference` is the numeric `node_id`. | ☐ proposed |
 | 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
@@ -133,6 +133,25 @@ otherwise.
 
 Reopen point 1 if SparkMeter's answers (below) show that gRPC has a resume or replay mechanism
 that SSE lacks.
+
+### Point 2 — accepted wording
+
+> The plugin stays PUSH. The engine adds an optional `start` on a PushPlugin, called once from
+> the composition root, and only this plugin implements it. The plugin holds `GET /v1/events`
+> open and parses frames itself. It hands each parsed event to `deliver`, the same shape
+> `incoming.handle` returns for ChirpStack, and the engine applies it with `processEvent`.
+> `incoming.handle` stays the HTTP ingress parser and may be omitted when `start` is present;
+> ingress then rejects that plugin. If the stream fails to open, ends, errors, or stalls, the
+> plugin calls `dropped` once and leaves the stream down. The engine records that and does
+> nothing further. Reconnect and recovery belong to points 4 and 8. In-flight messages keep
+> their stage deadlines. The delivery statuses are unchanged.
+
+### Point 5 — unsolicited readings
+
+`electrical_meter_reading` must reach the caller as an unsolicited event. "Reads stay out"
+means no enqueued `READ_*` command. It does not mean dropping meter-pushed readings. The
+engine already emits unsolicited events (ChirpStack `READ_REPORT`). Which command type and
+payload carry this reading is decided with point 5, not before.
 
 ### Points 4 and 8 — must not be lost
 
@@ -148,8 +167,9 @@ configuration.
   Either it stores each meter's last applied configuration, or it tells the caller to re-send
   everything.
 
-Neither point can be accepted as written without an answer to the recovery question. Point 2 is
-related: the stream seam is where a dropped stream is detected.
+Neither point can be accepted as written without an answer to the recovery question. Point 2
+is accepted: `dropped` is where a dropped stream is detected, and it does not itself reconnect
+or recover.
 
 ---
 
@@ -177,7 +197,7 @@ Work items once the design is accepted. Kept coarse until then.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 1 | Resolve design points 2–8, one at a time | — | ☐ in progress (1 of 8 accepted) |
+| 1 | Resolve design points 3–8, one at a time | — | ☐ in progress (2 of 8 accepted) |
 | 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
 | 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
@@ -191,3 +211,9 @@ Work items once the design is accepted. Kept coarse until then.
 ThunderCloud's client. The deployment assumption (this service replaces ThunderCloud for a grid)
 was confirmed by the maintainer. That assumption puts points 4 and 8 under pressure; both stay
 open. SparkMeter questions sent; no answers yet.
+
+**2026-10-27** — Point 2 accepted. The plugin stays PUSH and holds `GET /v1/events`. The engine
+calls optional `start` once from the composition root; the plugin parses and calls `deliver`.
+`dropped` is recorded and left inert. Reconnect and recovery stay in points 4 and 8. Delivery
+statuses are unchanged. The maintainer requires `electrical_meter_reading` to be emitted as an
+unsolicited event; that is parked on point 5, where "reads stay out" means no enqueued `READ_*`.
