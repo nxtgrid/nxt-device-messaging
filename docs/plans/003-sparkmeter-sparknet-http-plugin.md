@@ -119,7 +119,7 @@ otherwise.
 | 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
 | 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
 | 4 | The caller supplies the full configure object in `requestData`. This service keeps no meter state. | ☐ proposed — **under pressure, see below** |
-| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. Reads and top-up stay out. | ☐ proposed — **unsolicited readings still go out, see below** |
+| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. `SET_BALANCE` deferred, see below. | ☐ proposed — **reading label still open; balance cache deferred** |
 | 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed — **per-meter half required by point 3** |
 | 7 | `externalReference` is the numeric `node_id`. | ☐ proposed |
 | 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
@@ -169,6 +169,30 @@ must be terminal before that id is minted again.
 means no enqueued `READ_*` command. It does not mean dropping meter-pushed readings. The
 engine already emits unsolicited events (ChirpStack `READ_REPORT`). Which command type and
 payload carry this reading is decided with point 5, not before.
+
+### Deferred — `SET_BALANCE`
+
+Not in v1. Decided 2026-10-27. This is the place to pick it up. It is not an STS top-up.
+
+**What it would implement.** A new enqueue command. The caller sends the absolute wallet
+total and the low-balance flag. The plugin posts `POST /v1/nodes/{node_id}/balance-and-flags`
+(spec §5.8) and the command ends on `electrical_meter_balance_and_flags_accepted` (`node_id`
+only) or on timeout. There is no applied event. The post replaces the meter's cached balance.
+It does not add a delta, and it does not mint a token. `TOP_UP_KWH`, `CLEAR_CREDIT`, and
+`CLEAR_TAMPER` are STS keypad tokens. This driver has no token field. Tamper is reading
+`state` 13, and the spec has no clear-tamper call.
+
+**Why it was deferred.** The caller holds the wallet and bills cumulative `energy`
+(`new energy − last energy`). Supply on or off is `TURN_ON` or `TURN_OFF`. A payment while
+the meter is already enabled needs no command here. Spec §5.8 calls the endpoint a cache
+update for a balance-aware meter and marks it recommended. ThunderCloud still pushes that
+cache on a vend, after a reading, and on reconcile (`send_set_config`, `process_reading`).
+The published spec does not say the meter displays the cache or opens the relay from it.
+The relay packet this plan can see is configure enable or disable.
+
+Reopen it if SparkMeter confirms the firmware uses the cache (a customer display, or supply
+that stays off while the cache is zero even after configure enable), or if a deployment must
+keep the cache in step with ThunderCloud.
 
 ### Points 4 and 8 — must not be lost
 
@@ -262,3 +286,9 @@ unsolicited event; that is parked on point 5, where "reads stay out" means no en
 retry. The delivery id is `{pluginId}:{nodeId}` on the existing index. Readings do not use it.
 Point 6 must enforce the per-meter half. Question 3 (an echoed request field) was sent the same
 day and stays open; a yes reopens the id scheme.
+
+**2026-10-27** — `SET_BALANCE` deferred. v1 commands for this plugin are `TURN_ON`, `TURN_OFF`,
+and `SET_POWER_LIMIT`. A payment updates the caller's wallet. This service hears about it only
+when the caller changes the relay or the limits. The balance-cache write (spec §5.8) is
+described under **Deferred — `SET_BALANCE`**, including what the command would post and when
+to reopen it. Point 5 is not accepted: the unsolicited reading's command type is still open.
