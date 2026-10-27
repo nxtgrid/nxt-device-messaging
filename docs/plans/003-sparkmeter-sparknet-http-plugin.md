@@ -1,6 +1,6 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-27. Points 1–3 accepted. Points 4–8 proposed, not accepted.
+**Status:** design in progress — 2026-10-27. Points 1–5 accepted. Points 6–8 proposed, not accepted.
 **Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
 **Supersedes nothing.**
 
@@ -60,6 +60,10 @@ this service do not drive the same sparknet-http at the same time. This service 
 **only command client** of its driver, and inherits the jobs ThunderCloud did for it (see the
 recovery facts below).
 
+Scope is legacy sites only, and only sites with a single basestation. That basestation is one
+sparknet-http and one event stream. Meters relay to it over the mesh. A second basestation on
+the same site is out of scope.
+
 ---
 
 ## Established facts
@@ -118,8 +122,8 @@ otherwise.
 | 1 | Transport: HTTP and SSE per meter-driver-spec. gRPC deferred. | ☑ accepted 2026-10-26 |
 | 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
 | 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
-| 4 | The caller supplies the full configure object in `requestData`. This service keeps no meter state. | ☐ proposed — **under pressure, see below** |
-| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. `SET_BALANCE` deferred, see below. | ☐ proposed — **reading label still open; balance cache deferred** |
+| 4 | Caller supplies the full configure body in `requestData`. This service keeps no desired configuration. | ☑ accepted 2026-10-27 |
+| 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. Unsolicited readings are `READ_REPORT`. `SET_BALANCE` deferred, see below. | ☑ accepted 2026-10-27 |
 | 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed — **per-meter half required by point 3** |
 | 7 | `externalReference` is the numeric `node_id`. | ☐ proposed |
 | 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
@@ -160,15 +164,57 @@ one plugin instance, and the event carries `node_id` only, so the plugin id is t
 plugin can rebuild when a frame arrives. SparkMeter confirmed there is no echoed request
 field (question 3, answered 2026-10-27). The one-command-per-`node_id` rule stands.
 
-A configure that points 4 and 8 later re-send uses the same rule: the meter's current command
-must be terminal before that id is minted again.
+A configure the caller sends later, including one sent for recovery under point 8, uses the same
+rule: the meter's current command must be terminal before that id is minted again.
 
-### Point 5 — unsolicited readings
+### Point 4 — accepted wording
 
-`electrical_meter_reading` must reach the caller as an unsolicited event. "Reads stay out"
-means no enqueued `READ_*` command. It does not mean dropping meter-pushed readings. The
-engine already emits unsolicited events (ChirpStack `READ_REPORT`). Which command type and
-payload carry this reading is decided with point 5, not before.
+> Each configure enqueue carries the spec body: the `ElectricalMeterCommand` name plus all six
+> configuration fields (`power_limit`, `current_limit`, `startup_delay`, `throttle_on_time`,
+> `throttle_off_time`, `throttle_count_limit`). The plugin posts that body. A missing field fails
+> enqueue. Zero is a real value. This service does not fill ThunderCloud's defaults, merge with an
+> earlier command, or keep a desired configuration. The in-flight message holds the body until that
+> command ends (accepted, applied, invalid, or timeout); a retry posts the same body. After the
+> command is terminal, the body is gone with the message. A later reading that disagrees is the
+> caller's reason to enqueue a new command. `node_id` is the device address (point 7) and is not a
+> second copy inside this body. A node roster and an init payload, if any, stay in point 8. The
+> spec command in the body is what we post. Which `commandType` values this plugin accepts, and any
+> check that they match that command, is point 5.
+
+`requestData` cannot carry this body today. The schema is strict, and `payload` is only a date or
+a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token payload
+`{ powerLimit }` is not this body.
+
+### Point 5 — accepted wording
+
+> The plugin's `supportedCommandTypes` are `TURN_ON`, `TURN_OFF`, and `SET_POWER_LIMIT`.
+> Any other enqueue command type fails the existing membership check. `READ_REPORT` is not
+> enqueueable.
+>
+> `validateEnqueue` compares `commandType` to the spec command in the body. `TURN_ON`
+> requires `ElectricalMeterCommandEnable`. `TURN_OFF` requires
+> `ElectricalMeterCommandDisable`. `SET_POWER_LIMIT` requires either of those two.
+> `ElectricalMeterCommandReboot`, `ElectricalMeterCommandCalibrateStart`,
+> `ElectricalMeterCommandCalibrateFinish`, and `ElectricalMeterCommandEnableSts` fail
+> enqueue. The spec has no power-limit command. `power_limit` is one of the six fields, so
+> `SET_POWER_LIMIT` is the caller's label and the relay verb stays in the body. A `TURN_ON`
+> still carries all six fields, including a power limit.
+>
+> `electrical_meter_reading` and `electrical_meter_reading_phased` are unsolicited
+> `READ_REPORT` events on the existing path: `deliveryStatus` `DELIVERY_SUCCESSFUL`,
+> `response.status` `EXECUTION_SUCCESS`, and no `deliveryQueueId`. An in-flight command is
+> left alone. The closed command set does not grow. `response.data` is the spec reading
+> fields except `node_id`: `period_start`, `period_end`, `state`, `frequency`,
+> `current_avg`, `current_min`, `current_max`, `voltage_avg`, `voltage_min`,
+> `voltage_max`, `true_power_avg`, `true_power_inst`, `apparent_power_avg`,
+> `power_factor_avg`, `energy`, `uptime_secs`, and `user_power_limit`. `state` stays the
+> spec integer. `period_start` and `period_end` stay unix-second uint32s. A phased event
+> also carries that event's per-phase fields, `phases`, and `computed_fields_version`.
+> `node_id` selects the device; the string on `externalReference` stays in point 7. A
+> frame missing a required base field is not emitted. A present zero is forwarded. Unknown
+> keys are not copied. Whether this service sets `request_phased_readings` stays in point
+> 8. The spec emits the phased event in place of the single-phase event when phased
+> readings were requested.
 
 ### Deferred — `SET_BALANCE`
 
@@ -194,32 +240,18 @@ Reopen it if SparkMeter confirms the firmware uses the cache (a customer display
 that stays off while the cache is zero even after configure enable), or if a deployment must
 keep the cache in step with ThunderCloud.
 
-### Points 4 and 8 — must not be lost
+### Point 8 — still open
 
-Both rest on the driver remembering meters. It does not, across a restart. Because this service
-replaces ThunderCloud, it inherits ThunderCloud's recovery job: after a driver restart or a dropped
-stream, someone must re-run init, re-register every meter, and re-apply each meter's
-configuration.
+The driver keeps no durable per-meter state across a restart. ThunderCloud re-runs init, register,
+configure, and balance on boot, and again when the event stream drops. Point 4 is accepted: this
+service stores no desired configuration, so after a restart it has nothing to re-send. The caller
+holds that configuration and enqueues the next full body.
 
-- **Point 8** assumes "the driver already knows the meter". That holds only until the next
-  driver restart or stream drop. As the only command client, this service is also the natural
-  owner of init.
-- **Point 4** keeps no meter state. Then, after a restart, this service has nothing to re-send.
-  Either it stores each meter's last applied configuration, or it tells the caller to re-send
-  everything.
-
-Neither point can be accepted as written without an answer to the recovery question. Point 2
-is accepted: `dropped` is where a dropped stream is detected, and it does not itself reconnect
-or recover.
-
-SparkMeter's answer (question 3) puts the digital twin above this service. The caller, not this
-service, holds desired state and enqueues a new command when a later reading disagrees. That
-strengthens point 4: we store no meter config. It does not remove point 8's recovery question.
-Questions 1 and 2 are still open. A driver that forgets its meters on restart still needs init
-and register from whoever owns the twin. This service's part is to deliver one command, end it
-on accepted, applied, invalid, or timeout, and forward readings (`state`, `user_power_limit`)
-so the caller can see drift. We do not re-send because a reading drifted. Whether sparknet-http
-itself retries a config packet after accept is not in the published docs (question 3).
+Point 8 is the remaining half. It assumes the driver already knows the meter. That holds only
+until the next driver restart or stream drop. Questions 1 and 2 are still open. Someone who owns
+the twin must still init and register if the driver has forgotten its meters. Point 2 records a
+dropped stream and does not reconnect or recover. Whether this process keeps a node roster and an
+init payload is point 8, not point 4.
 
 ---
 
@@ -261,7 +293,7 @@ Work items once the design is accepted. Kept coarse until then.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 1 | Resolve design points 4–8, one at a time | — | ☐ in progress (3 of 8 accepted) |
+| 1 | Resolve design points 6–8, one at a time | — | ☐ in progress (5 of 8 accepted) |
 | 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
 | 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
@@ -284,11 +316,29 @@ unsolicited event; that is parked on point 5, where "reads stay out" means no en
 
 **2026-10-27** — Point 3 accepted. One command per `node_id` until it is terminal, including
 retry. The delivery id is `{pluginId}:{nodeId}` on the existing index. Readings do not use it.
-Point 6 must enforce the per-meter half. Question 3 (an echoed request field) was sent the same
-day and stays open; a yes reopens the id scheme.
+Point 6 must enforce the per-meter half. Question 3 was answered the same day: no echoed field.
+The one-command-per-`node_id` rule stands.
 
 **2026-10-27** — `SET_BALANCE` deferred. v1 commands for this plugin are `TURN_ON`, `TURN_OFF`,
 and `SET_POWER_LIMIT`. A payment updates the caller's wallet. This service hears about it only
 when the caller changes the relay or the limits. The balance-cache write (spec §5.8) is
 described under **Deferred — `SET_BALANCE`**, including what the command would post and when
 to reopen it. Point 5 is not accepted: the unsolicited reading's command type is still open.
+
+**2026-10-27** — Deployment scope narrowed by the maintainer. Legacy sites only, and only a single
+basestation per site: one sparknet-http, one event stream. A second basestation on the same site
+is out of scope.
+
+**2026-10-27** — Point 4 accepted. Every configure enqueue carries the spec command name and all
+six configuration fields. A missing field fails enqueue. This service does not default, merge, or
+store a desired configuration. The in-flight message holds the body until the command is
+terminal, and a retry posts that same body. `node_id` stays the device address (point 7). A node
+roster and an init payload stay in point 8. The public `commandType` check is point 5. Widening
+`requestData.payload` is implementation work, not a stored meter config.
+
+**2026-10-27** — Point 5 accepted. Enqueue accepts `TURN_ON`, `TURN_OFF`, and
+`SET_POWER_LIMIT`, and `validateEnqueue` requires the matching spec relay command.
+`SET_POWER_LIMIT` may carry enable or disable, because the spec has no power-limit command.
+`READ_REPORT` carries `electrical_meter_reading` and `electrical_meter_reading_phased` with
+the spec fields except `node_id`, and it does not touch an in-flight command. The command
+set does not grow. `request_phased_readings` stays in point 8.
