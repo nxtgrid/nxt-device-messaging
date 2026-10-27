@@ -1,6 +1,6 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-27. Points 1 and 2 accepted. Points 3–8 proposed, not accepted.
+**Status:** design in progress — 2026-10-27. Points 1–3 accepted. Points 4–8 proposed, not accepted.
 **Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
 **Supersedes nothing.**
 
@@ -117,10 +117,10 @@ otherwise.
 |---|---|---|
 | 1 | Transport: HTTP and SSE per meter-driver-spec. gRPC deferred. | ☑ accepted 2026-10-26 |
 | 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
-| 3 | Correlation: one in-flight command per meter, synthetic id `{networkServerRef}:{nodeId}`. | ☐ proposed |
+| 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
 | 4 | The caller supplies the full configure object in `requestData`. This service keeps no meter state. | ☐ proposed — **under pressure, see below** |
 | 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. Reads and top-up stay out. | ☐ proposed — **unsolicited readings still go out, see below** |
-| 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed |
+| 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed — **per-meter half required by point 3** |
 | 7 | `externalReference` is the numeric `node_id`. | ☐ proposed |
 | 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
 
@@ -145,6 +145,23 @@ that SSE lacks.
 > plugin calls `dropped` once and leaves the stream down. The engine records that and does
 > nothing further. Reconnect and recovery belong to points 4 and 8. In-flight messages keep
 > their stage deadlines. The delivery statuses are unchanged.
+
+### Point 3 — accepted wording
+
+> One command per `node_id` owns the match until that command succeeds or fails for good.
+> `sendOne` returns `{pluginId}:{nodeId}`, and `configuration_accepted`, `configuration_applied`,
+> and `invalid_electrical_meter_configuration` echo it through the existing `deliveryQueueId`
+> index. A retry is still that command: the next command for that `node_id` stays in the ready
+> queue until this one is terminal. Readings are unsolicited and carry no `deliveryQueueId`.
+> Point 6 enforces the one-in-flight rule. No new lookup and no new SPI method.
+
+There is no `networkServerRef` in this repo, the spec, or ThunderCloud. The stream belongs to
+one plugin instance, and the event carries `node_id` only, so the plugin id is the scope the
+plugin can rebuild when a frame arrives. SparkMeter confirmed there is no echoed request
+field (question 3, answered 2026-10-27). The one-command-per-`node_id` rule stands.
+
+A configure that points 4 and 8 later re-send uses the same rule: the meter's current command
+must be terminal before that id is minted again.
 
 ### Point 5 — unsolicited readings
 
@@ -171,18 +188,41 @@ Neither point can be accepted as written without an answer to the recovery quest
 is accepted: `dropped` is where a dropped stream is detected, and it does not itself reconnect
 or recover.
 
+SparkMeter's answer (question 3) puts the digital twin above this service. The caller, not this
+service, holds desired state and enqueues a new command when a later reading disagrees. That
+strengthens point 4: we store no meter config. It does not remove point 8's recovery question.
+Questions 1 and 2 are still open. A driver that forgets its meters on restart still needs init
+and register from whoever owns the twin. This service's part is to deliver one command, end it
+on accepted, applied, invalid, or timeout, and forward readings (`state`, `user_power_limit`)
+so the caller can see drift. We do not re-send because a reading drifted. Whether sparknet-http
+itself retries a config packet after accept is not in the published docs (question 3).
+
 ---
 
 ## Questions for SparkMeter
 
 *Reader: maintainer. Sent by a human, in their own words. An AI agent only records the answers.*
 
-Only what the repos cannot answer. Status: sent 2026-10-26, awaiting answers.
+Only what the repos cannot answer. Questions 1 and 2 sent 2026-10-26, still awaiting answers.
+Question 3 sent 2026-10-27 and answered the same day.
 
 1. When sparknet-http restarts, does it forget the registered meters and their configuration, so
    we must call init, register, and configure again every time?
 2. If our connection to `/v1/events` drops for a while, are the events from that gap lost for
    good, or is there a way to get them back?
+3. Does a configure request accept a field, debug or otherwise, that the driver copies onto the
+   matching events? Spec v1.4 has none. The emulator drops unknown keys. The sparknet-http
+   service source is not in the repos we can read. If such a field exists, correlation can use
+   it instead of one command per `node_id`.
+   **Answered 2026-10-27: no.** SparkMeter described two paths, neither with a job id.
+   Heartbeat reads are produced inside sparknet-http, time-aligned to the heartbeat; the client
+   just reads the stream. They also said a config request is retried automatically on its way
+   through sparknet-http, and that a state machine above the driver then compares each later
+   reading to the desired config and sends another update on drift. That upper layer treats
+   meter config as eventual consistency with a digital twin, not as a correlated event queue.
+   The published sparknet-http README names `SPARKNET_HTTP_READING_RETRY_LIMIT` only. It does
+   not document config-packet retries, and the service source is not published, so that part
+   of the answer is not confirmed from the repos.
 
 The gRPC package name (`tc2.` or not) can be checked without them, by running the real image and
 listing its services with `grpcurl list`. It does not matter while gRPC is deferred.
@@ -197,7 +237,7 @@ Work items once the design is accepted. Kept coarse until then.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 1 | Resolve design points 3–8, one at a time | — | ☐ in progress (2 of 8 accepted) |
+| 1 | Resolve design points 4–8, one at a time | — | ☐ in progress (3 of 8 accepted) |
 | 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
 | 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
@@ -217,3 +257,8 @@ calls optional `start` once from the composition root; the plugin parses and cal
 `dropped` is recorded and left inert. Reconnect and recovery stay in points 4 and 8. Delivery
 statuses are unchanged. The maintainer requires `electrical_meter_reading` to be emitted as an
 unsolicited event; that is parked on point 5, where "reads stay out" means no enqueued `READ_*`.
+
+**2026-10-27** — Point 3 accepted. One command per `node_id` until it is terminal, including
+retry. The delivery id is `{pluginId}:{nodeId}` on the existing index. Readings do not use it.
+Point 6 must enforce the per-meter half. Question 3 (an echoed request field) was sent the same
+day and stays open; a yes reopens the id scheme.
