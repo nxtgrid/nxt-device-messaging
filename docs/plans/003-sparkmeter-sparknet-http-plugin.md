@@ -1,6 +1,7 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-28. Points 1–7 accepted. Point 8 proposed, not accepted.
+**Status:** design in progress — 2026-10-28. Points 1–7 and 8a accepted. Point 8b waits on
+SparkMeter question 4.
 **Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
 **Supersedes nothing.**
 
@@ -113,7 +114,11 @@ Checked against the repos in the workspace. Each fact names where it came from.
 
 - The driver keeps no durable per-meter state across restarts. ThunderCloud's reconcile module
   says so and re-sends init, register, configure, and balance for every meter on every boot.
-  (`thundercloud/sparkmeter/metering/reconcile.py` lines 1–17, 62–125.)
+  (`thundercloud/sparkmeter/metering/reconcile.py` lines 1–17, 62–125.) SparkMeter confirmed it
+  (question 1).
+- ThunderCloud only commands sparknet-http from the same box. Its metering lifespan is a no-op
+  in the cloud. (`thundercloud/sparkmeter/metering/lifespan.py` lines 310–317.) There is no
+  prior art for a client that reaches sparknet-http over a network link.
 - `POST /v1/init` clears every meter. (Guide, "Init clears every meter".)
 - When the event stream ends or breaks, ThunderCloud treats the driver as restarted and re-runs
   the full init and reconcile. (`thundercloud/sparkmeter/metering/lifespan.py` lines 330–380.)
@@ -147,7 +152,8 @@ otherwise.
 | 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. Unsolicited readings are `READ_REPORT`. `SET_BALANCE` deferred, see below. | ☑ accepted 2026-10-27 |
 | 6 | One ready queue per basestation. One HTTP call at a time, and one command per meter until it is terminal. | ☑ accepted 2026-10-28 |
 | 7 | `externalReference` is the decimal digits of `node_id`. Skyfox derives that from the serial and matches it back. | ☑ accepted 2026-10-28 |
-| 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
+| 8a | The adopter owns each basestation's session through provisioning operations (`initBasestation`, `registerMeters`, `unregisterMeters`). This service keeps no meter list and no init payload, holds basestation URLs in plugin settings, reconnects the stream, and tells the adopter when a basestation needs init. | ☑ accepted 2026-10-28 |
+| 8b | When a basestation needs init, and when its held queue opens again. | ☐ open — waits on question 4 |
 
 ### Point 1 — accepted wording
 
@@ -170,6 +176,9 @@ that SSE lacks.
 > plugin calls `dropped` once and leaves the stream down. The engine records that and does
 > nothing further. Reconnect and recovery belong to points 4 and 8. In-flight messages keep
 > their stage deadlines. The delivery statuses are unchanged.
+
+Point 8a (2026-10-28) fills in the reconnect: the plugin reopens a dropped stream with backoff
+instead of leaving it down.
 
 ### Point 3 — accepted wording
 
@@ -271,6 +280,9 @@ a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token
 Point 2 calls `start` once. Inside that call this plugin holds one `GET /v1/events` per
 basestation.
 
+Point 8a (2026-10-28) adds one condition to the pick: a basestation whose event stream is down
+is skipped.
+
 ### Point 7 — accepted wording
 
 > `device.externalReference` is the decimal digits of `node_id`, the same integer
@@ -309,18 +321,78 @@ Reopen it if SparkMeter confirms the firmware uses the cache (a customer display
 that stays off while the cache is zero even after configure enable), or if a deployment must
 keep the cache in step with ThunderCloud.
 
-### Point 8 — still open
+### Point 8a — accepted wording
 
-The driver keeps no durable per-meter state across a restart. ThunderCloud re-runs init, register,
-configure, and balance on boot, and again when the event stream drops. Point 4 is accepted: this
-service stores no desired configuration, so after a restart it has nothing to re-send. The caller
-holds that configuration and enqueues the next full body.
+Vocabulary. A **basestation** is one sparknet-http process, the radio gateway it drives over
+serial, and its one event stream. Meters reach the gateway over the radio mesh. The **adopter** is
+the system above this service; it holds the meters per basestation. meter-driver-spec calls
+sparknet-http "the driver"; this plan says sparknet-http when it means the process.
 
-Point 8 is the remaining half. It assumes the driver already knows the meter. That holds only
-until the next driver restart or stream drop. Questions 1 and 2 are still open. Someone who owns
-the twin must still init and register if the driver has forgotten its meters. Point 2 records a
-dropped stream and does not reconnect or recover. Whether this process keeps a node roster and an
-init payload is point 8, not point 4.
+> The adopter owns each basestation's session. It holds that basestation's meter list and init
+> values, and calls three provisioning operations on this plugin (`POST /plugin/provisioning`).
+> Each payload names the basestation id.
+>
+> - `initBasestation` forwards the init body unchanged to that basestation's sparknet-http. The
+>   body is whatever `GET /v1/requirements` lists; the reference fields are `aes_key`, `channel`,
+>   and `heartbeat_period_duration`.
+> - `registerMeters` takes a list of meters and posts `POST /v1/nodes/register` once per meter,
+>   one after another. Each meter carries `node_id` in point 7's spelling, `node_type`, and any
+>   optional register field the adopter sends, including `request_phased_readings`.
+> - `unregisterMeters` takes a list of meters and calls `DELETE /v1/nodes/{node_id}` once per
+>   meter.
+>
+> Each operation returns sparknet-http's HTTP answer, per meter for the list operations. It does
+> not wait for or track the outcome events (`driver_configuration_applied`, `node_registered`,
+> `node_already_registered`, `node_unregistered`, `node_to_unregister_unknown`).
+>
+> This service stores no meter list and no init payload and never replays either. After an init,
+> the adopter registers every meter on that basestation, then enqueues a full configure for each
+> (point 4). A three-phase meter is registered with `request_phased_readings` true; its readings
+> then arrive as `electrical_meter_reading_phased` and are forwarded as point 5 describes. The
+> adopter handles what they contain.
+>
+> Each basestation's id and base URL live in the plugin settings, for example
+> `settings.basestations: [{ id, baseUrl }]` (ADR-002 §1: non-secret topology). The id is the
+> value the adopter sends as `device.relayNode.id`. Adding a basestation is a config change and a
+> restart.
+>
+> When a basestation's event stream drops, the plugin reopens it with backoff. While it is down,
+> the pick skips that basestation's queue. Commands already sent keep their stage deadlines.
+>
+> This service tells the adopter when a basestation needs init, through the existing
+> `eventWebhook` URL. When that fires is point 8b.
+
+The init values include `aes_key`, a network secret. It passes through this service in the
+request body and is never stored. ADR-002's per-deployment environment secrets do not apply.
+
+Follow-ups for after 8b, not decided here:
+
+- The webhook body for "basestation needs init". Today's envelope
+  (`src/engine/webhook/event-schema.ts`) requires a `message` with `device` and
+  `deliveryStatus`, so this event changes the public contract (ADR-003, `packages/contract`).
+- Provisioning calls run beside the queue, outside point 6's one-call-at-a-time send lock per
+  basestation. Whether they take that lock is open.
+- The init path. The spec and the emulator use `POST /v1/init`; the sparknet-http README
+  documents `POST /v1/sparknet/init`.
+- A synchronous `registerMeters` for a few hundred meters over a remote link is a long request.
+
+### Point 8b — open, waits on question 4
+
+When does a basestation need init, and when does its held queue open again?
+
+Known: a sparknet-http restart closes the TCP connection, so every restart shows as a dropped or
+unopenable `GET /v1/events`. Not every drop is a restart; over a network link most are not.
+Events from the gap are lost (question 2). An unneeded init clears every meter on that
+basestation. ThunderCloud treats any drop as a restart and re-inits, and also re-inits after
+`gateway_status.connected` returns to true (`lifespan.py` lines 330–368, 398–495). That suits a
+client on the same box, not ours.
+
+Working hypothesis until SparkMeter answers: after reconnecting, wait for the next
+`heartbeat_statistics`. If `total_registered_nodes` is above 0, sparknet-http kept its meters and
+the queue opens again without an init. If it is 0, or no heartbeat arrives within a bounded wait,
+the basestation needs init. Unverified: whether sparknet-http emits heartbeats before init (its
+README lists a `--heartbeat` default; the emulator starts the heartbeat only at init). A weaker
+clue is `/v1/status` `messages_sent` and `messages_received` coming back lower than last seen.
 
 ---
 
@@ -328,13 +400,20 @@ init payload is point 8, not point 4.
 
 *Reader: maintainer. Sent by a human, in their own words. An AI agent only records the answers.*
 
-Only what the repos cannot answer. Questions 1 and 2 sent 2026-10-26, still awaiting answers.
-Question 3 sent 2026-10-27 and answered the same day.
+Only what the repos cannot answer. Questions 1 and 2 sent 2026-10-26 and answered 2026-10-28.
+Question 3 sent 2026-10-27 and answered the same day. Question 4 sent 2026-10-28, awaiting an
+answer.
 
 1. When sparknet-http restarts, does it forget the registered meters and their configuration, so
    we must call init, register, and configure again every time?
+   **Answered 2026-10-28: yes.** When sparknet-http restarts, it needs to be initialized, and the
+   meters must be registered and configured again. ThunderCloud detects the restart and handles
+   this automatically.
 2. If our connection to `/v1/events` drops for a while, are the events from that gap lost for
    good, or is there a way to get them back?
+   **Answered 2026-10-28: lost.** Events missed during a connection gap are lost. sparknet-http
+   has no persistent event history or replay mechanism. SSE event ids alone do not provide
+   replay. gRPC behaves the same way, so it offers no advantage for recovering missed events.
 3. Does a configure request accept a field, debug or otherwise, that the driver copies onto the
    matching events? Spec v1.4 has none. The emulator drops unknown keys. The sparknet-http
    service source is not in the repos we can read. If such a field exists, correlation can use
@@ -348,6 +427,18 @@ Question 3 sent 2026-10-27 and answered the same day.
    The published sparknet-http README names `SPARKNET_HTTP_READING_RETRY_LIMIT` only. It does
    not document config-packet retries, and the service source is not published, so that part
    of the answer is not confirmed from the repos.
+4. Our client runs in the cloud and reaches sparknet-http over a network link, not on the same
+   box. When `GET /v1/events` drops and we reconnect, how can we tell whether sparknet-http
+   restarted (and needs init, register, and configure) or only the connection dropped? Does
+   `/v1/status`, `/v1/healthz`, or an event show init state, process uptime, or a boot id?
+   Before init, does it emit `heartbeat_statistics`, and is `total_registered_nodes` 0 after a
+   restart? When `gateway_status` goes `connected` false and back to true, has the driver lost
+   its meters or only the gateway link? Does an init on a driver that did not restart do harm
+   beyond clearing the registered meters?
+   *Sent by the maintainer in their own words; this is the draft from chat.* Background:
+   ThunderCloud's metering lifespan is a no-op in the cloud
+   (`thundercloud/sparkmeter/metering/lifespan.py` lines 310–317). It only ran on the same box
+   as the driver, where it treats any stream drop as a restart (lines 330–368).
 
 The gRPC package name (`tc2.` or not) can be checked without them, by running the real image and
 listing its services with `grpcurl list`. It does not matter while gRPC is deferred.
@@ -362,7 +453,7 @@ Work items once the design is accepted. Kept coarse until then.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 1 | Resolve design point 8 | — | ☐ in progress (7 of 8 accepted) |
+| 1 | Resolve design point 8b | SparkMeter question 4 | ☐ in progress (1–7 and 8a accepted) |
 | 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
 | 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
@@ -438,3 +529,26 @@ service. Skyfox keeps the printed serial, derives `code`, and sends that code as
 Skyfox matches the code to the meter. This service does not parse serials. Today's
 Tiamat client copies `meters.external_reference` straight onto the wire, so Skyfox has
 to send the code for this manufacturer rather than the serial.
+
+**2026-10-28** — SparkMeter answered questions 1 and 2. A restarted sparknet-http must be
+initialized, and its meters registered and configured again; ThunderCloud detects the restart
+and does this automatically. Events missed during a connection gap are lost: no persistent
+history, no replay, SSE event ids do not help, and gRPC is the same. Point 1's reopen rule
+(gRPC resumes or replays and SSE cannot) is not met, so point 1 stands. Question 3's answer is
+unchanged. Point 8's assumption that the driver already knows the meter does not hold after a
+restart.
+
+**2026-10-28** — Maintainer. The platform above this service, which holds the meters per grid
+and basestation, calls init and register, and it does so through this service. This service
+tells that platform when a basestation needs init, over the same webhook it uses for message
+events. When a basestation needs init is asked of SparkMeter as question 4, sent the same day.
+
+**2026-10-28** — Point 8 split. 8a accepted: the adopter owns each basestation's session through
+the provisioning operations `initBasestation`, `registerMeters`, and `unregisterMeters`, which
+forward to sparknet-http. This service stores no meter list and no init payload. Basestation ids
+and base URLs live in the plugin settings. The plugin reopens a dropped stream with backoff and
+skips that basestation's queue while it is down; points 2 and 6 carry a one-line note. Three-phase
+meters are registered with `request_phased_readings` true by the adopter, which handles the phased
+readings. This service tells the adopter on the existing webhook URL when a basestation needs
+init. 8b, when that is, waits on question 4. The plan names no adopter in 8a and avoids "driver"
+for our own vocabulary.
