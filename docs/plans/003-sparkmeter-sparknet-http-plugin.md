@@ -1,12 +1,14 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-27. Points 1–5 accepted. Points 6–8 proposed, not accepted.
+**Status:** design in progress — 2026-10-28. Points 1–7 accepted. Point 8 proposed, not accepted.
 **Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
 **Supersedes nothing.**
 
-This plan builds a delivery plugin that sends meter commands to a SparkMeter gateway through
+This plan builds a delivery plugin that **replaces ThunderCloud** as the command client of
 [sparknet-http](https://github.com/EarthSpark/sparknet-http), the vendor's meter driver. The
 driver implements [meter-driver-spec](https://github.com/EarthSpark/meter-driver-spec) v1.4.
+sparknet-http is the SparkMeter software we expect to keep. ThunderCloud does not run beside
+this service.
 
 We develop against [meter-driver-emulator](https://github.com/EarthSpark/meter-driver-emulator)
 (see [`docs/guides/sparkmeter-sparknet-http.md`](../guides/sparkmeter-sparknet-http.md)). The
@@ -45,8 +47,12 @@ Evidence below cites files and lines as of 2026-10-26. If it no longer matches, 
 - **The maintainer reviews and commits. Always.** Never commit, amend, or push.
 - **One point at a time.** Ask questions one at a time, inline in the chat.
 - **Look facts up first.** The workspace holds `meter-driver-spec`, `sparknet-http` (README and
-  packaging only; the binary is closed source), and `thundercloud`, which contains SparkMeter's
-  own client for this driver. Ask SparkMeter only what those cannot answer.
+  packaging only; the binary is closed source), `thundercloud` (SparkMeter's current client for
+  this driver), and `skyfox` (our caller: Tiamat `apps/tiamat/src/modules/meter-interactions/`).
+  Ask SparkMeter only what those cannot answer.
+- **This plugin replaces ThunderCloud.** sparknet-http stays. ThunderCloud is not a co-client,
+  not a fallback, and not the behavior to copy. Mold the driver to our commands. Our caller
+  sends one read, write, setting, or token command at a time.
 - Update the **Design points** table and **Session notes** when a point is accepted.
 
 ---
@@ -55,10 +61,25 @@ Evidence below cites files and lines as of 2026-10-26. If it no longer matches, 
 
 *Reader: both. Set by the maintainer.*
 
-This service **replaces** SparkMeter's current ThunderCloud setup for a grid. ThunderCloud and
-this service do not drive the same sparknet-http at the same time. This service is therefore the
-**only command client** of its driver, and inherits the jobs ThunderCloud did for it (see the
-recovery facts below).
+This plugin exists to replace ThunderCloud, and to replace as many of the other moving
+SparkMeter software parts as we can. The aim is to sit as close to the meter as the contract
+allows. The part we expect to keep is sparknet-http on the basestation. Hopefully that is the
+only SparkMeter software left in the path.
+
+ThunderCloud does not run at the same time as this service. They do not share a sparknet-http,
+and they do not take turns on one. A grid that this service commands is no longer commanded
+by ThunderCloud.
+
+We do not replicate ThunderCloud's way of working. Its client, its events, and its reconcile
+are evidence of what the driver does. Where that way differs from ours, we mold it to ours.
+The caller is Tiamat's meter-interactions module
+(`skyfox/apps/tiamat/src/modules/meter-interactions/`). An interaction there is one
+fine-grained command: a read (`READ_VOLTAGE`, `READ_POWER`, …), a control (`TURN_ON`,
+`TURN_OFF`), a write (`SET_DATE`, `SET_TIME`), or a token (`TOP_UP`, `SET_POWER_LIMIT`,
+`CLEAR_CREDIT`, `CLEAR_TAMPER`, `DELIVER_PREEXISTING_TOKEN`). The digital twin and the
+wallet stay in that caller. This service delivers the command and forwards readings.
+Which of those commands this plugin accepts is the design points below, not ThunderCloud's
+list. Tiamat's `TOP_UP` is this service's `TOP_UP_KWH`.
 
 Scope is legacy sites only, and only sites with a single basestation. That basestation is one
 sparknet-http and one event stream. Meters relay to it over the mesh. A second basestation on
@@ -124,8 +145,8 @@ otherwise.
 | 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
 | 4 | Caller supplies the full configure body in `requestData`. This service keeps no desired configuration. | ☑ accepted 2026-10-27 |
 | 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. Unsolicited readings are `READ_REPORT`. `SET_BALANCE` deferred, see below. | ☑ accepted 2026-10-27 |
-| 6 | Admission is per gateway, and separately one in flight per meter. One queue key cannot express both. | ☐ proposed — **per-meter half required by point 3** |
-| 7 | `externalReference` is the numeric `node_id`. | ☐ proposed |
+| 6 | One ready queue per basestation. One HTTP call at a time, and one command per meter until it is terminal. | ☑ accepted 2026-10-28 |
+| 7 | `externalReference` is the decimal digits of `node_id`. Skyfox derives that from the serial and matches it back. | ☑ accepted 2026-10-28 |
 | 8 | This service does not init or register in v1. The driver already knows the meter, and this process is the only command client. | ☐ proposed — **under pressure, see below** |
 
 ### Point 1 — accepted wording
@@ -210,11 +231,59 @@ a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token
 > `power_factor_avg`, `energy`, `uptime_secs`, and `user_power_limit`. `state` stays the
 > spec integer. `period_start` and `period_end` stay unix-second uint32s. A phased event
 > also carries that event's per-phase fields, `phases`, and `computed_fields_version`.
-> `node_id` selects the device; the string on `externalReference` stays in point 7. A
+> `node_id` is copied back as the decimal digits of `externalReference` (point 7). A
 > frame missing a required base field is not emitted. A present zero is forwarded. Unknown
 > keys are not copied. Whether this service sets `request_phased_readings` stays in point
 > 8. The spec emits the phased event in place of the single-phase event when phased
 > readings were requested.
+
+### Point 6 — accepted wording
+
+> One ready queue per basestation:
+> `queue:sparkmeter-sparknet-http:basestation:{basestationId}`. The caller assigns that id
+> on `device.relayNode.id`. A missing id fails enqueue. A pass picks every basestation
+> queue, so two basestations proceed together. Each has its own send lock and its own meter
+> holds. v1 still has one basestation per site.
+>
+> The plugin declares one new admission strategy with no knobs. `spacing` and `concurrency`
+> stay as they are on the other plugins. There is no new plugin method. The delivery id
+> stays `{pluginId}:{nodeId}`.
+>
+> The send claim is one `sendOne` at a time for that basestation. The string
+> `send_lock:sparkmeter-sparknet-http:basestation:{basestationId}` holds the message id. It
+> is taken when that message is picked and removed when the HTTP call settles. It expires
+> at `nsInFlightTimeoutMs`. It does not wait for accepted, applied, invalid, or timeout.
+>
+> The meter claim lasts from the pick until the command is terminal, including the retry
+> wait. `enterRetry` leaves it in place. The key is the meter and the value is the message
+> that owns it:
+> `meter_hold:sparkmeter-sparknet-http:basestation:{basestationId}:{deviceAddress}`. The
+> message hash records that key, and terminal cleanup deletes it. The device address is
+> `externalReference`. Its spelling is point 7.
+>
+> The pick walks that basestation's ready queue in priority order and removes the first
+> message whose meter has no hold, or whose hold value is that same message. Any other
+> command for a held meter stays in the queue and does not spend the turn. The walk reads
+> the hold for the candidate's own meter. It does not scan the meters currently in use.
+> Designing this strategy keeps a long run of commands for held meters from repeating that
+> work without bound on every pass.
+
+Point 2 calls `start` once. Inside that call this plugin holds one `GET /v1/events` per
+basestation.
+
+### Point 7 — accepted wording
+
+> `device.externalReference` is the decimal digits of `node_id`, the same integer
+> sparknet-http is called with and the same integer events return. For a SparkMeter meter
+> that integer is ThunderCloud `meter.code` (0–65535), derived from the printed serial.
+> Skyfox keeps the serial, derives the code, and matches a returning code to the meter.
+> This service does not parse serials and does not store a serial-to-code map.
+>
+> On the way down the plugin reads the string as a base-10 integer and posts it as
+> `node_id`. A string that is not a base-10 integer in the spec's uint64 `node_id` range
+> fails enqueue. The 16-bit derivation check stays in Skyfox. On the way up the event's
+> `node_id` is written back as decimal digits with no padding. The meter-hold address from
+> point 6 is this string.
 
 ### Deferred — `SET_BALANCE`
 
@@ -293,7 +362,7 @@ Work items once the design is accepted. Kept coarse until then.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 1 | Resolve design points 6–8, one at a time | — | ☐ in progress (5 of 8 accepted) |
+| 1 | Resolve design point 8 | — | ☐ in progress (7 of 8 accepted) |
 | 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
 | 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
@@ -342,3 +411,30 @@ roster and an init payload stay in point 8. The public `commandType` check is po
 `READ_REPORT` carries `electrical_meter_reading` and `electrical_meter_reading_phased` with
 the spec fields except `node_id`, and it does not touch an in-flight command. The command
 set does not grow. `request_phased_readings` stays in point 8.
+
+**2026-10-28** — Maintainer. This plugin replaces ThunderCloud and as much of the other SparkMeter
+software as we can. sparknet-http is the piece we expect to keep. ThunderCloud does not run
+beside this service, and its reconcile is not the behavior to copy. The caller's model is
+Tiamat meter-interactions: one read, write, setting, or token command. Recorded under
+**Deployment assumption** and in **How to pick this up cold**.
+
+**2026-10-28** — Point 6 accepted. One ready queue per basestation
+(`queue:sparkmeter-sparknet-http:basestation:{basestationId}`, id from `device.relayNode.id`).
+A pass picks every such queue. One HTTP call at a time per basestation, released when the
+call settles. One command per meter until terminal, including retry, stored as a string
+whose key is the meter and whose value is the owning message id. The pick reads that
+meter's hold and must not scan the meters in use, or walk an unbounded run of held meters
+on every pass. `spacing` and `concurrency` are unchanged for the other plugins.
+
+**2026-10-28** — Point 7 accepted, then reopened the same day. The acceptance said
+`external_reference` holds ThunderCloud `meter.code`. The maintainer asked whether a long
+meter number is the serial instead, which would make storing `code` in that column wrong.
+`47001763227` is a CALIN id. SparkMeter serials are `{model}-{version}-{8 hex digits}`.
+`code` is the low 16 bits of that hex, and that is the `node_id` the driver is called with.
+
+**2026-10-28** — Point 7 accepted. The maintainer rejected a serial-to-code map in this
+service. Skyfox keeps the printed serial, derives `code`, and sends that code as
+`device.externalReference`. Events copy `node_id` back as those same decimal digits.
+Skyfox matches the code to the meter. This service does not parse serials. Today's
+Tiamat client copies `meters.external_reference` straight onto the wire, so Skyfox has
+to send the code for this manufacturer rather than the serial.
