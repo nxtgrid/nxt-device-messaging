@@ -166,9 +166,9 @@ Implemented by plan 003 checklist item 2.
   variants.
 
 How a plugin hands this event to the engine is an engine seam and is not decided here. It is
-settled with the event-stream seam (plan 003 item 3, ADR-010) or with init gating (item 9).
+settled with the event-stream seam (plan 003 item 3, ADR-010) or with init gating (item 10).
 
-Implemented by plan 003 checklist item 9.
+Implemented by plan 003 checklist item 10.
 
 ---
 

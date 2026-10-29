@@ -1,7 +1,7 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design accepted — 2026-10-29 (points 1–11, including 8a and 8b). Building, one
-checklist item at a time.
+**Status:** design accepted — 2026-10-29 (points 1–11, including 8a and 8b). Points 3, 4, 10,
+and 11 amended the same day after question 7. Building, one checklist item at a time.
 **Branch:** `plugin/sparkmeter-sparknet-http`.
 **Supersedes nothing.**
 
@@ -88,24 +88,27 @@ is written and accepted before the item that implements it.
 | 1 | **ADR-009** — public contract additions: `requestData.deviceState` and a shared `{ powerLimit }` payload, and the "basestation needs init" webhook event | 4, 8a, 8b | — | Claude Opus 5.5 | ☑ |
 | 2 | **Skeleton** — catalog entry, `settings.basestations`, `settings.meterConfiguration`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☐ |
 | 3 | **ADR-010** — plugin-owned event stream on `PushPlugin` (`start`, `deliver`, `dropped`) | 2 | — | Claude Opus 5.5 | ☐ |
-| 4 | **Event stream** — the engine seam, the SSE client and frame parser, configure accepted / applied / invalid matched on `{pluginId}:{nodeId}` with point 10's statuses, readings as `READ_REPORT`, development tuning values (not production), a metric for events that matched no message | 2, 3, 5, 10, 11 | 2, 3 | Claude Opus 5.5 | ☐ |
-| 5 | **ADR-011** — per-meter hold admission and the basestation queue gate | 6, 8a, 8b | — | Claude Opus 5.5 | ☐ |
-| 6 | **Admission** — send lock, meter hold, the pick walk, and the gate the plugin opens and closes. Replaces the interim `concurrency` | 3, 6 | 4, 5 | Claude Opus 5.5 | ☐ |
-| 7 | **Reconnect** — reopen a dropped stream with backoff; gate closed while it is down; a stream-connected gauge per basestation | 8a | 6 | Grok 4.7 | ☐ |
-| 8 | **Provisioning** — `initBasestation`, `registerMeters`, `unregisterMeters` on the existing `provisioning.execute`. Settles the init path, the send lock, and long register calls | 8a | 2 | Claude Opus 5.5 | ☐ |
-| 9 | **Init gating** — `gateway_status` false closes the gate and true sends the webhook; init and register accepted reopen it | 8b | 1, 6, 8 | Grok 4.7 | ☐ |
-| 10 | **Smokes and docs** — httpYac smokes, integration tests on Valkey, guide update including deadline sizing | 11 | 9 | Grok 4.7 | ☐ |
-| 11 | **Real basestation trial** — an operator-provided reachable `baseUrl` (point 9), real deadlines, confirm the event names and the unregistered-meter answer | 9, 10, 11 | 10, questions 6 and 7 | Claude Opus 5.5 | ☐ |
+| 4 | **ADR-008 amendment** — a plugin may end the device stage without retry. This plugin's `deviceInFlightTimeoutMs` expiry is `DELIVERY_FAILED` and does not post configure again. ChirpStack keeps `retryOrFail` | 11 | — | Claude Opus 5.5 | ☐ |
+| 5 | **Event stream** — the engine seam, the SSE client and frame parser, configure accepted / applied / invalid matched on `{pluginId}:{nodeId}` with point 10's statuses. `applied` completes the command only when the six echoed fields match the posted body; a mismatch counts as unmatched. Readings as `READ_REPORT`. Device-timeout expiry is terminal, per item 4. Development tuning values (not production). A metric for events that matched no message | 2, 3, 5, 10, 11 | 2, 3, 4 | Claude Opus 5.5 | ☐ |
+| 6 | **ADR-011** — per-meter hold admission and the basestation queue gate | 6, 8a, 8b | — | Claude Opus 5.5 | ☐ |
+| 7 | **Admission** — send lock, meter hold, the pick walk, and the gate the plugin opens and closes. Replaces the interim `concurrency` | 3, 6 | 5, 6 | Claude Opus 5.5 | ☐ |
+| 8 | **Reconnect** — reopen a dropped stream with backoff; gate closed while it is down; a stream-connected gauge per basestation | 8a | 7 | Grok 4.7 | ☐ |
+| 9 | **Provisioning** — `initBasestation`, `registerMeters`, `unregisterMeters` on the existing `provisioning.execute`. Settles the init path, the send lock, and long register calls | 8a | 2 | Claude Opus 5.5 | ☐ |
+| 10 | **Init gating** — `gateway_status` false closes the gate and true sends the webhook; init and register accepted reopen it | 8b | 1, 7, 9 | Grok 4.7 | ☐ |
+| 11 | **Smokes and docs** — httpYac smokes, integration tests on Valkey, guide update including deadline sizing | 11 | 10 | Grok 4.7 | ☐ |
+| 12 | **Real basestation trial** — an operator-provided reachable `baseUrl` (point 9), real deadlines, confirm the event names and the unregistered-meter answer | 9, 10, 11 | 11, questions 6 and 7 | Claude Opus 5.5 | ☐ |
 
 ### Why this order
 
 The contract comes first because the enqueue shape and the webhook body are what Skyfox builds
-against. The event stream comes before admission so a command runs end to end early. Until item
-6, `concurrency` with `maxInFlight: 1` per basestation queue stands in for the meter hold. It is
+against. The device-timeout amendment comes before the event stream, which implements it. The
+event stream comes before admission so a command runs end to end early. Until item
+7, `concurrency` with `maxInFlight: 1` per basestation queue stands in for the meter hold. It is
 stricter than the design but releases on `enterRetry`, so a second command for the same meter
 can go during a retry wait. That is acceptable against the emulator and not on a real grid.
-Production deadlines (point 11) are set at the real-basestation trial, after question 7.
-Checklist item 11 needs an operator-provided reachable `baseUrl` (point 9).
+The production device wait (point 11) is chosen at the real-basestation trial. Question 7 is
+answered: the driver does not give up, so the number is how long we wait.
+Checklist item 12 needs an operator-provided reachable `baseUrl` (point 9).
 
 ---
 
@@ -225,7 +228,7 @@ Resolve one at a time, in order unless a dependency says otherwise.
 |---|---|---|
 | 1 | Transport: HTTP and SSE per meter-driver-spec. gRPC deferred. | ☑ accepted 2026-10-26 |
 | 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
-| 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
+| 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. An `applied` event also has to match the six posted fields. | ☑ accepted 2026-10-27, amended 2026-10-29 |
 | 4 | Caller sends the value the command changes, and the state it must keep, on `requestData`. Fleet constants live in plugin settings. This service keeps no desired configuration. | ☑ accepted 2026-10-27, amended 2026-10-29 |
 | 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. Unsolicited readings are `READ_REPORT`. `SET_BALANCE` deferred, see below. | ☑ accepted 2026-10-27 |
 | 6 | One ready queue per basestation. One HTTP call at a time, and one command per meter until it is terminal. | ☑ accepted 2026-10-28 |
@@ -233,8 +236,8 @@ Resolve one at a time, in order unless a dependency says otherwise.
 | 8a | The adopter owns each basestation's session through provisioning operations (`initBasestation`, `registerMeters`, `unregisterMeters`). This service keeps no meter list and no init payload, holds basestation URLs in plugin settings, reconnects the stream, and tells the adopter when a basestation needs init. | ☑ accepted 2026-10-28 |
 | 8b | Ask the adopter to init only after `gateway_status.connected` goes false then true. Hold that queue until the following init and register are accepted. An SSE reconnect alone does not ask for init. | ☑ accepted 2026-10-29 |
 | 9 | Reaching a basestation is outside this service. The plugin is a plain HTTP client of `baseUrl`; a private encrypted route is the only access control in v1. | ☑ accepted 2026-10-29 |
-| 10 | Stage mapping: which delivery status each driver answer and event sets, and what ends a command. | ☑ accepted 2026-10-29 |
-| 11 | Stage deadlines: which timeout covers which gap. Static plugin tuning; production values come from question 7 and the trial. | ☑ accepted 2026-10-29 |
+| 10 | Stage mapping: which delivery status each driver answer and event sets, and what ends a command. `applied` must match the six posted fields. | ☑ accepted 2026-10-29, amended 2026-10-29 |
+| 11 | Stage deadlines: which timeout covers which gap. The device wait is operational. Expiry does not resend. The trial sets the number. | ☑ accepted 2026-10-29, amended 2026-10-29 |
 
 ### Point 1 — accepted wording
 
@@ -268,11 +271,14 @@ instead of leaving it down.
 > and `invalid_electrical_meter_configuration` echo it through the existing `deliveryQueueId`
 > index. A retry is still that command: the next command for that `node_id` stays in the ready
 > queue until this one is terminal. Readings are unsolicited and carry no `deliveryQueueId`.
-> Point 6 enforces the one-in-flight rule. No new lookup and no new SPI method.
+> Point 6 enforces the one-in-flight rule. No new lookup and no new SPI method. An `applied`
+> event completes this command only when its six configuration fields also match the body this
+> command posted (point 10). `node_id` alone can attach a late `applied` to the next command.
 
 There is no `networkServerRef` in this repo, the spec, or ThunderCloud. The stream belongs to
-one plugin instance, and the event carries `node_id` only, so the plugin id is the scope the
-plugin can rebuild when a frame arrives. SparkMeter confirmed there is no echoed request
+one plugin instance. The event carries `node_id` and, on `applied`, the six configuration
+fields. It carries no request id, so the plugin id is the scope the plugin can rebuild when a
+frame arrives. SparkMeter confirmed there is no echoed request
 field (question 3, answered 2026-10-27). The one-command-per-`node_id` rule stands.
 
 A configure the caller sends later, including one sent for recovery under point 8, uses the same
@@ -281,7 +287,8 @@ rule: the meter's current command must be terminal before that id is minted agai
 ### Point 4 — accepted wording
 
 Amended 2026-10-29. The original wording put the whole spec body on the enqueue. The caller now
-sends two things, and the plugin fills the spec body. ADR-009 decision 1 records the wire.
+sends two things, and the plugin fills the spec body. ADR-009 decision 1 records the wire. The
+same day, question 7: a retry after `electrical_meter_configuration_accepted` does not happen.
 
 > The caller sends the command's own argument on `requestData.payload`, and the device state that
 > command must leave unchanged on `requestData.deviceState`. This service stores neither, fills
@@ -305,8 +312,10 @@ sends two things, and the plugin fills the spec body. ADR-009 decision 1 records
 > missing one fails boot. A present zero is a real value. The plugin maps the keys to the spec's
 > snake_case names when it posts.
 >
-> The in-flight message holds what the caller sent. A retry assembles the same spec body. After
-> the command is terminal, that body is gone with the message. A later reading that disagrees is
+> The in-flight message holds what the caller sent. A retry before
+> `electrical_meter_configuration_accepted` assembles the same spec body. After that event the
+> command does not retry (point 11). After the command is terminal, that body is gone with the
+> message. A later reading that disagrees is
 > the caller's reason to enqueue a new command. `node_id` is the device address (point 7). A node
 > roster and an init payload stay in point 8.
 
@@ -350,6 +359,8 @@ SparkMeter confirmed 2026-10-29 that they do not use or support meters in STS mo
 The plugin never posts `ElectricalMeterCommandEnableSts`. The meter does have an internal clock.
 sparknet-http puts the current time and the heartbeat timing in its outgoing protocol packets,
 and the meter firmware sets its clock from those. This service does not set the time.
+A reading cannot confirm the six configuration fields (question 7). `user_power_limit` is only
+the power limit. The in-flight command stays untouched.
 
 ### Point 6 — accepted wording
 
@@ -528,12 +539,19 @@ a CALIN DCU or gateway, and it is solved the same way, outside this service.
 
 ### Point 10 — accepted wording
 
+Amended 2026-10-29 after question 7. `node_id` does not say which configure an `applied` event
+belongs to. The six echoed fields do, except when two commands post the same six numbers.
+
 Points 2 and 3 name the match events and keep the delivery statuses. They do not assign them.
 
 > - `sendOne` returns when sparknet-http answers `202 Accepted`. The message moves to the
 >   relay-node stage (`DELIVERED_TO_NS`). sparknet-http is the network server here.
 > - `configuration_accepted` moves it to the device stage (`SENT_TO_DEVICE`).
-> - `configuration_applied` ends it with `DELIVERY_SUCCESSFUL`.
+> - `configuration_applied` ends it with `DELIVERY_SUCCESSFUL` when the six configuration
+>   fields on the event match the body this command posted. A mismatch is left unmatched, and
+>   the unmatched-event metric counts it. On and off at the same `power_limit` echo the same
+>   six fields, so those two cannot be told apart. `current_limit` stays the model's inrush.
+>   It is not a correlation id.
 > - `invalid_electrical_meter_configuration` ends it with `DELIVERY_FAILED` and `skipRetry`.
 > - In `parseError`, a 4xx answer to `sendOne` sets `skipRetry`. A 5xx, a timeout, or a network
 >   error retries.
@@ -544,9 +562,12 @@ Points 2 and 3 name the match events and keep the delivery statuses. They do not
 
 What configure-meter does for a node that is not registered is not in the spec, the OpenAPI, or
 the sparknet-http README (question 6). It does not change this mapping. Such a command ends on
-its deadline until item 4 sees what the emulator does.
+its deadline until item 5 sees what the emulator does.
 
 ### Point 11 — accepted wording
+
+Amended 2026-10-29 after question 7. The driver does not stop retrying a pending configuration,
+so this deadline cannot be sized to outlast that loop.
 
 The core defaults are a LoRaWAN scale: `deviceInFlightTimeoutMs` is 12 seconds and
 `relayNodeInFlightTimeoutMs` is 15 minutes. The emulator emits `configuration_applied`
@@ -557,18 +578,27 @@ that can be extended.
 > - `nsInFlightTimeoutMs` covers the HTTP call to sparknet-http, and is also the send-lock
 >   expiry.
 > - `relayNodeInFlightTimeoutMs` covers `202` to `electrical_meter_configuration_accepted`.
->   When it fires, the command fails or retries. The meter hold from point 6 lasts the whole
->   wait.
-> - `deviceInFlightTimeoutMs` covers `accepted` to `applied`. On a real mesh that wait depends
->   on the heartbeat period, the hop count, and the driver's own configure retries.
+>   When it fires, the command fails or retries. A 5xx, an HTTP timeout, or a network error
+>   on `sendOne` still retries. The meter hold from point 6 lasts the whole wait.
+> - `deviceInFlightTimeoutMs` is how long this service waits from
+>   `electrical_meter_configuration_accepted` to `electrical_meter_configuration_applied`.
+>   sparknet-http retries that pending configuration on its own, up to three times per
+>   heartbeat period, and keeps going in later periods with no time limit and no exhaustion
+>   event. The first try can go out immediately. Expiry ends the command with
+>   `DELIVERY_FAILED` and does not post configure again. The failure reason says confirmation
+>   was not seen and the driver may still be delivering. A later `applied` is handled by
+>   point 10. The meter hold lasts until the command is terminal.
 > - The heartbeat period is an init value the adopter sends. This service does not keep it, so
 >   the deadlines are static plugin tuning, overridable per deployment in `plugins[].tuning`
 >   (ADR-002 §5). The plugin passes its own deltas and does not inherit the core defaults as
 >   mesh values.
-> - Values used against the emulator are development values. A production device deadline has
->   to outlast the driver's own configure retries, so a second configure is not sent while the
->   first is still in the driver's loop. Question 7 asks for that budget. The guide says how to
->   size the deployment override.
+> - Values used against the emulator are development values. The production device wait is
+>   chosen at the real-basestation trial, long enough that a reachable meter usually confirms.
+>   The guide says how to size the deployment override.
+
+ADR-008 sends every device-stage timeout through `retryOrFail`. This plugin needs that timeout
+to be terminal. ChirpStack keeps the retry. Checklist item 4 amends ADR-008. Item 5 implements
+it.
 
 ---
 
@@ -579,8 +609,9 @@ that can be extended.
 Only what the repos cannot answer. Questions 1 and 2 sent 2026-10-26 and answered 2026-10-28.
 Question 3 sent 2026-10-27 and answered the same day. Question 4 sent 2026-10-28; a partial
 answer arrived 2026-10-29, with heartbeat statistics and `uptime_ms` still to be verified by
-SparkMeter. Question 5 answered 2026-10-29. Question 6 is for the emulator, not SparkMeter. Question 7 sent 2026-10-29; it does not block
-checklist items 1–10.
+SparkMeter. Question 5 answered 2026-10-29. Question 6 is for the emulator, not SparkMeter.
+Question 7 answered 2026-10-29. It does not block the build. The production device wait is
+chosen at the real-basestation trial.
 
 1. When sparknet-http restarts, does it forget the registered meters and their configuration, so
    we must call init, register, and configure again every time?
@@ -603,8 +634,8 @@ checklist items 1–10.
    reading to the desired config and sends another update on drift. That upper layer treats
    meter config as eventual consistency with a digital twin, not as a correlated event queue.
    The published sparknet-http README names `SPARKNET_HTTP_READING_RETRY_LIMIT` only. It does
-   not document config-packet retries, and the service source is not published, so that part
-   of the answer is not confirmed from the repos.
+   not document config-packet retries, and the service source is not published. Question 7,
+   answered 2026-10-29, confirms the configure retries and states the limits.
 4. Our client runs in the cloud and reaches sparknet-http over a network link, not on the same
    box. When `GET /v1/events` drops and we reconnect, how can we tell whether sparknet-http
    restarted (and needs init, register, and configure) or only the connection dropped? Does
@@ -641,7 +672,7 @@ checklist items 1–10.
    to set the meter's time separately. SparkMeter does not use or support meters in STS mode.
 6. What does sparknet-http answer, and which event does it emit, for a configure-meter on a
    `node_id` that is not registered? The spec names an unknown-node event only for unregister.
-   *Not for SparkMeter.* The spec, the OpenAPI, and the sparknet-http README do not say. Item 4
+   *Not for SparkMeter.* The spec, the OpenAPI, and the sparknet-http README do not say. Item 5
    records what the emulator does. The event names are settled: the OpenAPI constants are the
    wire names (see Established facts).
 7. When we configure a meter, sparknet-http emits an "accepted" event and later an "applied"
@@ -651,11 +682,23 @@ checklist items 1–10.
    Roughly how long does accepted-to-applied usually take? Does it wait for the meter's next
    heartbeat, and does it take longer when the meter is more hops away? Sites use different
    heartbeat periods, so the retry limit is the figure we actually need.
-   *Sent 2026-10-29. Does not block the build.* Point 11. Checked 2026-10-29: not in meter-driver-spec,
+   **Answered 2026-10-29.** Once sparknet-http has accepted a meter configuration, it retries on
+   its own. The application does not need to retry it immediately. It makes up to three attempts
+   per meter per heartbeat period. If the configuration remains pending, it retries in later
+   heartbeat periods. There is no overall time limit while it remains pending, and no event when
+   retries are exhausted. A newly accepted configuration can be sent immediately. It does not
+   have to wait for the next heartbeat. Accepted-to-applied time depends on the network, queued
+   work, and hop count. An unreachable meter can stay pending across many periods. There is no
+   guaranteed completion time. Invalid configuration is a separate report
+   (`invalid_electrical_meter_configuration`). Submitting a new configuration replaces the one
+   still pending. The next heartbeat reading shows that the meter is communicating and does not
+   carry every setting, so it cannot confirm the configuration. A dropped event stream can miss
+   `applied` even though the driver already has the confirmation. SparkMeter's advice: treat
+   accepted as still pending and applied as the confirmation. If confirmation takes longer than
+   an operational threshold, flag it as not confirmed rather than resending. Points 10 and 11
+   record what this service does with that. Checked before the answer: not in meter-driver-spec,
    the sparknet-http README, ThunderCloud, or the public web. The only published retry knob is
-   `--reading-retry-limit`, named for readings, with no default and no description. The
-   sparknet-http repo packages the binary and does not contain its source, so the configure
-   give-up, if the binary has one, is in that binary.
+   `--reading-retry-limit`, named for readings.
 
 The gRPC package name (`tc2.` or not) can be checked without them, by running the real image and
 listing its services with `grpcurl list`. It does not matter while gRPC is deferred.
@@ -844,3 +887,20 @@ shared with `POST /token/generate`. The plugin derives `Enable` or `Disable` and
 `settings.meterConfiguration`. Those four are required and have no default. This service stores
 no desired configuration. Decision 2, the relay-node event, is unchanged. Points 4 and 5 are
 rewritten to match. The checklist rows for items 1 and 2 name the lean shape.
+
+**2026-10-29** — SparkMeter answered question 7. After `electrical_meter_configuration_accepted`,
+sparknet-http retries the pending configuration itself: up to three attempts per heartbeat
+period, then again in later periods, with no time limit and no exhaustion event. The first
+attempt can go immediately. A new configure replaces the pending one. A reading cannot confirm
+the configuration. Invalid stays a separate event. Points 3, 4, 10, and 11 are amended.
+`deviceInFlightTimeoutMs` is a long operational wait. When it fires, the command ends
+`DELIVERY_FAILED` and this service does not post that configure again. The failure reason says
+confirmation was not seen and the driver may still be delivering. `applied` completes the
+waiting command only when the six echoed fields match the posted body. A mismatch is unmatched.
+On and off at the same power limit still look the same. `current_limit` stays the model inrush
+and is not a correlation id. Retries before the accepted event are unchanged. Checklist: a new
+item 4 amends ADR-008 so this plugin's device timeout is terminal while ChirpStack still
+retries. Later rows shifted by one. Older notes cite the numbers from before that insert. The
+event stream is item 5 and implements the six-field check and that terminal timeout. Init
+gating is item 10. The guide's sizing note stays on the smokes-and-docs item. The production
+number is chosen at the real-basestation trial.
