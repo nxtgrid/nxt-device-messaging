@@ -10,7 +10,8 @@ amended 2026-08-10 (Phase 3.1A: `eventWebhook` rename; retry/DLQ/schedule/keys l
 HMAC deferred then landed in 3.1E);
 amended 2026-08-24 (`POST /plugin/provisioning` — optional plugin facet, `pluginId` in body);
 amended 2026-08-25 (`@nxtgrid/device-messaging-contract` — TS/Zod artifact, ADR-004 §6);
-amended 2026-09-02 (`calin-chirpstack` ingress may require `X-API-KEY` via `CALIN_CHIRPSTACK_INGRESS_API_KEY`)
+amended 2026-09-02 (`calin-chirpstack` ingress may require `X-API-KEY` via `CALIN_CHIRPSTACK_INGRESS_API_KEY`);
+amended 2026-10-29 by ADR-009 (`requestData.deviceState` and a shared `{ powerLimit }` payload; relay-node webhook event)
 
 > Normative consumer contract for this service. Supersedes the incomplete endpoint inventory in
 > `nxt-backend` ADR-010 decision 2 (and its 2026-07-27 amendment §§C–D) for everything that lives
@@ -356,6 +357,8 @@ ADR-004 §6). Ingress is not in that package.
 ## Related
 
 - **ADR-004 §6** — `@nxtgrid/device-messaging-contract` (schemas + types; not a plugin SDK).
+- **ADR-009** — optional `requestData.deviceState`; `{ powerLimit }` shared by enqueue and
+  token generate; second webhook envelope variant (`relayNode` instead of `message`).
 - **ADR-002** — `eventWebhook.url` in artifact; secrets in env; plugin enablement.
 - **`nxt-backend` ADR-010** — extraction rationale; decision 2 inventory superseded here.
 - **`nxt-backend` ADR-005 §11** — integrable extracted service (HTTP in, callbacks out).

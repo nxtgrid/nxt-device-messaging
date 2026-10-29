@@ -85,8 +85,8 @@ is written and accepted before the item that implements it.
 
 | # | Item | Design points | Depends on | Model | Status |
 |---|---|---|---|---|---|
-| 1 | **ADR-009** — public contract additions: the configure body on `requestData`, and the "basestation needs init" webhook event | 4, 8a, 8b | — | Claude Opus 5.5 | ☐ |
-| 2 | **Skeleton** — catalog entry, `settings.basestations`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, configure body on `requestData`, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☐ |
+| 1 | **ADR-009** — public contract additions: `requestData.deviceState` and a shared `{ powerLimit }` payload, and the "basestation needs init" webhook event | 4, 8a, 8b | — | Claude Opus 5.5 | ☑ |
+| 2 | **Skeleton** — catalog entry, `settings.basestations`, `settings.meterConfiguration`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☐ |
 | 3 | **ADR-010** — plugin-owned event stream on `PushPlugin` (`start`, `deliver`, `dropped`) | 2 | — | Claude Opus 5.5 | ☐ |
 | 4 | **Event stream** — the engine seam, the SSE client and frame parser, configure accepted / applied / invalid matched on `{pluginId}:{nodeId}` with point 10's statuses, readings as `READ_REPORT`, development tuning values (not production), a metric for events that matched no message | 2, 3, 5, 10, 11 | 2, 3 | Claude Opus 5.5 | ☐ |
 | 5 | **ADR-011** — per-meter hold admission and the basestation queue gate | 6, 8a, 8b | — | Claude Opus 5.5 | ☐ |
@@ -226,7 +226,7 @@ Resolve one at a time, in order unless a dependency says otherwise.
 | 1 | Transport: HTTP and SSE per meter-driver-spec. gRPC deferred. | ☑ accepted 2026-10-26 |
 | 2 | The engine needs a seam for an event stream the plugin owns. `incoming.handle` is only fed by HTTP ingress today. | ☑ accepted 2026-10-27 |
 | 3 | Correlation: one in-flight command per `node_id`. Next command only after the previous is terminal. | ☑ accepted 2026-10-27 |
-| 4 | Caller supplies the full configure body in `requestData`. This service keeps no desired configuration. | ☑ accepted 2026-10-27 |
+| 4 | Caller sends the value the command changes, and the state it must keep, on `requestData`. Fleet constants live in plugin settings. This service keeps no desired configuration. | ☑ accepted 2026-10-27, amended 2026-10-29 |
 | 5 | First commands: `TURN_ON`, `TURN_OFF`, `SET_POWER_LIMIT`. No enqueued reads. Unsolicited readings are `READ_REPORT`. `SET_BALANCE` deferred, see below. | ☑ accepted 2026-10-27 |
 | 6 | One ready queue per basestation. One HTTP call at a time, and one command per meter until it is terminal. | ☑ accepted 2026-10-28 |
 | 7 | `externalReference` is the decimal digits of `node_id`. Skyfox derives that from the serial and matches it back. | ☑ accepted 2026-10-28 |
@@ -280,21 +280,41 @@ rule: the meter's current command must be terminal before that id is minted agai
 
 ### Point 4 — accepted wording
 
-> Each configure enqueue carries the spec body: the `ElectricalMeterCommand` name plus all six
-> configuration fields (`power_limit`, `current_limit`, `startup_delay`, `throttle_on_time`,
-> `throttle_off_time`, `throttle_count_limit`). The plugin posts that body. A missing field fails
-> enqueue. Zero is a real value. This service does not fill ThunderCloud's defaults, merge with an
-> earlier command, or keep a desired configuration. The in-flight message holds the body until that
-> command ends (accepted, applied, invalid, or timeout); a retry posts the same body. After the
-> command is terminal, the body is gone with the message. A later reading that disagrees is the
-> caller's reason to enqueue a new command. `node_id` is the device address (point 7) and is not a
-> second copy inside this body. A node roster and an init payload, if any, stay in point 8. The
-> spec command in the body is what we post. Which `commandType` values this plugin accepts, and any
-> check that they match that command, is point 5.
+Amended 2026-10-29. The original wording put the whole spec body on the enqueue. The caller now
+sends two things, and the plugin fills the spec body. ADR-009 decision 1 records the wire.
 
-`requestData` cannot carry this body today. The schema is strict, and `payload` is only a date or
-a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token payload
-`{ powerLimit }` is not this body.
+> The caller sends the command's own argument on `requestData.payload`, and the device state that
+> command must leave unchanged on `requestData.deviceState`. This service stores neither, fills
+> nothing from an earlier command, and keeps no desired configuration.
+>
+> `deviceState` is `{ powerLimit?: number, relay?: 'ON' | 'OFF' }`. `powerLimit` is watts.
+> `payload` gains `{ powerLimit: number }`, the same object `POST /token/generate` already uses
+> for `SET_POWER_LIMIT`. The core schema leaves `token`, `payload`, and `deviceState` optional.
+>
+> This plugin requires `deviceState.powerLimit` on `TURN_ON` and `TURN_OFF`, and forbids `relay`
+> and `payload` there. It requires `payload` of `{ powerLimit }` and `deviceState.relay` on
+> `SET_POWER_LIMIT`, and forbids `deviceState.powerLimit` there. A missing required field fails
+> enqueue. A forbidden field fails enqueue the same way. Zero is a real power limit.
+>
+> The plugin posts `POST /v1/nodes/{node_id}/configure-meter`. `TURN_ON` posts
+> `ElectricalMeterCommandEnable`, `TURN_OFF` posts `ElectricalMeterCommandDisable`, and
+> `SET_POWER_LIMIT` posts `Enable` when `relay` is `ON` and `Disable` when `relay` is `OFF`. `power_limit` is the
+> caller's `powerLimit`. The other four spec fields come from the plugin settings
+> `meterConfiguration`: `currentLimit` (amps, 200 when the key is omitted), `startupDelay`,
+> `throttleOnTime`, `throttleOffTime`, and `throttleCountLimit`. Those four are required. A
+> missing one fails boot. A present zero is a real value. The plugin maps the keys to the spec's
+> snake_case names when it posts.
+>
+> The in-flight message holds what the caller sent. A retry assembles the same spec body. After
+> the command is terminal, that body is gone with the message. A later reading that disagrees is
+> the caller's reason to enqueue a new command. `node_id` is the device address (point 7). A node
+> roster and an init payload stay in point 8.
+
+`requestData` cannot carry `deviceState` today, and `payload` is only a date or a time.
+`SET_POWER_LIMIT` on the token route already takes `{ powerLimit }`; enqueue does not, until
+item 2 names that schema and reuses it. A CALIN enqueue of `SET_POWER_LIMIT` still carries
+`requestData.token` and does not carry this payload. The CALIN plugins do not read
+`deviceState`.
 
 ### Point 5 — accepted wording
 
@@ -302,14 +322,13 @@ a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token
 > Any other enqueue command type fails the existing membership check. `READ_REPORT` is not
 > enqueueable.
 >
-> `validateEnqueue` compares `commandType` to the spec command in the body. `TURN_ON`
-> requires `ElectricalMeterCommandEnable`. `TURN_OFF` requires
-> `ElectricalMeterCommandDisable`. `SET_POWER_LIMIT` requires either of those two.
-> `ElectricalMeterCommandReboot`, `ElectricalMeterCommandCalibrateStart`,
-> `ElectricalMeterCommandCalibrateFinish`, and `ElectricalMeterCommandEnableSts` fail
-> enqueue. The spec has no power-limit command. `power_limit` is one of the six fields, so
-> `SET_POWER_LIMIT` is the caller's label and the relay verb stays in the body. A `TURN_ON`
-> still carries all six fields, including a power limit.
+> `validateEnqueue` enforces point 4's table. The spec command is not on the wire. The plugin
+> derives it: `TURN_ON` posts `ElectricalMeterCommandEnable`, `TURN_OFF` posts
+> `ElectricalMeterCommandDisable`, and `SET_POWER_LIMIT` posts `Enable` when `relay` is
+> `ON` and `Disable` when `relay` is `OFF`. `Reboot`, `CalibrateStart`, `CalibrateFinish`,
+> and `EnableSts` are never posted. The spec has no power-limit command. `power_limit` is one of the six
+> fields the plugin assembles, so `SET_POWER_LIMIT` is the caller's label and the relay verb
+> comes from `deviceState.relay`. A `TURN_ON` carries `deviceState.powerLimit` and no relay.
 >
 > `electrical_meter_reading` and `electrical_meter_reading_phased` are unsolicited
 > `READ_REPORT` events on the existing path: `deliveryStatus` `DELIVERY_SUCCESSFUL`,
@@ -328,7 +347,7 @@ a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token
 > readings were requested.
 
 SparkMeter confirmed 2026-10-29 that they do not use or support meters in STS mode (question 5).
-`ElectricalMeterCommandEnableSts` stays rejected. The meter does have an internal clock.
+The plugin never posts `ElectricalMeterCommandEnableSts`. The meter does have an internal clock.
 sparknet-http puts the current time and the heartbeat timing in its outgoing protocol packets,
 and the meter firmware sets its clock from those. This service does not set the time.
 
@@ -458,9 +477,9 @@ request body and is never stored. ADR-002's per-deployment environment secrets d
 
 Follow-ups, not decided here:
 
-- The webhook body for "basestation needs init". Today's envelope
-  (`src/engine/webhook/event-schema.ts`) requires a `message` with `device` and
-  `deliveryStatus`, so this event changes the public contract (ADR-003, `packages/contract`).
+- ~~The webhook body for "basestation needs init".~~ Settled by ADR-009 (2026-10-29): a second
+  envelope variant with `relayNode: { id, status: 'INIT_REQUIRED' }` instead of `message`.
+  Message events are unchanged.
 - Provisioning calls run beside the queue, outside point 6's one-call-at-a-time send lock per
   basestation. Whether they take that lock is open.
 - The init path. The spec and the emulator use `POST /v1/init`; the sparknet-http README
@@ -801,3 +820,27 @@ retries. Question 7 asks for that budget and should be sent; it does not block t
 design points are accepted. Next checklist item is 1, ADR-009.
 
 **2026-10-29** — Maintainer sent question 7 to SparkMeter. No answer yet. It does not block the build.
+
+**2026-10-29** — Checklist item 1 landed: ADR-009
+(`docs/architecture/009-configure-payload-and-relay-node-init-event.md`), indexed in `AGENTS.md`,
+and ADR-003 carries an amendment line. Docs only; no code. The maintainer settled three wire
+questions. First, configure keys are camelCase on our wire and the plugin maps them to the spec's
+snake_case; readings in `response.data` keep the spec names (point 5), an accepted asymmetry.
+Point 4 has a note with the camelCase shape; its accepted wording is unchanged. Second, the
+"needs init" event is a second webhook envelope variant with no `message`, told apart by key, so
+message events stay byte-for-byte the same. Third, its block is `relayNode: { id, status }` with
+`status` a closed enum, `INIT_REQUIRED` today. The wire keeps `relayNode`, not `basestation`; this
+plugin uses "basestation" as its local noun (`relayNodeNoun: 'basestation'`). Renaming `relayNode`
+contract-wide would be its own ADR-003 amendment. How the plugin hands that event to the engine is
+left to item 3 (ADR-010) or item 9. Point 8a's webhook follow-up is struck. Question 7 is still
+unanswered and does not block.
+
+**2026-10-29** — ADR-009 decision 1 amended the same day, before item 2. The whole spec
+configure body is not on our wire. The caller sends the command's argument on `payload` and the
+state it must keep on `deviceState`: `powerLimit` for `TURN_ON` and `TURN_OFF`, and `relay`
+(`ON` or `OFF`) plus `{ powerLimit }` for `SET_POWER_LIMIT`. `{ powerLimit }` is one schema,
+shared with `POST /token/generate`. The plugin derives `Enable` or `Disable` and fills
+`currentLimit` (default 200 A), `startupDelay`, and the three throttle fields from
+`settings.meterConfiguration`. Those four are required and have no default. This service stores
+no desired configuration. Decision 2, the relay-node event, is unchanged. Points 4 and 5 are
+rewritten to match. The checklist rows for items 1 and 2 name the lean shape.

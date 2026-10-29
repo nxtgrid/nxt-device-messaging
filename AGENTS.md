@@ -100,6 +100,7 @@ stop if the ADR does not apply. Cap at 2–3 before proposing an approach.
 | 006 | Initial queue keys (`buildInitialQueueKey`) + named admission (`spacing` / `concurrency`) |
 | 007 | Single-replica / single-writer v1 — correlator + timers; multi-replica deferred |
 | 008 | Message lifecycle is a stage table — one runner, one 1000 ms tick, pipelines as data |
+| 009 | `requestData.deviceState` + shared `{ powerLimit }` payload; relay-node webhook event (`INIT_REQUIRED`) |
 
 When you make a new architectural decision, add a numbered ADR here **and** add a row to the
 index table above.
