@@ -1,9 +1,12 @@
 # Plan 003 — `sparkmeter-sparknet-http` plugin
 
-**Status:** design in progress — 2026-10-28. Points 1–7 and 8a accepted. Point 8b waits on
-SparkMeter question 4.
-**Branch:** `plugin/sparkmeter-sparknet-http`. No code or ADR until the design points below are accepted.
+**Status:** design accepted — 2026-10-29 (points 1–11, including 8a and 8b). Building, one
+checklist item at a time.
+**Branch:** `plugin/sparkmeter-sparknet-http`.
 **Supersedes nothing.**
+
+This file is the design record and the build plan. The **Checklist** is the work. The **Design
+points** are what each item cites.
 
 This plan builds a delivery plugin that **replaces ThunderCloud** as the command client of
 [sparknet-http](https://github.com/EarthSpark/sparknet-http), the vendor's meter driver. The
@@ -38,8 +41,14 @@ Each section below opens with a reader tag.
 
 1. Read this file top to bottom. It is self-contained.
 2. Read the guide above, then `src/plugins/plugin.interface.ts`.
-3. Take **one** open design point. Recommend an answer, wait for the maintainer to accept it.
-   Do not write code or an ADR for a point that is not accepted.
+3. Take the first open **Checklist** item and read the design points it cites.
+4. Before changing any file, post a short summary of what the item will do and which files it
+   touches, and name the item's model from the Checklist. If you are not that model, say so.
+   Wait for the maintainer's go. This holds after a handoff prompt too.
+5. Do that item only, then stop for review. If it raises a design question, recommend an answer
+   and wait for the maintainer to accept it before coding past it.
+6. After the item is reviewed, recommend whether to continue in this chat or start a new one,
+   and say why. If a new one, write the handoff prompt.
 
 Evidence below cites files and lines as of 2026-10-26. If it no longer matches, say so and stop.
 
@@ -54,7 +63,49 @@ Evidence below cites files and lines as of 2026-10-26. If it no longer matches, 
 - **This plugin replaces ThunderCloud.** sparknet-http stays. ThunderCloud is not a co-client,
   not a fallback, and not the behavior to copy. Mold the driver to our commands. Our caller
   sends one read, write, setting, or token command at a time.
-- Update the **Design points** table and **Session notes** when a point is accepted.
+- **Summary and model before code.** Every item starts with a summary and the Checklist's model
+  (step 4 above). Claude Opus 5.5 takes items that need judgment: ADRs, engine seams, and items
+  that settle open questions. Grok 4.7 takes items whose design is already fixed. The column is
+  a cost decision.
+- **Save context.** After each item, weigh staying in the chat against a new one. Prefer a new
+  chat when the next item has a different model, touches a different part of the code, or this
+  chat is long. A handoff prompt names the next item, its model, the files to read, and anything
+  learned that is not yet in this file. It goes in a ` ```text ` block, prompt text only.
+- Update the **Checklist** and **Session notes** when an item lands. When an item changes an
+  accepted design point, update that point's wording and say so in the note.
+
+---
+
+## Checklist
+
+*Reader: both.*
+
+Ordered. Every code item ships with its unit tests and runs against the emulator. An ADR item
+is written and accepted before the item that implements it.
+
+| # | Item | Design points | Depends on | Model | Status |
+|---|---|---|---|---|---|
+| 1 | **ADR-009** — public contract additions: the configure body on `requestData`, and the "basestation needs init" webhook event | 4, 8a, 8b | — | Claude Opus 5.5 | ☐ |
+| 2 | **Skeleton** — catalog entry, `settings.basestations`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, configure body on `requestData`, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☐ |
+| 3 | **ADR-010** — plugin-owned event stream on `PushPlugin` (`start`, `deliver`, `dropped`) | 2 | — | Claude Opus 5.5 | ☐ |
+| 4 | **Event stream** — the engine seam, the SSE client and frame parser, configure accepted / applied / invalid matched on `{pluginId}:{nodeId}` with point 10's statuses, readings as `READ_REPORT`, development tuning values (not production), a metric for events that matched no message | 2, 3, 5, 10, 11 | 2, 3 | Claude Opus 5.5 | ☐ |
+| 5 | **ADR-011** — per-meter hold admission and the basestation queue gate | 6, 8a, 8b | — | Claude Opus 5.5 | ☐ |
+| 6 | **Admission** — send lock, meter hold, the pick walk, and the gate the plugin opens and closes. Replaces the interim `concurrency` | 3, 6 | 4, 5 | Claude Opus 5.5 | ☐ |
+| 7 | **Reconnect** — reopen a dropped stream with backoff; gate closed while it is down; a stream-connected gauge per basestation | 8a | 6 | Grok 4.7 | ☐ |
+| 8 | **Provisioning** — `initBasestation`, `registerMeters`, `unregisterMeters` on the existing `provisioning.execute`. Settles the init path, the send lock, and long register calls | 8a | 2 | Claude Opus 5.5 | ☐ |
+| 9 | **Init gating** — `gateway_status` false closes the gate and true sends the webhook; init and register accepted reopen it | 8b | 1, 6, 8 | Grok 4.7 | ☐ |
+| 10 | **Smokes and docs** — httpYac smokes, integration tests on Valkey, guide update including deadline sizing | 11 | 9 | Grok 4.7 | ☐ |
+| 11 | **Real basestation trial** — an operator-provided reachable `baseUrl` (point 9), real deadlines, confirm the event names and the unregistered-meter answer | 9, 10, 11 | 10, questions 6 and 7 | Claude Opus 5.5 | ☐ |
+
+### Why this order
+
+The contract comes first because the enqueue shape and the webhook body are what Skyfox builds
+against. The event stream comes before admission so a command runs end to end early. Until item
+6, `concurrency` with `maxInFlight: 1` per basestation queue stands in for the meter hold. It is
+stricter than the design but releases on `enterRetry`, so a second command for the same meter
+can go during a retry wait. That is acceptable against the emulator and not on a real grid.
+Production deadlines (point 11) are set at the real-basestation trial, after question 7.
+Checklist item 11 needs an operator-provided reachable `baseUrl` (point 9).
 
 ---
 
@@ -119,6 +170,13 @@ Checked against the repos in the workspace. Each fact names where it came from.
 - ThunderCloud only commands sparknet-http from the same box. Its metering lifespan is a no-op
   in the cloud. (`thundercloud/sparkmeter/metering/lifespan.py` lines 310–317.) There is no
   prior art for a client that reaches sparknet-http over a network link.
+- The cloud reaches the site by syncing with the ground system, not by calling the driver.
+  ThunderCloud 1.x, what runs in the field, has the grid-edge unit dial the cloud over cellular
+  with a custom binary TCP protocol; the cloud runs the TCP server.
+  ([Elixir blog, 2023-03-09](https://elixir-lang.org/blog/2023/03/09/embedded-and-cloud-elixir-at-sparkmeter/).)
+  ThunderCloud 2.0 syncs the ground and cloud Postgres databases with SymmetricDS, and only the
+  ground webapp talks to the driver, at a base URL registered in its settings.
+  (`thundercloud/README.md` lines 112–135.)
 - `POST /v1/init` clears every meter. (Guide, "Init clears every meter".)
 - When the event stream ends or breaks, ThunderCloud treats the driver as restarted and re-runs
   the full init and reconcile. (`thundercloud/sparkmeter/metering/lifespan.py` lines 330–380.)
@@ -126,6 +184,26 @@ Checked against the repos in the workspace. Each fact names where it came from.
   `electrical_meter_configuration_accepted`, `_applied`, and
   `invalid_electrical_meter_configuration`. (`thundercloud/sparkmeter/metering/events.py`
   lines 57–86.) Per-command tracking is new ground for this plugin.
+
+**Access, events, and modes**
+
+- Neither the spec nor the sparknet-http README defines client authentication. Whoever reaches
+  the HTTP port can init, register, and configure. Init carries `aes_key` in the request body.
+  (`meter-driver-spec/docs/spec/index.md`; `sparknet-http/README.md`.)
+- The wire names are the OpenAPI constants: `electrical_meter_configuration_accepted`,
+  `electrical_meter_configuration_applied`, and `invalid_electrical_meter_configuration`.
+  (`meter-driver-spec/openapi/meter-driver.yaml` lines 674–688; the proto uses the same names.)
+  The shorter names in the prose event table (`meter_configuration_accepted`, and the rest)
+  are not wire names. ThunderCloud says so and only recognizes the OpenAPI constants.
+  (`thundercloud/sparkmeter/metering/events.py` lines 57–77;
+  `meter-driver-spec/docs/spec/index.md` lines 233, 332–333.)
+- The spec does not say what configure-meter does for a node that is not registered. It names
+  an unknown-node event only for unregister (`node_to_unregister_unknown`).
+  (`meter-driver-spec/docs/spec/index.md` lines 209–235.)
+- The spec has no endpoint that shows what the driver still holds for a meter.
+  (`meter-driver-spec/docs/spec/index.md` lines 50–63.)
+- SparkMAC-tools mode, enabled over HTTP on site, pauses normal scheduled meter activity.
+  (`sparknet-http/README.md` lines 116–132.)
 
 **Differences between the emulator and a real driver**
 
@@ -140,8 +218,8 @@ Checked against the repos in the workspace. Each fact names where it came from.
 
 *Reader: both. The maintainer accepts or rejects; an AI agent recommends and updates the table.*
 
-Proposed by the maintainer on 2026-10-26. Resolve one at a time, in order unless a dependency says
-otherwise.
+Proposed by the maintainer on 2026-10-26. Points 9–11 added 2026-10-29 from a gap review.
+Resolve one at a time, in order unless a dependency says otherwise.
 
 | # | Point | Status |
 |---|---|---|
@@ -153,7 +231,10 @@ otherwise.
 | 6 | One ready queue per basestation. One HTTP call at a time, and one command per meter until it is terminal. | ☑ accepted 2026-10-28 |
 | 7 | `externalReference` is the decimal digits of `node_id`. Skyfox derives that from the serial and matches it back. | ☑ accepted 2026-10-28 |
 | 8a | The adopter owns each basestation's session through provisioning operations (`initBasestation`, `registerMeters`, `unregisterMeters`). This service keeps no meter list and no init payload, holds basestation URLs in plugin settings, reconnects the stream, and tells the adopter when a basestation needs init. | ☑ accepted 2026-10-28 |
-| 8b | When a basestation needs init, and when its held queue opens again. | ☐ open — waits on question 4 |
+| 8b | Ask the adopter to init only after `gateway_status.connected` goes false then true. Hold that queue until the following init and register are accepted. An SSE reconnect alone does not ask for init. | ☑ accepted 2026-10-29 |
+| 9 | Reaching a basestation is outside this service. The plugin is a plain HTTP client of `baseUrl`; a private encrypted route is the only access control in v1. | ☑ accepted 2026-10-29 |
+| 10 | Stage mapping: which delivery status each driver answer and event sets, and what ends a command. | ☑ accepted 2026-10-29 |
+| 11 | Stage deadlines: which timeout covers which gap. Static plugin tuning; production values come from question 7 and the trial. | ☑ accepted 2026-10-29 |
 
 ### Point 1 — accepted wording
 
@@ -246,6 +327,11 @@ a time. Implementation adds this object to that union. `SET_POWER_LIMIT`'s token
 > 8. The spec emits the phased event in place of the single-phase event when phased
 > readings were requested.
 
+SparkMeter confirmed 2026-10-29 that they do not use or support meters in STS mode (question 5).
+`ElectricalMeterCommandEnableSts` stays rejected. The meter does have an internal clock.
+sparknet-http puts the current time and the heartbeat timing in its outgoing protocol packets,
+and the meter firmware sets its clock from those. This service does not set the time.
+
 ### Point 6 — accepted wording
 
 > One ready queue per basestation:
@@ -283,6 +369,10 @@ basestation.
 Point 8a (2026-10-28) adds one condition to the pick: a basestation whose event stream is down
 is skipped.
 
+Point 8b (2026-10-29) adds another: from `gateway_status` `connected` false until
+`initBasestation` and the following `registerMeters` for that basestation have both been
+accepted, the queue is skipped.
+
 ### Point 7 — accepted wording
 
 > `device.externalReference` is the decimal digits of `node_id`, the same integer
@@ -307,7 +397,8 @@ total and the low-balance flag. The plugin posts `POST /v1/nodes/{node_id}/balan
 only) or on timeout. There is no applied event. The post replaces the meter's cached balance.
 It does not add a delta, and it does not mint a token. `TOP_UP_KWH`, `CLEAR_CREDIT`, and
 `CLEAR_TAMPER` are STS keypad tokens. This driver has no token field. Tamper is reading
-`state` 13, and the spec has no clear-tamper call.
+`state` 13, and the spec has no clear-tamper call. SparkMeter confirmed 2026-10-29 that they
+do not use or support meters in STS mode (question 5).
 
 **Why it was deferred.** The caller holds the wallet and bills cumulative `energy`
 (`new energy − last energy`). Supply on or off is `TURN_ON` or `TURN_OFF`. A payment while
@@ -365,7 +456,7 @@ sparknet-http "the driver"; this plan says sparknet-http when it means the proce
 The init values include `aes_key`, a network secret. It passes through this service in the
 request body and is never stored. ADR-002's per-deployment environment secrets do not apply.
 
-Follow-ups for after 8b, not decided here:
+Follow-ups, not decided here:
 
 - The webhook body for "basestation needs init". Today's envelope
   (`src/engine/webhook/event-schema.ts`) requires a `message` with `device` and
@@ -376,23 +467,89 @@ Follow-ups for after 8b, not decided here:
   documents `POST /v1/sparknet/init`.
 - A synchronous `registerMeters` for a few hundred meters over a remote link is a long request.
 
-### Point 8b — open, waits on question 4
+### Point 8b — accepted wording
 
-When does a basestation need init, and when does its held queue open again?
+> This service asks the adopter to init a basestation only after `gateway_status` on that
+> basestation's event stream goes from `connected` false to `connected` true. A disconnect pauses
+> sparknet-http's processing and keeps the registered meters in memory. A reconnect does not resume
+> processing. The adopter then calls `initBasestation`, then `registerMeters`, then enqueues a full
+> configure for each meter (point 4). Init clears the retained meters and reapplies the network
+> configuration.
+>
+> From the moment `connected` is false, the pick skips that basestation's queue. It stays skipped
+> after `connected` returns to true, until `initBasestation` and the following `registerMeters` for
+> that basestation have both been accepted. Configure enqueues then use the queue as usual.
+> Commands already sent keep their stage deadlines.
+>
+> An SSE drop and reconnect, with no `connected` false-then-true on that stream, reopens the queue
+> and does not ask for init. `/v1/healthz` and `/v1/status` cannot separate a process restart from
+> a network interruption, and both look the same from the cloud as from the basestation. A restart
+> during that gap is still invisible. SparkMeter's `query_provider_status` / `uptime_ms` idea stays
+> out until they confirm it.
 
-Known: a sparknet-http restart closes the TCP connection, so every restart shows as a dropped or
-unopenable `GET /v1/events`. Not every drop is a restart; over a network link most are not.
-Events from the gap are lost (question 2). An unneeded init clears every meter on that
-basestation. ThunderCloud treats any drop as a restart and re-inits, and also re-inits after
-`gateway_status.connected` returns to true (`lifespan.py` lines 330–368, 398–495). That suits a
-client on the same box, not ours.
+### Point 9 — accepted wording
 
-Working hypothesis until SparkMeter answers: after reconnecting, wait for the next
-`heartbeat_statistics`. If `total_registered_nodes` is above 0, sparknet-http kept its meters and
-the queue opens again without an init. If it is 0, or no heartbeat arrives within a bounded wait,
-the basestation needs init. Unverified: whether sparknet-http emits heartbeats before init (its
-README lists a `--heartbeat` default; the emulator starts the heartbeat only at init). A weaker
-clue is `/v1/status` `messages_sent` and `messages_received` coming back lower than last seen.
+This service runs in the cloud and is itself the HTTP client of sparknet-http. ThunderCloud's
+cloud is not: the ground system dials out and syncs, and only the ground system calls the driver
+(Established facts). How a basestation becomes reachable is the same class of problem as reaching
+a CALIN DCU or gateway, and it is solved the same way, outside this service.
+
+> How a basestation's sparknet-http becomes reachable from this service is outside this service.
+> The operator provides a route to each `settings.basestations[].baseUrl`. The plugin is a plain
+> HTTP client of that URL.
+>
+> sparknet-http has no client auth. The route is a private, encrypted network, and that network
+> is the only access control in v1. It keeps `aes_key` off the open internet. The plugin sends no
+> auth header. An authenticating proxy in front of sparknet-http, with a per-basestation header
+> from environment secrets (ADR-002), is a later addition.
+>
+> This service is the only command client of that sparknet-http. A technician using
+> SparkMAC-tools on site pauses scheduled activity; commands sent meanwhile end on their
+> deadlines.
+
+### Point 10 — accepted wording
+
+Points 2 and 3 name the match events and keep the delivery statuses. They do not assign them.
+
+> - `sendOne` returns when sparknet-http answers `202 Accepted`. The message moves to the
+>   relay-node stage (`DELIVERED_TO_NS`). sparknet-http is the network server here.
+> - `configuration_accepted` moves it to the device stage (`SENT_TO_DEVICE`).
+> - `configuration_applied` ends it with `DELIVERY_SUCCESSFUL`.
+> - `invalid_electrical_meter_configuration` ends it with `DELIVERY_FAILED` and `skipRetry`.
+> - In `parseError`, a 4xx answer to `sendOne` sets `skipRetry`. A 5xx, a timeout, or a network
+>   error retries.
+> - The plugin omits `getRemoteStatus`. The spec has no way to see what the driver still holds,
+>   so the relay-node wait cannot be extended. It ends at `relayNodeInFlightTimeoutMs`.
+> - The plugin matches the OpenAPI wire names: `electrical_meter_configuration_accepted`,
+>   `electrical_meter_configuration_applied`, and `invalid_electrical_meter_configuration`.
+
+What configure-meter does for a node that is not registered is not in the spec, the OpenAPI, or
+the sparknet-http README (question 6). It does not change this mapping. Such a command ends on
+its deadline until item 4 sees what the emulator does.
+
+### Point 11 — accepted wording
+
+The core defaults are a LoRaWAN scale: `deviceInFlightTimeoutMs` is 12 seconds and
+`relayNodeInFlightTimeoutMs` is 15 minutes. The emulator emits `configuration_applied`
+immediately, so a number measured there is not a mesh deadline. This plugin omits
+`getRemoteStatus` (point 10), so the relay-node timer is a hard deadline rather than a wait
+that can be extended.
+
+> - `nsInFlightTimeoutMs` covers the HTTP call to sparknet-http, and is also the send-lock
+>   expiry.
+> - `relayNodeInFlightTimeoutMs` covers `202` to `electrical_meter_configuration_accepted`.
+>   When it fires, the command fails or retries. The meter hold from point 6 lasts the whole
+>   wait.
+> - `deviceInFlightTimeoutMs` covers `accepted` to `applied`. On a real mesh that wait depends
+>   on the heartbeat period, the hop count, and the driver's own configure retries.
+> - The heartbeat period is an init value the adopter sends. This service does not keep it, so
+>   the deadlines are static plugin tuning, overridable per deployment in `plugins[].tuning`
+>   (ADR-002 §5). The plugin passes its own deltas and does not inherit the core defaults as
+>   mesh values.
+> - Values used against the emulator are development values. A production device deadline has
+>   to outlast the driver's own configure retries, so a second configure is not sent while the
+>   first is still in the driver's loop. Question 7 asks for that budget. The guide says how to
+>   size the deployment override.
 
 ---
 
@@ -401,8 +558,10 @@ clue is `/v1/status` `messages_sent` and `messages_received` coming back lower t
 *Reader: maintainer. Sent by a human, in their own words. An AI agent only records the answers.*
 
 Only what the repos cannot answer. Questions 1 and 2 sent 2026-10-26 and answered 2026-10-28.
-Question 3 sent 2026-10-27 and answered the same day. Question 4 sent 2026-10-28, awaiting an
-answer.
+Question 3 sent 2026-10-27 and answered the same day. Question 4 sent 2026-10-28; a partial
+answer arrived 2026-10-29, with heartbeat statistics and `uptime_ms` still to be verified by
+SparkMeter. Question 5 answered 2026-10-29. Question 6 is for the emulator, not SparkMeter. Question 7 sent 2026-10-29; it does not block
+checklist items 1–10.
 
 1. When sparknet-http restarts, does it forget the registered meters and their configuration, so
    we must call init, register, and configure again every time?
@@ -439,23 +598,48 @@ answer.
    ThunderCloud's metering lifespan is a no-op in the cloud
    (`thundercloud/sparkmeter/metering/lifespan.py` lines 310–317). It only ran on the same box
    as the driver, where it treats any stream drop as a restart (lines 330–368).
+   **Answered 2026-10-29, in part.** SparkMeter had not looked at startup and heartbeat-statistics
+   behavior for a while and will set up a test to verify it. On the other points: an SSE
+   disconnect and reconnect cannot distinguish a process restart from a temporary network
+   interruption. `/v1/healthz` confirms the HTTP service is responding. `/v1/status` reports
+   gateway information. Neither provides an initialized flag or a unique startup id. The
+   `query_provider_status` command, sent through `POST /v1/commands`, returns an SSE event
+   containing `uptime_ms`, which could identify a restart by comparing samples. SparkMeter still
+   needs to verify that command and its uptime reporting. Disconnecting the gateway pauses
+   processing but retains the registered meters in memory. Reconnecting it does not resume
+   processing; the application must call init, then register and configure the meters again.
+   Calling init when sparknet-http did not restart clears the registered meters and reapplies the
+   network configuration; the application must then register and configure the meters again. The
+   interface behavior is the same whether the client runs in the cloud or on the same box as
+   sparknet-http. `query_provider_status` and `uptime_ms` are not in meter-driver-spec v1.4 or
+   the published sparknet-http README. The guide already leaves `POST /v1/commands` off the
+   emulator, which does not implement it.
+5. Do the meters keep an internal clock, and does the application have to set it? Are the meters
+   used in STS mode?
+   **Answered 2026-10-29.** Time synchronization happens behind the scenes. sparknet-http includes
+   the current time and heartbeat timing in outgoing SparkNet protocol packets, and the meter
+   firmware uses those timestamps to synchronize its internal clock. The application does not need
+   to set the meter's time separately. SparkMeter does not use or support meters in STS mode.
+6. What does sparknet-http answer, and which event does it emit, for a configure-meter on a
+   `node_id` that is not registered? The spec names an unknown-node event only for unregister.
+   *Not for SparkMeter.* The spec, the OpenAPI, and the sparknet-http README do not say. Item 4
+   records what the emulator does. The event names are settled: the OpenAPI constants are the
+   wire names (see Established facts).
+7. When we configure a meter, sparknet-http emits an "accepted" event and later an "applied"
+   one. If the meter does not apply the change straight away, does sparknet-http keep trying on
+   its own? How many times, or for how long, before it stops? We need that so we don't send the
+   same configuration again while sparknet-http is still working on the first one.
+   Roughly how long does accepted-to-applied usually take? Does it wait for the meter's next
+   heartbeat, and does it take longer when the meter is more hops away? Sites use different
+   heartbeat periods, so the retry limit is the figure we actually need.
+   *Sent 2026-10-29. Does not block the build.* Point 11. Checked 2026-10-29: not in meter-driver-spec,
+   the sparknet-http README, ThunderCloud, or the public web. The only published retry knob is
+   `--reading-retry-limit`, named for readings, with no default and no description. The
+   sparknet-http repo packages the binary and does not contain its source, so the configure
+   give-up, if the binary has one, is in that binary.
 
 The gRPC package name (`tc2.` or not) can be checked without them, by running the real image and
 listing its services with `grpcurl list`. It does not matter while gRPC is deferred.
-
----
-
-## Checklist
-
-*Reader: both.*
-
-Work items once the design is accepted. Kept coarse until then.
-
-| # | Item | Depends on | Status |
-|---|---|---|---|
-| 1 | Resolve design point 8b | SparkMeter question 4 | ☐ in progress (1–7 and 8a accepted) |
-| 2 | ADR(s) for accepted points that change the engine or the SPI | 1 | ☐ |
-| 3 | Implementation slices, defined after 1 and 2 | 2 | ☐ |
 
 ---
 
@@ -552,3 +736,68 @@ meters are registered with `request_phased_readings` true by the adopter, which 
 readings. This service tells the adopter on the existing webhook URL when a basestation needs
 init. 8b, when that is, waits on question 4. The plan names no adopter in 8a and avoids "driver"
 for our own vocabulary.
+
+**2026-10-29** — SparkMeter answered question 5. The meter has an internal clock. sparknet-http
+puts the current time and the heartbeat timing in outgoing SparkNet packets, and the firmware
+synchronizes from those. This service does not set the time. SparkMeter does not use or support
+meters in STS mode, so `EnableSts` stays rejected and the STS token commands stay out.
+
+**2026-10-29** — SparkMeter answered question 4 in part. An SSE reconnect cannot separate a
+process restart from a network interruption. `/v1/healthz` and `/v1/status` have no initialized
+flag and no startup id. `query_provider_status` on `POST /v1/commands` may return `uptime_ms`
+on the event stream; SparkMeter has not verified that command, nor heartbeat statistics after
+startup. A gateway disconnect pauses processing and keeps the meters in memory. A gateway
+reconnect does not resume processing: the client must init, then register and configure again.
+Init on a process that did not restart clears the meters and reapplies the network
+configuration, and the meters must be registered and configured again. Cloud and on-box clients
+see the same interface. The earlier heartbeat hypothesis (nodes above 0 means skip init) does
+not cover the gateway case, where meters can still be registered while processing stays paused.
+
+**2026-10-29** — Point 8b accepted. This service asks the adopter to init only after
+`gateway_status.connected` goes from false to true. The queue stays skipped from that false until
+`initBasestation` and the following `registerMeters` have both been accepted. An SSE reconnect
+alone reopens the queue and does not ask for init. A process restart during that gap stays
+invisible until SparkMeter confirms `query_provider_status` / `uptime_ms`. Point 6 carries one
+more skip condition. Design points are complete. Next checklist item is the ADR.
+
+**2026-10-29** — Maintainer. This file stays in `docs/plans/` as both the design record and the
+build plan; there is no separate plugin ADR. ADRs cover only the engine and contract changes,
+each accepted before the item that implements it. The Checklist moved up and became ten items.
+ADR-009 covers both the configure body and the "basestation needs init" webhook event up front.
+Provisioning uses the existing `provisioning.execute` and needs no engine ADR. Every item starts
+with a summary and a named model (Claude Opus 5.5 or Grok 4.7), and ends with a stay-or-hand-off
+recommendation. Next is item 1.
+
+**2026-10-29** — Gap review against the original design gaps. Added facts: the driver has no
+client auth, the spec names the configure events two ways, it is silent on configure for an
+unregistered meter, it has no way to inspect the driver's queue, and SparkMAC-tools mode pauses
+scheduled activity. Added open design points 9 (reaching a basestation), 10 (stage mapping), and
+11 (stage deadlines), each with a recommendation. Drafted questions 6 and 7. Checklist: emulator
+in compose (item 2), unmatched-event metric and point 10 and 11 dependencies (item 4),
+stream-connected gauge (item 7), and a new item 11, the real basestation trial.
+
+**2026-10-29** — Point 9 accepted. The path that makes a basestation reachable stays outside this
+service, the same class of problem as reaching a CALIN DCU. The plugin is a plain HTTP client of
+`baseUrl`, and a private encrypted route is the only access control in v1. ThunderCloud's cloud
+does not call sparknet-http: 1.x has the grid-edge unit dial the cloud over a custom TCP
+protocol, and 2.0 syncs ground and cloud databases with SymmetricDS while only the ground webapp
+calls the driver.
+
+**2026-10-29** — Point 10 accepted. `202` moves the message to `DELIVERED_TO_NS`,
+`electrical_meter_configuration_accepted` to `SENT_TO_DEVICE`, `_applied` ends it with
+`DELIVERY_SUCCESSFUL`, and `invalid_electrical_meter_configuration` ends it with
+`DELIVERY_FAILED` and no retry. A 4xx answer to `sendOne` does not retry; a 5xx, a timeout, or
+a network error does. The plugin omits `getRemoteStatus` and matches the OpenAPI wire names.
+A configure for an unregistered node is not in the spec; that command ends on its deadline
+until item 4 records what the emulator does. Point 11 is the remaining open design point.
+
+**2026-10-29** — Point 11 accepted. `nsInFlightTimeoutMs` covers the HTTP call and the send
+lock, `relayNodeInFlightTimeoutMs` covers `202` to `accepted`, and `deviceInFlightTimeoutMs`
+covers `accepted` to `applied`. The relay timer is a hard deadline because `getRemoteStatus`
+is omitted. Deadlines are static plugin tuning with a per-deployment override. The plugin does
+not inherit the core 12-second and 15-minute defaults as mesh values, and emulator timings are
+development values only. A production device deadline has to outlast the driver's own configure
+retries. Question 7 asks for that budget and should be sent; it does not block the build. All
+design points are accepted. Next checklist item is 1, ADR-009.
+
+**2026-10-29** — Maintainer sent question 7 to SparkMeter. No answer yet. It does not block the build.
