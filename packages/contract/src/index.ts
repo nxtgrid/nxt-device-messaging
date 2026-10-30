@@ -19,8 +19,10 @@ import * as messageSchemas from '../../../src/lib/device-message/schemas.js';
  *
  * `READ_VOLTAGE` / `READ_CURRENT` also need `phase` on {@link CreateDeviceMessage}.
  * `SET_DATE` / `SET_TIME` put {@link SetDatePayload} / {@link SetTimePayload} on
- * `requestData.payload`. `DELIVER_PREEXISTING_TOKEN` puts the token on
- * `requestData.token`.
+ * `requestData.payload`. `SET_POWER_LIMIT` may put {@link PowerLimitPayload}
+ * there; a CALIN enqueue of that command still uses `requestData.token`.
+ * Optional `requestData.deviceState` is {@link DeviceState}.
+ * `DELIVER_PREEXISTING_TOKEN` puts the token on `requestData.token`.
  */
 export type EnqueueableCommandType = commands.EnqueueableCommandType;
 
@@ -50,6 +52,29 @@ export type SetDatePayload = z.infer<typeof messageSchemas.setDatePayloadSchema>
 
 /** `requestData.payload` when enqueueing `SET_TIME`. */
 export type SetTimePayload = z.infer<typeof messageSchemas.setTimePayloadSchema>;
+
+/**
+ * `{ powerLimit }` in watts. The `payload` of `POST /token/generate` when
+ * `type` is `SET_POWER_LIMIT`, and a `requestData.payload` variant on enqueue.
+ * Zero is a real limit and may mean no limit.
+ */
+export type PowerLimitPayload = z.infer<typeof messageSchemas.powerLimitPayloadSchema>;
+
+/**
+ * Runtime validator for {@link PowerLimitPayload}.
+ */
+export const powerLimitPayloadSchema = messageSchemas.powerLimitPayloadSchema;
+
+/**
+ * Optional `requestData.deviceState`. `powerLimit` is watts; `relay` is
+ * `ON` or `OFF`. Core does not require either field.
+ */
+export type DeviceState = z.infer<typeof messageSchemas.deviceStateSchema>;
+
+/**
+ * Runtime validator for {@link DeviceState}.
+ */
+export const deviceStateSchema = messageSchemas.deviceStateSchema;
 
 /**
  * JSON body for `POST /message/enqueue`.
@@ -140,8 +165,8 @@ export const cancelMessageResultSchema = messageSchemas.cancelMessageResultSchem
 
 /**
  * JSON body for `POST /token/generate`. Switch on `type`:
- * `TOP_UP_KWH` and `SET_POWER_LIMIT` require `payload`; `CLEAR_TAMPER` and
- * `CLEAR_CREDIT` do not.
+ * `TOP_UP_KWH` requires `{ kwh }`. `SET_POWER_LIMIT` requires
+ * {@link PowerLimitPayload}. `CLEAR_TAMPER` and `CLEAR_CREDIT` have no payload.
  */
 export type GenerateTokenRequest = z.infer<typeof messageSchemas.generateTokenSchema>;
 

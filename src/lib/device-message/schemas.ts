@@ -62,12 +62,55 @@ export const setTimePayloadSchema = z.object({
   examples: [ { hour: 14, minute: 30, second: 0 } ],
 });
 
+/**
+ * Power limit in watts (ADR-009). Any JSON number, including zero.
+ * Zero is a real limit and may mean no limit.
+ * Shared by {@link powerLimitPayloadSchema} and {@link deviceStateSchema}
+ * so the token route and enqueue describe the same field.
+ */
+const powerLimitWattsSchema = z.number().meta({
+  description: 'Power limit in watts. Zero is a real limit and may mean no limit',
+  examples: [ 1200 ],
+});
+
+/**
+ * `{ powerLimit }` payload. `POST /token/generate` uses this for
+ * `SET_POWER_LIMIT`. Enqueue accepts it as a third `requestData.payload`.
+ */
+export const powerLimitPayloadSchema = z.object({
+  powerLimit: powerLimitWattsSchema,
+}).strict().meta({
+  examples: [ { powerLimit: 1200 } ],
+});
+
+/**
+ * Device state a command must leave unchanged (ADR-009).
+ * Both fields are optional here; a plugin's `validateEnqueue` requires
+ * what that command needs.
+ */
+export const deviceStateSchema = z.object({
+  powerLimit: powerLimitWattsSchema.optional(),
+  relay: z.enum([ 'ON', 'OFF' ]).optional().meta({
+    description: 'Relay position to leave unchanged',
+    examples: [ 'ON' ],
+  }),
+}).strict();
+
 const requestDataSchema = z.object({
   token: z.string().optional().meta({
     description: 'Pre-minted token when the command carries one',
     examples: [ '12345678901234567890' ],
   }),
-  payload: z.union([ setDatePayloadSchema, setTimePayloadSchema ]).optional(),
+  payload: z.union([
+    setDatePayloadSchema,
+    setTimePayloadSchema,
+    powerLimitPayloadSchema,
+  ]).optional().meta({
+    description: 'Command argument: a date, a time, or a power limit in watts',
+  }),
+  deviceState: deviceStateSchema.optional().meta({
+    description: 'Device state this command must leave unchanged',
+  }),
 }).strict();
 
 /** Electrical phases. {@link phaseSchema} and correlation-index lookups share this list. */
@@ -278,9 +321,7 @@ export const generateTokenSchema = z.discriminatedUnion('type', [
   z.object({
     ...generateTokenSharedFields,
     type: z.literal('SET_POWER_LIMIT'),
-    payload: z.object({
-      powerLimit: z.number().meta({ examples: [ 1200 ] }),
-    }).strict(),
+    payload: powerLimitPayloadSchema,
   }).strict(),
   z.object({
     ...generateTokenSharedFields,

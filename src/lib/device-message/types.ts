@@ -13,12 +13,14 @@ import {
   createDeviceMessageSchema,
   deliveryStatusSchema,
   deviceMessageResponseSchema,
+  deviceStateSchema,
   failureReasonSchema,
   generateTokenSchema,
   pluginProvisioningRequestSchema,
   messageResponseSchema,
   messageResponseStatusSchema,
   phaseSchema,
+  powerLimitPayloadSchema,
   setDatePayloadSchema,
   setTimePayloadSchema,
   webhookMessagePayloadSchema,
@@ -61,6 +63,15 @@ export type RelayNodeInfo = NonNullable<DeviceMessageDevice['relayNode']>;
 export type DeviceType = DeviceMessageDevice['type'];
 export type SetDatePayload = z.infer<typeof setDatePayloadSchema>;
 export type SetTimePayload = z.infer<typeof setTimePayloadSchema>;
+
+/** `{ powerLimit }` in watts. Shared by enqueue payload and `POST /token/generate`. */
+export type PowerLimitPayload = z.infer<typeof powerLimitPayloadSchema>;
+
+/**
+ * Preserved device state on `requestData.deviceState` (ADR-009).
+ * Both fields are optional on the core wire.
+ */
+export type DeviceState = z.infer<typeof deviceStateSchema>;
 
 /**
  * Opaque plugin id; core routes by this string.
