@@ -26,6 +26,10 @@ import {
   createNxtStsPlugin,
 } from './nxt-sts/index.js';
 import {
+  SPARKMETER_SPARKNET_HTTP_ID,
+  createSparkmeterSparknetHttpPlugin,
+} from './sparkmeter-sparknet-http/index.js';
+import {
   STUB_PUSH_ID,
   createStubPushPlugin,
   STUB_PULL_ID,
@@ -41,6 +45,7 @@ export const PLUGIN_CATALOG: Record<
   [ CALIN_API_V2_ID ]: createCalinApiV2Plugin,
   [ CALIN_CHIRPSTACK_ID ]: createCalinChirpstackPlugin,
   [ NXT_STS_ID ]: createNxtStsPlugin,
+  [ SPARKMETER_SPARKNET_HTTP_ID ]: createSparkmeterSparknetHttpPlugin,
   [ STUB_PUSH_ID ]: createStubPushPlugin,
   [ STUB_PULL_ID ]: createStubPullPlugin,
 };
