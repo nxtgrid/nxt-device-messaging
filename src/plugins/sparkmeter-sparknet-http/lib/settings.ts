@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 
-import type { DeviceMessagingConfig } from '../../config/schema.js';
+import type { DeviceMessagingConfig } from '../../../config/schema.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -36,7 +36,7 @@ const settingsSchema = z.object({
 }).strict();
 
 /** One sparknet-http process this plugin can post to. */
-export type SparkmeterBasestation = {
+type SparkmeterBasestation = {
   readonly id: number;
   readonly baseUrl: string;
 };

@@ -6,15 +6,12 @@
  */
 
 import type { ParsedIncomingEvent } from '../../lib/device-message/types.js';
-import type { IncomingHandleMeta, PushPlugin } from '../plugin.interface.js';
+import type { PushPlugin } from '../plugin.interface.js';
 
 /** Ingress parser that drops every event. */
 export function createSparkmeterSparknetHttpIncoming(): PushPlugin['incoming'] {
   return {
-    handle(
-      _event: unknown,
-      _meta?: IncomingHandleMeta,
-    ): ParsedIncomingEvent | null {
+    handle(_event: unknown): ParsedIncomingEvent | null {
       return null;
     },
   };

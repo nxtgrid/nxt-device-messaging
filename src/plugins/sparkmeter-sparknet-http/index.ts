@@ -4,8 +4,8 @@
  * PUSH adapter for sparknet-http (meter-driver-spec). One initial queue per
  * basestation. Interim admission is concurrency 1 until the meter hold lands.
  *
- * `sendOne` throws until the configure post is added. Enable with
- * `plugins[].settings.basestations` and `meterConfiguration`.
+ * `sendOne` posts configure-meter. Enable with `plugins[].settings.basestations`
+ * and `meterConfiguration`.
  */
 
 import { isNil } from 'ramda';
@@ -13,9 +13,7 @@ import { isNil } from 'ramda';
 import type { DeviceMessagingConfig } from '../../config/schema.js';
 import type {
   CreateDeviceMessage,
-  DeviceMessage,
   EnqueueableCommandType,
-  FailureContext,
 } from '../../lib/device-message/types.js';
 import { buildInitialQueueKey } from '../_shared/initial-queue-key.js';
 import { mergePluginTuning } from '../_shared/merge-plugin-tuning.js';
@@ -26,8 +24,9 @@ import type {
   PushPlugin,
 } from '../plugin.interface.js';
 import { createSparkmeterSparknetHttpIncoming } from './incoming.js';
-import { loadSparkmeterSparknetHttpSettings } from './settings.js';
-import { validateSparkmeterEnqueue } from './validate-enqueue.js';
+import { loadSparkmeterSparknetHttpSettings } from './lib/settings.js';
+import { validateSparkmeterEnqueue } from './lib/validate-enqueue.js';
+import { createSparkmeterSparknetHttpOutgoing } from './outgoing.js';
 
 type PluginConfigEntry = DeviceMessagingConfig['plugins'][number];
 
@@ -60,16 +59,6 @@ const DEVELOPMENT_STAGE_TIMEOUTS: Partial<PluginTuning> = {
   deviceInFlightTimeoutMs: 60_000,
 };
 
-/** Configure posting is the next slice. The SPI still requires `sendOne`. */
-async function sendOne(_message: DeviceMessage): Promise<string> {
-  throw new Error('sparkmeter-sparknet-http sendOne is not implemented');
-}
-
-function parseError(err: unknown): FailureContext {
-  const reason = err instanceof Error ? err.message : String(err);
-  return { reason };
-}
-
 /**
  * Build the `sparkmeter-sparknet-http` {@link PushPlugin}.
  *
@@ -82,6 +71,10 @@ export function createSparkmeterSparknetHttpPlugin(entry: PluginConfigEntry): Pu
   const basestationIds = new Set(settings.basestations.map(basestation => basestation.id));
   const tuning = mergePluginTuning(entry, DEVELOPMENT_STAGE_TIMEOUTS);
   const incoming = createSparkmeterSparknetHttpIncoming();
+  const outgoing = createSparkmeterSparknetHttpOutgoing({
+    settings,
+    pluginId: SPARKMETER_SPARKNET_HTTP_ID,
+  });
 
   const initialQueueKey = (input: InitialQueueKeyInput): string => {
     const relayNodeId = input.device.relayNode?.id;
@@ -106,7 +99,7 @@ export function createSparkmeterSparknetHttpPlugin(entry: PluginConfigEntry): Pu
     tuning,
     initialQueueKey,
     validateEnqueue,
-    outgoing: { sendOne, parseError },
+    outgoing,
     incoming,
   };
 }

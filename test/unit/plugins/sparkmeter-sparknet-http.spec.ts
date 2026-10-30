@@ -7,7 +7,7 @@ import {
   SPARKMETER_SPARKNET_HTTP_ID,
   createSparkmeterSparknetHttpPlugin,
 } from '#src/plugins/sparkmeter-sparknet-http/index.js';
-import { loadSparkmeterSparknetHttpSettings } from '#src/plugins/sparkmeter-sparknet-http/settings.js';
+import { loadSparkmeterSparknetHttpSettings } from '#src/plugins/sparkmeter-sparknet-http/lib/settings.js';
 import type { CreateDeviceMessage } from '#src/lib/device-message/types.js';
 
 const METER_CONFIGURATION = {

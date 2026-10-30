@@ -10,7 +10,7 @@ import { isNil } from 'ramda';
 import type {
   CreateDeviceMessage,
   PowerLimitPayload,
-} from '../../lib/device-message/types.js';
+} from '../../../lib/device-message/types.js';
 
 /** Largest `node_id` the spec allows (uint64). */
 const UINT64_MAX = 18_446_744_073_709_551_615n;
@@ -31,10 +31,16 @@ function isBase10Uint64(value: string): boolean {
   return BigInt(value) <= UINT64_MAX;
 }
 
-function isPowerLimitPayload(
+/**
+ * `{ powerLimit }` payload, including zero. A missing value is not a payload.
+ */
+export function isPowerLimitPayload(
   payload: RequestPayload,
 ): payload is PowerLimitPayload {
-  return payload !== undefined && 'powerLimit' in payload;
+  return typeof payload === 'object'
+    && payload !== null
+    && 'powerLimit' in payload
+    && !isNil(payload.powerLimit);
 }
 
 /**
