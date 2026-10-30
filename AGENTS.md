@@ -45,7 +45,7 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 | What happens to an enqueue? | `src/main.ts`, then `src/engine/outgoing.ts` |
 | Where can a message wait? | `src/engine/lifecycle/stages.ts` |
 | What happens when a wait runs out? | `src/engine/lifecycle/actions.ts` and `runner.ts` |
-| How do I add a plugin? | `src/plugins/plugin.interface.ts`, `catalog.ts`, `src/plugins/calin-api-v1/index.ts` |
+| How do I add a plugin? | `src/plugins/plugin.interface.ts`, `catalog.ts`, then one existing plugin of the same delivery pattern (`calin-api-v1` or `calin-chirpstack`). Match its layout. |
 | Where is the SparkMeter lab? | `docs/guides/sparkmeter-sparknet-http.md` |
 | Where are the HTTP/webhook Zod schemas? | `src/lib/device-message/schemas.ts` (`packages/contract` re-exports; do not edit the barrel to change the wire) |
 
@@ -133,6 +133,9 @@ plan’s session notes. Parked item lands → strike the parked row.
   keep private helpers in that scope; return a plain object literal as the interface. Example:
   `createOutgoingService({ registry, delivery, baseService })`. Complements ADR-001 §2
   (no DI container). Pure helpers and module-level Redis stay fine outside this shape.
+- **Stub globals at the test site.** `fetch` is `vi.stubGlobal('fetch')`; time is fake timers.
+  Do not add a production argument whose only caller is a test. A `fetch` implementation
+  parameter is that argument.
 - **Keep framework types out of the plugin layer.** Plugins are plain objects, not classes with
   decorators. A plugin author should not need to know which HTTP framework the service uses.
 
@@ -141,6 +144,10 @@ plan’s session notes. Parked item lands → strike the parked row.
 Plugins are authored and tested **in this repository**, not as an external third-party
 ecosystem. Treat plugin authors as co-maintainers of the SPI.
 
+- **Match an existing plugin before inventing a layout.** Read one plugin of the same
+  delivery pattern and follow it. The id and the factory live in `index.ts`. `incoming.ts`
+  and `outgoing.ts` stay beside it. Helpers go in `lib/`. A constant the factory owns stays
+  in that factory file.
 - Make the plugin ↔ engine contract **clear and documented** (JSDoc, ADR-006, examples).
   The SPI is a discriminated union on `deliveryPattern`: `PushPlugin` | `PullPlugin` |
   `TokenOnlyPlugin`.

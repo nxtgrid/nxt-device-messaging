@@ -84,7 +84,7 @@ The core schema does not tie these fields to a `commandType` or a `pluginId`. `t
 | `SET_POWER_LIMIT` | `PowerLimitPayload` | `relay` required, `powerLimit` absent |
 
 A missing required field fails enqueue. A field the command forbids fails enqueue the same way.
-Zero is a real `powerLimit`. The CALIN plugins do not read `deviceState`. A CALIN
+Zero is a real `powerLimit` and may mean no limit. The CALIN plugins do not read `deviceState`. A CALIN
 `SET_POWER_LIMIT` enqueue still carries the minted string on `requestData.token` and does not
 carry `PowerLimitPayload`.
 

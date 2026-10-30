@@ -86,7 +86,7 @@ is written and accepted before the item that implements it.
 | # | Item | Design points | Depends on | Model | Status |
 |---|---|---|---|---|---|
 | 1 | **ADR-009** — public contract additions: `requestData.deviceState` and a shared `{ powerLimit }` payload, and the "basestation needs init" webhook event | 4, 8a, 8b | — | Claude Opus 5.5 | ☑ |
-| 2 | **Skeleton** — catalog entry, `settings.basestations`, `settings.meterConfiguration`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☐ |
+| 2 | **Skeleton** — catalog entry, `settings.basestations`, `settings.meterConfiguration`, one initial queue per basestation, `supportedCommandTypes`, `validateEnqueue`, `externalReference` parsing, `sendOne` posting configure. Interim admission `concurrency` with `maxInFlight: 1`. Emulator service in `docker-compose` | 4, 5, 6, 7, 8a | 1 | Grok 4.7 | ☑ |
 | 3 | **ADR-010** — plugin-owned event stream on `PushPlugin` (`start`, `deliver`, `dropped`) | 2 | — | Claude Opus 5.5 | ☐ |
 | 4 | **ADR-008 amendment** — a plugin may end the device stage without retry. This plugin's `deviceInFlightTimeoutMs` expiry is `DELIVERY_FAILED` and does not post configure again. ChirpStack keeps `retryOrFail` | 11 | — | Claude Opus 5.5 | ☐ |
 | 5 | **Event stream** — the engine seam, the SSE client and frame parser, configure accepted / applied / invalid matched on `{pluginId}:{nodeId}` with point 10's statuses. `applied` completes the command only when the six echoed fields match the posted body; a mismatch counts as unmatched. Readings as `READ_REPORT`. Device-timeout expiry is terminal, per item 4. Development tuning values (not production). A metric for events that matched no message | 2, 3, 5, 10, 11 | 2, 3, 4 | Claude Opus 5.5 | ☐ |
@@ -301,7 +301,8 @@ same day, question 7: a retry after `electrical_meter_configuration_accepted` do
 > This plugin requires `deviceState.powerLimit` on `TURN_ON` and `TURN_OFF`, and forbids `relay`
 > and `payload` there. It requires `payload` of `{ powerLimit }` and `deviceState.relay` on
 > `SET_POWER_LIMIT`, and forbids `deviceState.powerLimit` there. A missing required field fails
-> enqueue. A forbidden field fails enqueue the same way. Zero is a real power limit.
+> enqueue. A forbidden field fails enqueue the same way. Zero is a real power limit and may
+> mean no limit.
 >
 > The plugin posts `POST /v1/nodes/{node_id}/configure-meter`. `TURN_ON` posts
 > `ElectricalMeterCommandEnable`, `TURN_OFF` posts `ElectricalMeterCommandDisable`, and
@@ -309,7 +310,8 @@ same day, question 7: a retry after `electrical_meter_configuration_accepted` do
 > caller's `powerLimit`. The other four spec fields come from the plugin settings
 > `meterConfiguration`: `currentLimit` (amps, 200 when the key is omitted), `startupDelay`,
 > `throttleOnTime`, `throttleOffTime`, and `throttleCountLimit`. Those four are required. A
-> missing one fails boot. A present zero is a real value. The plugin maps the keys to the spec's
+> missing one fails boot. A present zero is a real value. A negative `currentLimit` fails
+> boot. The plugin maps the keys to the spec's
 > snake_case names when it posts.
 >
 > The in-flight message holds what the caller sent. A retry before
@@ -411,9 +413,10 @@ accepted, the queue is skipped.
 > Skyfox keeps the serial, derives the code, and matches a returning code to the meter.
 > This service does not parse serials and does not store a serial-to-code map.
 >
-> On the way down the plugin reads the string as a base-10 integer and posts it as
-> `node_id`. A string that is not a base-10 integer in the spec's uint64 `node_id` range
-> fails enqueue. The 16-bit derivation check stays in Skyfox. On the way up the event's
+> On the way down the plugin accepts `externalReference` only in canonical base-10 form:
+> `0`, or digits with no leading zero, through the spec's uint64 maximum. A sign, a
+> fraction, or a leading zero fails enqueue. The plugin posts that string as `node_id`.
+> The 16-bit derivation check stays in Skyfox. On the way up the event's
 > `node_id` is written back as decimal digits with no padding. The meter-hold address from
 > point 6 is this string.
 
@@ -592,7 +595,12 @@ that can be extended.
 >   the deadlines are static plugin tuning, overridable per deployment in `plugins[].tuning`
 >   (ADR-002 §5). The plugin passes its own deltas and does not inherit the core defaults as
 >   mesh values.
-> - Values used against the emulator are development values. The production device wait is
+> - Values used against the emulator are development values: `nsInFlightTimeoutMs` 10
+>   seconds, `relayNodeInFlightTimeoutMs` 30 seconds, and `deviceInFlightTimeoutMs` 60
+>   seconds. `plugins[].tuning` overrides any of them. `initialPollDelayMs` stays the core
+>   default; this plugin does not poll. The HTTP client aborts at the shared 120-second
+>   safety deadline, not at `nsInFlightTimeoutMs`. Aborting the call when the stage
+>   deadline fires would post the same configure again. The production device wait is
 >   chosen at the real-basestation trial, long enough that a reachable meter usually confirms.
 >   The guide says how to size the deployment override.
 
@@ -904,3 +912,24 @@ retries. Later rows shifted by one. Older notes cite the numbers from before tha
 event stream is item 5 and implements the six-field check and that terminal timeout. Init
 gating is item 10. The guide's sizing note stays on the smokes-and-docs item. The production
 number is chosen at the real-basestation trial.
+
+**2026-10-30** — Checklist item 2 landed: the `sparkmeter-sparknet-http` skeleton. Catalog
+entry, `settings.basestations` and `settings.meterConfiguration`, one initial queue per
+basestation, `TURN_ON`, `TURN_OFF`, and `SET_POWER_LIMIT`, enqueue checks, and `sendOne`
+posting `POST /v1/nodes/{node_id}/configure-meter`. Interim admission is `concurrency` with
+`maxInFlight: 1`. `incoming.handle` returns null until item 5. Only HTTP 202 is success. The
+response body is not parsed. The delivery id is `{pluginId}:{nodeId}`. A 4xx does not retry.
+Any other status, a timeout, or a network error does. A duplicate basestation id fails boot,
+and so does an empty basestation list. An id that is not in settings fails enqueue, and the
+same miss at send does not retry. One trailing slash is stripped from `baseUrl`. A missing
+relay id still builds the CALIN `unassigned` queue key, because the lifecycle can recompute
+it; enqueue rejects that message first. The emulator is the Compose profile `emulator`.
+`docker compose up` does not start it, and the app does not depend on it. It is not enabled
+in `config.example.json`. The lab guide still shows `docker run`; that update is item 11.
+Points 4, 7, and 11 are amended: zero on `powerLimit` may mean no limit, a negative
+`currentLimit` fails boot, `externalReference` is canonical base-10, and the development
+deadlines are 10s, 30s, and 60s, with the HTTP client on the shared 120-second safety
+deadline. ADR-009 decision 1 carries the zero sentence. ADR-005 §2 records the opt-in
+emulator. Two review preferences are now in `AGENTS.md`, because the test one lived only in
+the extraction archive: stub `fetch` at the test site, and match an existing plugin's layout
+before inventing one. Next checklist item is 3, ADR-010.

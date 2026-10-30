@@ -164,6 +164,15 @@ Compose sets `REDIS_HOST=valkey`.
 For a released image, replace `build: .` with `image: ghcr.io/nxtgrid/nxt-device-messaging:vX.Y.Z`.
 Persist Valkey (the compose file already has a volume).
 
+The meter-driver emulator is a separate opt-in service. `docker compose up` leaves it stopped.
+Start it only for the SparkMeter lab:
+
+```bash
+docker compose up meter-driver-emulator
+```
+
+It listens on port 18080. The app service does not depend on it.
+
 ### Image only
 
 ```bash
