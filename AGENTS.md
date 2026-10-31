@@ -70,6 +70,8 @@ Redis (or Valkey) is the only infrastructure dependency. There is no relational 
 - **Design decisions belong to the maintainer.** When one surfaces, put it to them with a
   recommended answer and wait for confirmation before acting. Resolve dependencies between
   decisions one at a time.
+- **A forwarded review comment is a discussion.** Judge whether it is worth doing, say so,
+  and wait. Do not change code until the maintainer agrees.
 - **Look facts up; never ask what the environment can answer.** Filesystem and git history
   are readable.
 
@@ -128,6 +130,9 @@ plan’s session notes. Parked item lands → strike the parked row.
   **SCREAMING_SNAKE_CASE** for constants. Avoid magic numbers.
 - Verb prefixes for booleans: `isLoading`, `hasError`, `canRetry`.
 - Prefer short single-purpose functions, early returns over nesting, and a functional style.
+- **Write code a human can read straight through.** Prefer the straightforward form. Do not
+  add safety checks for edge cases a developer will not realistically hit, and do not add
+  type machinery to close those cases. Both bloat the code and make it harder to follow.
 - Prefer immutability: `readonly` for data that does not change, `as const` for literals.
 - **Factory + closure DI (preferred when practical).** Inject deps into a factory function;
   keep private helpers in that scope; return a plain object literal as the interface. Example:

@@ -19,7 +19,7 @@ const DEFAULT_CURRENT_LIMIT_AMPS = 200;
 
 const basestationSchema = z.object({
   id: z.uint32(),
-  baseUrl: z.url(),
+  baseUrl: z.url({ protocol: /^https?$/ }),
 }).strict();
 
 const meterConfigurationSchema = z.object({

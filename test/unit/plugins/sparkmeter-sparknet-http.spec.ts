@@ -143,6 +143,13 @@ describe('loadSparkmeterSparknetHttpSettings', () => {
 
     expect(() => loadSparkmeterSparknetHttpSettings({
       id: SPARKMETER_SPARKNET_HTTP_ID,
+      settings: settings({
+        basestations: [ { id: 1, baseUrl: 'ftp://127.0.0.1:18080' } ],
+      }),
+    })).toThrow(/baseUrl/);
+
+    expect(() => loadSparkmeterSparknetHttpSettings({
+      id: SPARKMETER_SPARKNET_HTTP_ID,
       settings: { ...settings(), power_limit: 1 },
     })).toThrow(/Invalid settings/);
   });
