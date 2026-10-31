@@ -1,5 +1,8 @@
 # Local compose stack: app + Valkey 8 (ADR-005 §2).
 # Copy `.env.example` → `.env`, then: docker compose up --build
+#
+# The meter-driver emulator is not part of that stack. Start it on its own:
+#   docker compose up meter-driver-emulator
 
 services:
   app:
@@ -26,6 +29,15 @@ services:
       - '${REDIS_PUBLISH_PORT:-6379}:6379'
     volumes:
       - valkey-data:/data
+
+  # SparkMeter lab stand-in. A profile keeps `docker compose up` from starting it.
+  # `docker compose up meter-driver-emulator` starts this service alone.
+  meter-driver-emulator:
+    image: ghcr.io/earthspark/meter-driver-emulator:main
+    profiles:
+      - emulator
+    ports:
+      - '18080:18080'
 
 volumes:
   valkey-data:

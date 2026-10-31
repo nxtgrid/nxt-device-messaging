@@ -22,6 +22,9 @@
 >
 > **Amendment (2026-08-18):** `release.yml` publishes a multi-arch GHCR image
 > (`linux/amd64` and `linux/arm64`) via QEMU + Buildx, same as `nxt-sts`.
+>
+> **Amendment (2026-10-30):** The meter-driver emulator is an opt-in Compose profile.
+> `docker compose up` still starts only the app and Valkey. See §2.
 
 ---
 
@@ -53,6 +56,10 @@ configure the platform probe themselves.
 Compose runs the service and **Valkey 8 alpine** (Redis-compatible; preferred for the OSS story).
 Config follows ADR-002 (`DEVICE_MESSAGING_CONFIG_*` / bind-mount); secrets and Redis connection
 via env, documented in `.env.example`. A `.dockerignore` keeps the build context small.
+
+The meter-driver emulator (`ghcr.io/earthspark/meter-driver-emulator:main`, host port 18080)
+is the Compose profile `emulator`. `docker compose up` does not start it. `docker compose up
+meter-driver-emulator` starts that service alone. The app service does not depend on it.
 
 Unlike `nxt-sts` (stateless, no infra), compose is required here — Redis/Valkey is the only
 infrastructure dependency.
